@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "alsageist"
+version = "1.0.0"
+description = "Autonomous Voice-Driven Conversational Halloween Display"
+authors = [{ name = "Arturo Sanchez" }]
+readme = "spec.md"
+requires-python = ">=3.9"
+dependencies = [
+    "sounddevice>=0.4.6",
+    "numpy>=1.21.0",
+    "piper-tts>=1.2.0",
+    "onnxruntime>=1.14.0",
+    "pytest>=7.0.0",
+]
+
+[project.scripts]
+alsageist = "main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

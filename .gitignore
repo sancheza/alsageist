@@ -1,0 +1,44 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Secrets & Environment variables
+.env
+.env.*
+
+# Logs & Runtime telemetry
+logs/*.log
+logs/*.jsonl
+!logs/.gitkeep
+
+# Large neural model weights (download on demand)
+models/piper/*.onnx
+!models/piper/*.onnx.json
+!models/piper/.gitkeep
+
+# Root scratch and preview files
+/preview_*.wav
+*.tmp
