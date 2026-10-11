@@ -48,6 +48,19 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Enable detailed diagnostic logging.",
     )
+    env_llm_fallback = os.environ.get("LLM_FALLBACK", "false").strip().lower() in ("true", "1", "yes")
+    parser.add_argument(
+        "--llm-fallback",
+        action="store_true",
+        default=env_llm_fallback,
+        help="Fetch custom LLM response for indeterminate prompts instead of generic canned response (default: $LLM_FALLBACK or false).",
+    )
+    parser.add_argument(
+        "--no-llm-fallback",
+        action="store_false",
+        dest="llm_fallback",
+        help="Disable LLM fallback for indeterminate prompts.",
+    )
     parser.add_argument(
         "--engine",
         choices=["intent", "llm"],
@@ -72,8 +85,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--threshold",
         type=float,
-        default=float(os.environ.get("VAD_THRESHOLD", 0.0035)),
-        help="Minimum audio RMS energy threshold for speech detection (default: 0.0035 or $VAD_THRESHOLD). Increase if false-triggering in loud rooms.",
+        default=float(os.environ.get("VAD_THRESHOLD", 0.0025)),
+        help="Minimum audio RMS energy threshold for speech detection (default: 0.0025 or $VAD_THRESHOLD). Increase if false-triggering in loud rooms.",
     )
     parser.add_argument(
         "--volume",
@@ -90,14 +103,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-speech-sec",
         type=float,
-        default=0.35,
-        help="Minimum sustained speech duration in seconds required to accept an utterance (default: 0.35s).",
+        default=0.15,
+        help="Minimum sustained speech duration in seconds required to accept an utterance (default: 0.15s).",
     )
     parser.add_argument(
         "--silence-timeout",
         type=float,
-        default=1.1,
-        help="Trailing silence in seconds required before speech is considered finished (default: 1.1s).",
+        default=0.9,
+        help="Trailing silence in seconds required before speech is considered finished (default: 0.9s).",
     )
     parser.add_argument(
         "--tempo",
@@ -162,9 +175,19 @@ class AlsaGeistAgent:
         self.stt = SpeechToTextService(sample_rate=16000)
 
         # 5. Dialogue Engine (Intent vs LLM)
+        self.llm_fallback_enabled = getattr(args, "llm_fallback", False)
+        self.llm_fallback_service: Optional[ConversationalLLMService] = None
+
         if args.engine == "intent":
             from services.intent_service import GrimjawIntentEngine
             self.dialogue_engine = GrimjawIntentEngine()
+            if self.llm_fallback_enabled:
+                try:
+                    self.llm_fallback_service = ConversationalLLMService()
+                    print("  [LLM Fallback]: Active for indeterminate prompts.")
+                except Exception as exc:
+                    print(f"  [LLM Fallback Warning]: Could not initialize LLM service: {exc}. Generic fallback will be used.")
+                    self.llm_fallback_service = None
         else:
             self.dialogue_engine = ConversationalLLMService()
 
@@ -183,8 +206,13 @@ class AlsaGeistAgent:
         self.is_online = self._check_internet()
         self.last_net_check_time = time.time()
         self.net_check_interval = 15.0 * 60.0  # 15 minutes
+        self.is_disabled = False
 
-        self.led.set_button_callback(self._on_button_press)
+        self.led.set_button_callbacks(
+            on_press=self._on_button_press,
+            on_hold=self._on_button_hold,
+            hold_time_sec=5.0,
+        )
 
     @staticmethod
     def _check_internet(timeout: float = 2.5) -> bool:
@@ -223,9 +251,14 @@ class AlsaGeistAgent:
             self.dialogue_engine.reset_conversation()
         elif hasattr(self.dialogue_engine, "reset_history"):
             self.dialogue_engine.reset_history()
+        if getattr(self, "llm_fallback_service", None) is not None:
+            self.llm_fallback_service.reset_history()
 
     def _on_button_press(self) -> None:
         """Handle arcade button press: cycle volume by 10% and announce new level."""
+        if self.is_disabled:
+            return
+
         # 1. Calculate new volume level (step by 0.10, cycle 1.0 -> 0.0)
         current_vol = round(self.audio.volume, 2)
         if current_vol >= 0.99:
@@ -251,6 +284,26 @@ class AlsaGeistAgent:
         except Exception as exc:
             print(f"Volume announcement error: {exc}")
         finally:
+            if not self.is_disabled:
+                self.audio.unmute_capture()
+                self.vad.reset()
+                self.led.set_state(LEDState.IDLE)
+
+    def _on_button_hold(self) -> None:
+        """Handle 5-second arcade button hold: toggle mute/disabled state."""
+        if not self.is_disabled:
+            # 1. Disable / Mute Grimjaw (Mic and Speaker off, LED off)
+            print("\n[BUTTON] 5-second hold detected: Disabling and muting Grimjaw (Mic & Speaker OFF)...")
+            self.is_disabled = True
+            self.audio.stop_playback()
+            self.audio.mute_capture()
+            self._reset_dialogue()
+            self.vad.reset()
+            self.led.set_state(LEDState.OFF)
+        else:
+            # 2. Re-enable / Unmute Grimjaw (Mic and Speaker on, LED idle/on)
+            print("\n[BUTTON] 5-second hold detected: Re-enabling and unmuting Grimjaw (Normal operation)...")
+            self.is_disabled = False
             self.audio.unmute_capture()
             self.vad.reset()
             self.led.set_state(LEDState.IDLE)
@@ -279,6 +332,11 @@ class AlsaGeistAgent:
 
         try:
             while self.running:
+                if self.is_disabled:
+                    time.sleep(0.05)
+                    last_activity_time = time.time()
+                    continue
+
                 # Check internet access every 15 minutes (or switch modes dynamically)
                 now = time.time()
                 if now - self.last_net_check_time > self.net_check_interval:
@@ -297,15 +355,18 @@ class AlsaGeistAgent:
 
                 is_speech, completed, utterance = self.vad.process_frame(frame)
 
-                if is_speech:
+                if self.vad.is_speaking:
                     last_activity_time = time.time()
                     if self.led.current_state != LEDState.LISTENING:
                         self.led.set_state(LEDState.LISTENING)
+                elif self.led.current_state == LEDState.LISTENING and not completed:
+                    self.led.set_state(LEDState.IDLE)
 
-                if completed and utterance is not None and len(utterance) > 6000:
+                if completed and utterance is not None:
                     last_activity_time = time.time()
                     self._handle_utterance(utterance)
-                    self.led.set_state(LEDState.IDLE)
+                    if not self.is_disabled:
+                        self.led.set_state(LEDState.IDLE)
 
         except KeyboardInterrupt:
             print("\nShutting down AlsaGeist...")
@@ -318,6 +379,10 @@ class AlsaGeistAgent:
         audio_dur = len(utterance_pcm) / self.audio.sample_rate
         audio_rms = self.vad.calculate_rms(utterance_pcm)
         print(f"\n🎤 [USER SPEAKS] Processing utterance in RAM ({audio_dur:.2f}s, RMS: {audio_rms:.4f})...")
+
+        # Visual acknowledgement: Flash button LED 3 times rapidly immediately upon hearing speech
+        self.led.flash(count=3)
+        self.led.set_state(LEDState.THINKING)
 
         # 1. Speech-to-Text
         try:
@@ -344,6 +409,7 @@ class AlsaGeistAgent:
 
         if not user_text or len(user_text.strip()) < 2:
             print("  (Silence / ambient noise filtered)")
+            self.led.set_state(LEDState.IDLE)
             self.logger.log_interaction(
                 transcribed_text=user_text or "",
                 response_text="",
@@ -359,6 +425,7 @@ class AlsaGeistAgent:
         clean_test = user_text.strip().lower().rstrip(".,!?")
         if clean_test in ["you", "thank you", "shh", "the", "a", "subtitles by", "bye", "uh", "um", ""] and audio_rms < 0.010:
             print(f"  (Filtered ambient background artifact: \"{user_text}\")")
+            self.led.set_state(LEDState.IDLE)
             self.logger.log_interaction(
                 transcribed_text=user_text,
                 response_text="",
@@ -378,6 +445,21 @@ class AlsaGeistAgent:
         try:
             if hasattr(self.dialogue_engine, "classify_and_respond"):
                 creature_reply, matched_intent = self.dialogue_engine.classify_and_respond(user_text)
+                # Escalate indeterminate prompts to custom LLM response if enabled
+                if (
+                    matched_intent == "fallback_unrecognized"
+                    and self.llm_fallback_enabled
+                    and self.llm_fallback_service is not None
+                    and self.is_online
+                ):
+                    try:
+                        print("💀 Grimjaw: Indeterminate prompt — fetching custom LLM response...")
+                        custom_reply = self.llm_fallback_service.generate_response(user_text)
+                        if custom_reply and custom_reply.strip():
+                            creature_reply = custom_reply.strip()
+                            matched_intent = "llm_fallback_custom"
+                    except Exception as llm_exc:
+                        print(f"  (LLM fallback fetch failed: {llm_exc}; using generic fallback)")
             else:
                 creature_reply = self.dialogue_engine.generate_response(user_text)
         except Exception as exc:
@@ -417,6 +499,8 @@ class AlsaGeistAgent:
         )
 
         # 5. Audio Playback to Speaker (Mute mic capture to prevent self-triggering)
+        if self.is_disabled:
+            return
         self.led.set_state(LEDState.SPEAKING)
         self.audio.mute_capture()
         try:
@@ -424,8 +508,9 @@ class AlsaGeistAgent:
         finally:
             # 6. Cooldown to allow room resonance to dissipate, then unmute and reset VAD
             time.sleep(0.25)
-            self.audio.unmute_capture()
-            self.vad.reset()
+            if not self.is_disabled:
+                self.audio.unmute_capture()
+                self.vad.reset()
 
     def _play_startup_greeting(self) -> None:
         """Play an initial greeting announcement when the agent first wakes up."""

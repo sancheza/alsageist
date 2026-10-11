@@ -564,9 +564,9 @@ If running the pre-warming script in the background or over SSH, check the numbe
 ls -1 ~/alsageist/models/cache/*.npy | wc -l
 ```
 
-Expected output (counts toward the 317 total responses):
+Expected output (counts toward the 383 total responses):
 ```text
-317
+383
 ```
 
 To inspect running pre-warm processes and CPU activity:
@@ -574,6 +574,31 @@ To inspect running pre-warm processes and CPU activity:
 ```bash
 ps aux | grep prewarm
 ```
+
+---
+
+### 8.3 Arcade Button Controls & Status LED States
+
+The physical illuminated arcade button on the AIY Voice Kit (GPIO 23 for switch, GPIO 25 for LED) provides runtime controls and visual feedback without requiring an SSH terminal or keyboard.
+
+#### Arcade Button Functions
+
+| Action | Duration | Result |
+| :--- | :--- | :--- |
+| **Short Press** | < 5.0 seconds | Cycles audio volume in 10% steps (`0.0` to `1.0`), stops ongoing playback, resets conversational context, and speaks the new volume level ("Volume 80 percent."). Ignored when disabled. |
+| **Long Hold** | 5.0 seconds | **Mute / Disable Toggle**: When active, holding for 5 seconds disables Grimjaw (turns off microphone capture and speaker output, stops ongoing playback, resets dialogue context, and turns off the button LED). Holding for 5 seconds again re-enables Grimjaw, restores microphone capture and speaker output, returns the LED to breathing `IDLE`, and resumes normal operation. |
+
+#### Status LED Signaling
+
+| State | Pattern | Meaning |
+| :--- | :--- | :--- |
+| `IDLE` | 0.5 Hz smooth breathing pulse (5%–85% duty cycle) | Resting ambient state; listening for porch visitors. |
+| `LISTENING` | Solid 100% brightness | Speech detected; recording incoming microphone frames. |
+| `FLASH` | 3 rapid pulses (~7 Hz) | Acknowledgment: confirmed speech was captured. |
+| `THINKING` | Heartbeat double-pulse (~1.1 Hz "lub-dub... pause") | Active processing: transcribing speech, classifying intent, fetching LLM fallback, or synthesizing audio. |
+| `SPEAKING` | 3–4 Hz organic audio-reactive flicker | Playing character response audio through the speaker. |
+| `ERROR` | 5 Hz rapid square-wave alert blink | Exception occurred or cloud STT network failure. |
+| `OFF` | Dark (0% duty cycle) | Muted / disabled via 5-second button hold. |
 
 ---
 

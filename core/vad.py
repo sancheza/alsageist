@@ -17,12 +17,13 @@ class VoiceActivityDetector:
         self,
         sample_rate: int = 16000,
         frame_duration_ms: int = 30,
-        energy_threshold_multiplier: float = 2.2,
-        min_speech_frames: int = 3,
-        silence_timeout_sec: float = 1.1,
+        energy_threshold_multiplier: float = 1.6,
+        min_speech_frames: int = 2,
+        silence_timeout_sec: float = 0.9,
         pre_speech_padding_sec: float = 0.35,
-        min_energy_threshold: float = 0.006,
-        min_active_speech_sec: float = 0.35,
+        min_energy_threshold: float = 0.0020,
+        min_active_speech_sec: float = 0.15,
+        max_utterance_sec: float = 8.0,
     ) -> None:
         """Initialize the Voice Activity Detector.
 
@@ -35,6 +36,7 @@ class VoiceActivityDetector:
             pre_speech_padding_sec: Seconds of audio before speech onset to retain in buffer.
             min_energy_threshold: Minimum absolute RMS threshold to prevent false ambient triggers.
             min_active_speech_sec: Minimum total duration of active voice frames required to accept utterance.
+            max_utterance_sec: Maximum duration in seconds of a single utterance before forcing closure.
         """
         self.sample_rate = sample_rate
         self.frame_duration_ms = frame_duration_ms
@@ -45,6 +47,7 @@ class VoiceActivityDetector:
         self.pre_speech_padding_frames = int((pre_speech_padding_sec * 1000.0) / frame_duration_ms)
         self.min_energy_threshold = min_energy_threshold
         self.min_active_speech_frames = int((min_active_speech_sec * 1000.0) / frame_duration_ms)
+        self.max_utterance_sec = max_utterance_sec
 
         self.noise_floor: float = 0.002
         self.is_speaking: bool = False
@@ -115,9 +118,10 @@ class VoiceActivityDetector:
                 self._peak_speech_rms = rms
             return True, False, None
 
-        # Silence during active speech
+        # Silence or max duration during active speech
         self._consecutive_silence_frames += 1
-        if self._consecutive_silence_frames >= self.silence_timeout_frames:
+        utterance_dur = (len(self._speech_buffer) * self.frame_duration_ms) / 1000.0
+        if self._consecutive_silence_frames >= self.silence_timeout_frames or utterance_dur >= self.max_utterance_sec:
             # End of utterance reached
             was_speaking = self.is_speaking
             active_frames = self._active_speech_frames_count
@@ -136,9 +140,9 @@ class VoiceActivityDetector:
             # Reject if not enough active speech frames or peak energy is too weak
             if (
                 not was_speaking
-                or len(completed_audio) < int(self.sample_rate * 0.4)
+                or len(completed_audio) < int(self.sample_rate * 0.25)
                 or active_frames < self.min_active_speech_frames
-                or peak_rms < self.min_energy_threshold
+                or peak_rms < (self.min_energy_threshold * 0.8)
             ):
                 return False, False, None
 

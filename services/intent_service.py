@@ -546,6 +546,16 @@ class GrimjawIntentEngine:
                     "I've seen things you people wouldn't believe... Attack ships on fire off the shoulder of Orion... C-beams glitter in the dark near the Tannhäuser Gate. All those moments will be lost in time, like tears in rain... Time to take your candy!",
                 ],
             ),
+            # 3e1a8. Say Anything - Hey Soul Classics
+            (
+                "hey_soul_classics",
+                [
+                    r"\b(borrow a copy of|copy of|hey soul classics|hey so classics|h-?so classics|soul classics)\b",
+                ],
+                [
+                    "No, my brother! You have to go buy your own!",
+                ],
+            ),
             (
                 "sing_song",
                 [
@@ -1160,6 +1170,8 @@ class GrimjawIntentEngine:
                     r"\bfriends with other skeletons\b",
                     r"\bother skeleton friends\b",
                     r"\bwho is your (best|favorite) skeleton\b",
+                    r"\b(who is|who's|whos) (your|his) (best )?friend(s)?\b",
+                    r"\b(your|his) best friend\b",
                 ],
                 [
                     "My favorite skeleton friend? Sans and Papyrus are great company, but Skeletor is way too noisy. Jack Skellington is cool when he isn't obsessed with snow!",
@@ -1427,6 +1439,258 @@ class GrimjawIntentEngine:
                     "Smell your feet? Absolutely not! Take a treat and let me give you something good to eat.",
                 ],
             ),
+            # Costume: K-Pop Demon Hunters
+            (
+                "costume_kpop_rumi",
+                [r"\brumi\b"],
+                ["Rumi! Put down the mystical daggers! My ribcage is already well-ventilated, thank you very much!"],
+            ),
+            (
+                "costume_kpop_mira",
+                [r"\bmira\b"],
+                ["Mira! Don't you dare banish me! Skeletons have had legal residency in this crypt since seventeen-ninety!"],
+            ),
+            (
+                "costume_kpop_zoey",
+                [r"\bzoey\b"],
+                ["Zoey! If you're going to hunt demons on my porch, at least do it in four-part vocal harmony!"],
+            ),
+            (
+                "costume_kpop_jinu",
+                [r"\bjinu\b"],
+                ["Jinu! Are you here to drop a chart-topping hit, or just hunt the monsters lurking behind my candy cauldron?"],
+            ),
+            (
+                "costume_kpop_demon_hunters",
+                [r"\b(k[- ]?pop|demon hunter|hunt demons?)\b"],
+                ["A K-Pop Demon Hunter! Whoa, hold your choreography, pop star! I'm an ancient skeletal sentinel, not a rogue demon from the underworld!"],
+            ),
+            # Costume: Mario World
+            (
+                "costume_mario",
+                [r"\b(super )?mario\b", r"\bmario brother\b"],
+                ["Mario! It's-a you! Sorry, plumber, but your princess is in another crypt down the street!"],
+            ),
+            (
+                "costume_luigi",
+                [r"\bluigi\b"],
+                ["Luigi! Stop trembling, green bean! I'm just a skeleton, not King Boo! Put the Poltergust away!"],
+            ),
+            (
+                "costume_peach",
+                [r"\b(princess )?peach\b"],
+                ["Princess Peach! Did Bowser kidnap you again, or are you just out foraging for mini Snickers bars?"],
+            ),
+            (
+                "costume_yoshi",
+                [r"\byoshi\b"],
+                ["Yoshi! Mlem! Keep that sticky green tongue out of my candy bowl, dinosaur! One piece only!"],
+            ),
+            # Costume: Bluey
+            (
+                "costume_bluey",
+                [r"\bbluey\b", r"\bheeler\b", r"\bbandit\b", r"\bchilli\b", r"\bingo\b"],
+                ["Bluey! For real life?! A blue heeler on my porch! Just don't ask to play Keepy Uppy with my skull!"],
+            ),
+            # Costume: PAW Patrol
+            (
+                "costume_chase",
+                [r"\bchase\b", r"\bpolice pup\b"],
+                ["Chase is on the case! Please, officer, I swear my graveyard permits are up to date! Don't impound my coffin!"],
+            ),
+            (
+                "costume_skye",
+                [r"\bskye\b"],
+                ["Skye! This pup's gotta fly... straight off my porch before my cape gets caught in your helicopter rotor!"],
+            ),
+            (
+                "costume_marshall",
+                [r"\bmarshall\b", r"\bfire pup\b"],
+                ["Marshall! Fired up! But please, no water cannons—my bones are already squeaking from the humidity!"],
+            ),
+            (
+                "costume_paw_patrol",
+                [r"\bpaw patrol\b"],
+                ["PAW Patrol! No job is too big, no pup is too small... but this candy bowl is strictly one per trick-or-treater!"],
+            ),
+            # Costume: Pokémon
+            (
+                "costume_eevee",
+                [r"\beevee\b"],
+                ["Eevee! Look at that fluffy collar! What are you evolving into tonight? A Jolteon, or a Sugar-eon?"],
+            ),
+            (
+                "costume_pikachu",
+                [r"\bpikachu\b"],
+                ["Pikachu! Pika-pi! I choose YOU... to take one piece of chocolate and not zap my delicate Raspberry Pi!"],
+            ),
+            # Costume: Toy Story
+            (
+                "costume_woody",
+                [r"\bwoody\b", r"\bsheriff woody\b"],
+                ["Woody! There's a snake in my boot? Joke's on you, cowboy—I don't have boots, just bare metatarsals!"],
+            ),
+            (
+                "costume_buzz",
+                [r"\bbuzz( lightyear)?\b"],
+                ["Buzz Lightyear! To infinity and beyond! Just make sure your star command trajectory lands you on the sidewalk."],
+            ),
+            (
+                "costume_jessie",
+                [r"\bjessie\b"],
+                ["Jessie the Yodeling Cowgirl! Yodel-ay-hee-hoo! Skeletons don't do rodeo, so keep your lasso off my femur!"],
+            ),
+            (
+                "costume_toy_story",
+                [r"\btoy story\b"],
+                ["To infinity and beyond! Mind the skeleton while you grab your treats, toy!"],
+            ),
+            # Costume: Disney Frozen
+            (
+                "costume_elsa",
+                [r"\belsa\b"],
+                ["Elsa! The cold never bothered me anyway! ...Because I have no nerves, no skin, and no blood circulation!"],
+            ),
+            (
+                "costume_anna",
+                [r"\banna\b"],
+                ["Anna! Do you want to build a snowman? Because with this October draft, my spine is already halfway to permafrost!"],
+            ),
+            (
+                "costume_frozen",
+                [r"\bfrozen\b"],
+                ["The cold never bothered me anyway! Grab your treat before it freezes to my porch!"],
+            ),
+            # Costume: Disney Classics
+            (
+                "costume_moana",
+                [r"\bmoana\b"],
+                ["Moana! See the line where the sidewalk meets the street? It calls you! Sail your canoe to the next house!"],
+            ),
+            (
+                "costume_mickey",
+                [r"\bmickey( mouse)?\b"],
+                ["Mickey Mouse! Hot dog! Oh boy! Keep your cartoon white gloves out of my reserve candy stash!"],
+            ),
+            (
+                "costume_minnie",
+                [r"\bminnie( mouse)?\b"],
+                ["Minnie Mouse! Polka dots on Halloween? Very chic! Just tell Mickey I don't pay rent to the Mouse House!"],
+            ),
+            (
+                "costume_cinderella",
+                [r"\bcinderella\b"],
+                ["Cinderella! Midnight is approaching! If you leave a glass slipper on my porch, I'm using it as a candy scoop!"],
+            ),
+            # Costume: TMNT
+            (
+                "costume_leo",
+                [r"\bleonardo\b"],
+                ["Leonardo! Katana swords? Mind the edges, Leo—one wrong slash and my ribcage becomes a xylophone!"],
+            ),
+            (
+                "costume_raph",
+                [r"\braphael\b"],
+                ["Raphael! Easy on the attitude, turtle! You're a little too spicy for a guy dressed in a green half-shell!"],
+            ),
+            (
+                "costume_donnie",
+                [r"\bdonatello\b"],
+                ["Donatello! You're the brainy one! Can you figure out the algorithmic probability of me giving you two candies? Spoiler: it's zero!"],
+            ),
+            (
+                "costume_mikey",
+                [r"\bmichelangelo\b"],
+                ["Michelangelo! Cowabunga, dude! Pizza power doesn't work here, but I do have chocolate! Booyakasha!"],
+            ),
+            (
+                "costume_tmnt",
+                [r"\b(ninja turtle|tmnt)\b"],
+                ["Cowabunga, dude! Keep your ninja weapons off my tombstone!"],
+            ),
+            # Costume: Superheroes
+            (
+                "costume_superman",
+                [r"\bsuperman\b", r"\bman of steel\b"],
+                ["Superman! Faster than a speeding bullet, more powerful than a locomotive... but powerless against my one-candy rule!"],
+            ),
+            (
+                "costume_wonder_woman",
+                [r"\bwonder woman\b"],
+                ["Wonder Woman! That Lasso of Truth won't work on me! The truth is, I haven't brushed my teeth in three centuries!"],
+            ),
+            (
+                "costume_hulk",
+                [r"\b(the )?hulk\b"],
+                ["The Hulk! Hulk smash? Please don't smash, big green! I'm already in two hundred and six pieces!"],
+            ),
+            # Costume: Marvel Heroes
+            (
+                "costume_spiderman",
+                [r"\bspider[- ]?man\b"],
+                ["Spider-Man! Is it true that you catch thieves just like flies? Oh, I'll watch out for you, Spider-Man!"],
+            ),
+            (
+                "costume_miles_morales",
+                [r"\bmiles morales\b"],
+                ["Miles Morales! What's up, danger?! Don't you use your venom-strike on my audio amplifier, web-head!"],
+            ),
+            (
+                "costume_deadpool",
+                [r"\bdeadpool\b"],
+                ["Deadpool! Finally, a mortal with worse skin than mine! Maximum effort on that costume, Wade!"],
+            ),
+            (
+                "costume_wolverine",
+                [r"\bwolverine\b"],
+                ["Wolverine! Snikt! Keep those adamantium claws off my collarbones—this isn't an all-you-can-scratch scratching post!"],
+            ),
+            # Costume: Gaming & Pop Culture
+            (
+                "costume_sonic",
+                [r"\bsonic( the hedgehog)?\b"],
+                ["Sonic the Hedgehog! Gotta go fast! Roll right off my porch before you wake the neighborhood canines!"],
+            ),
+            (
+                "costume_minecraft_steve",
+                [r"\bminecraft( steve)?\b"],
+                ["Minecraft Steve! Put down that diamond pickaxe! You cannot mine calcium blocks in this biome!"],
+            ),
+            (
+                "costume_spongebob",
+                [r"\bspongebob( squarepants)?\b"],
+                ["SpongeBob SquarePants! Who lives in a pineapple under the sea? Not me, buddy, I live in a crypt under the oak tree!"],
+            ),
+            (
+                "costume_optimus_prime",
+                [r"\boptimus( prime)?\b"],
+                ["Optimus Prime! Autobots, roll out! Transform and roll down my driveway to the next charging station!"],
+            ),
+            (
+                "costume_baby_yoda",
+                [r"\b(baby yoda|grogu)\b"],
+                ["Baby Yoda! Grogu! Stop staring at my candy bowl with those giant adorable eyes! The Force cannot steal treats!"],
+            ),
+            (
+                "costume_astronaut",
+                [r"\bastronaut\b"],
+                ["An astronaut! Is the candy better in zero gravity, or does it just float directly into your helmet?"],
+            ),
+            (
+                "costume_barbie",
+                [r"\bbarbie\b"],
+                ["Barbie! Hi Barbie! I'd invite you into the Mojo Dojo Casa Crypt, but there's a strict dress code."],
+            ),
+            (
+                "costume_zombie",
+                [r"\b(minecraft zombie|zombie)\b"],
+                ["Minecraft Zombie! Bruhhhh... Brains? Sorry, pal, look inside my skull—it's like an empty attic in here!"],
+            ),
+            (
+                "costume_harry_potter",
+                [r"\bharry potter\b"],
+                ["Harry Potter! Ten points to Gryffindor for bravery, minus fifty points for tracking cemetery mud onto my porch!"],
+            ),
             (
                 "greeting",
                 [
@@ -1690,214 +1954,6 @@ class GrimjawIntentEngine:
                     "Don't thank me, thank the dentist you'll be visiting in November! Happy Halloween, scram!",
                     "Farewell, small mortal! Tell your friends there's candy here, but warn them about the skull guardian!",
                     "Off you go into the dark! Watch out for the ghouls in the bushes!",
-                ],
-            ),
-            # Costume: K-Pop Demon Hunters (Rumi, Mira, Zoey, Jinu)
-            (
-                "costume_kpop_demon_hunters",
-                [
-                    r"\b(k-?pop|demon hunter|hunt demons?)\b",
-                    r"\b(rumi|mira|zoey|jinu)\b",
-                ],
-                [
-                    "A K-Pop Demon Hunter! Whoa, hold your choreography, pop star! I'm an ancient skeletal sentinel, not a rogue demon from the underworld!",
-                    "Rumi! Put down the mystical daggers! My ribcage is already well-ventilated, thank you very much!",
-                    "Mira! Don't you dare banish me! Skeletons have had legal residency in this crypt since seventeen-ninety!",
-                    "Zoey! If you're going to hunt demons on my porch, at least do it in four-part vocal harmony!",
-                    "Jinu! Are you here to drop a chart-topping hit, or just hunt the monsters lurking behind my candy cauldron?",
-                ],
-            ),
-            # Costume: Mario & Luigi
-            (
-                "costume_mario_luigi",
-                [
-                    r"\b(super )?mario\b",
-                    r"\bluigi\b",
-                    r"\bmario brothers?\b",
-                ],
-                [
-                    "Mario! It's-a you! Sorry, plumber, but your princess is in another crypt down the street!",
-                    "Luigi! Stop trembling, green bean! I'm just a skeleton, not King Boo! Put the Poltergust away!",
-                ],
-            ),
-            # Costume: Princess Peach & Yoshi
-            (
-                "costume_peach_yoshi",
-                [
-                    r"\b(princess )?peach\b",
-                    r"\byoshi\b",
-                ],
-                [
-                    "Princess Peach! Did Bowser kidnap you again, or are you just out foraging for mini Snickers bars?",
-                    "Yoshi! Mlem! Keep that sticky green tongue out of my candy bowl, dinosaur! One piece only!",
-                ],
-            ),
-            # Costume: Bluey
-            (
-                "costume_bluey",
-                [
-                    r"\bbluey\b",
-                    r"\bheeler\b",
-                    r"\bbandit\b",
-                    r"\bchilli\b",
-                    r"\bingo\b",
-                ],
-                [
-                    "Bluey! For real life?! A blue heeler on my porch! Just don't ask to play Keepy Uppy with my skull!",
-                ],
-            ),
-            # Costume: PAW Patrol (Chase, Skye, Marshall)
-            (
-                "costume_paw_patrol",
-                [
-                    r"\bpaw patrol\b",
-                    r"\bchase\b",
-                    r"\bskye\b",
-                    r"\bmarshall\b",
-                ],
-                [
-                    "Chase is on the case! Please, officer, I swear my graveyard permits are up to date! Don't impound my coffin!",
-                    "Skye! This pup's gotta fly... straight off my porch before my cape gets caught in your helicopter rotor!",
-                    "Marshall! Fired up! But please, no water cannons—my bones are already squeaking from the humidity!",
-                ],
-            ),
-            # Costume: Pokémon (Eevee & Pikachu)
-            (
-                "costume_pokemon",
-                [
-                    r"\beevee\b",
-                    r"\bpikachu\b",
-                    r"\bpokemon\b",
-                ],
-                [
-                    "Eevee! Look at that fluffy collar! What are you evolving into tonight? A Jolteon, or a Sugar-eon?",
-                    "Pikachu! Pika-pi! I choose YOU... to take one piece of chocolate and not zap my delicate Raspberry Pi!",
-                ],
-            ),
-            # Costume: Toy Story (Woody, Buzz, Jessie)
-            (
-                "costume_toy_story",
-                [
-                    r"\bwoody\b",
-                    r"\bbuzz( lightyear)?\b",
-                    r"\bjessie\b",
-                    r"\btoy story\b",
-                ],
-                [
-                    "Woody! There's a snake in my boot? Joke's on you, cowboy—I don't have boots, just bare metatarsals!",
-                    "Buzz Lightyear! To infinity and beyond! Just make sure your star command trajectory lands you on the sidewalk.",
-                    "Jessie the Yodeling Cowgirl! Yodel-ay-hee-hoo! Skeletons don't do rodeo, so keep your lasso off my femur!",
-                ],
-            ),
-            # Costume: Disney Frozen (Elsa & Anna)
-            (
-                "costume_frozen",
-                [
-                    r"\belsa\b",
-                    r"\banna\b",
-                    r"\bfrozen\b",
-                    r"\bover the ice\b",
-                ],
-                [
-                    "Elsa! The cold never bothered me anyway! ...Because I have no nerves, no skin, and no blood circulation!",
-                    "Anna! Do you want to build a snowman? Because with this October draft, my spine is already halfway to permafrost!",
-                ],
-            ),
-            # Costume: Disney Princesses & Classics (Moana, Mickey, Minnie, Cinderella)
-            (
-                "costume_disney_classics",
-                [
-                    r"\bmoana\b",
-                    r"\bmickey( mouse)?\b",
-                    r"\bminnie( mouse)?\b",
-                    r"\bcinderella\b",
-                ],
-                [
-                    "Moana! See the line where the sidewalk meets the street? It calls you! Sail your canoe to the next house!",
-                    "Mickey Mouse! Hot dog! Oh boy! Keep your cartoon white gloves out of my reserve candy stash!",
-                    "Minnie Mouse! Polka dots on Halloween? Very chic! Just tell Mickey I don't pay rent to the Mouse House!",
-                    "Cinderella! Midnight is approaching! If you leave a glass slipper on my porch, I'm using it as a candy scoop!",
-                ],
-            ),
-            # Costume: TMNT (All 4 Ninja Turtles)
-            (
-                "costume_tmnt",
-                [
-                    r"\b(ninja turtle|tmnt)\b",
-                    r"\bleonardo\b",
-                    r"\braphael\b",
-                    r"\bdonatello\b",
-                    r"\bmichelangelo\b",
-                ],
-                [
-                    "Leonardo! Katana swords? Mind the edges, Leo—one wrong slash and my ribcage becomes a xylophone!",
-                    "Raphael! Easy on the attitude, turtle! You're a little too spicy for a guy dressed in a green half-shell!",
-                    "Donatello! You're the brainy one! Can you figure out the algorithmic probability of me giving you two candies? Spoiler: it's zero!",
-                    "Michelangelo! Cowabunga, dude! Pizza power doesn't work here, but I do have chocolate! Booyakasha!",
-                ],
-            ),
-            # Costume: Superheroes (Superman, Wonder Woman, Hulk)
-            (
-                "costume_justice_avengers",
-                [
-                    r"\bsuperman\b",
-                    r"\bwonder woman\b",
-                    r"\b(the )?hulk\b",
-                ],
-                [
-                    "Superman! Faster than a speeding bullet, more powerful than a locomotive... but powerless against my one-candy rule!",
-                    "Wonder Woman! That Lasso of Truth won't work on me! The truth is, I haven't brushed my teeth in three centuries!",
-                    "The Hulk! Hulk smash? Please don't smash, big green! I'm already in two hundred and six pieces!",
-                ],
-            ),
-            # Costume: Marvel Heroes (Spider-Man, Miles Morales, Deadpool, Wolverine)
-            (
-                "costume_spider_deadpool_wolverine",
-                [
-                    r"\bspider-?man\b",
-                    r"\bmiles morales\b",
-                    r"\bdeadpool\b",
-                    r"\bwolverine\b",
-                ],
-                [
-                    "Spider-Man! Is it true that you catch thieves just like flies? Oh, I'll watch out for you, Spider-Man!",
-                    "Miles Morales! What's up, danger?! Don't you use your venom-strike on my audio amplifier, web-head!",
-                    "Deadpool! Finally, a mortal with worse skin than mine! Maximum effort on that costume, Wade!",
-                    "Wolverine! Snikt! Keep those adamantium claws off my collarbones—this isn't an all-you-can-scratch scratching post!",
-                ],
-            ),
-            # Costume: Gaming & Sci-Fi (Sonic, Minecraft, SpongeBob, Optimus Prime, Baby Yoda)
-            (
-                "costume_gaming_pop",
-                [
-                    r"\bsonic( the hedgehog)?\b",
-                    r"\bminecraft( steve)?\b",
-                    r"\bspongebob( squarepants)?\b",
-                    r"\boptimus( prime)?\b",
-                    r"\b(baby yoda|grogu)\b",
-                ],
-                [
-                    "Sonic the Hedgehog! Gotta go fast! Roll right off my porch before you wake the neighborhood canines!",
-                    "Minecraft Steve! Put down that diamond pickaxe! You cannot mine calcium blocks in this biome!",
-                    "SpongeBob SquarePants! Who lives in a pineapple under the sea? Not me, buddy, I live in a crypt under the oak tree!",
-                    "Optimus Prime! Autobots, roll out! Transform and roll down my driveway to the next charging station!",
-                    "Baby Yoda! Grogu! Stop staring at my candy bowl with those giant adorable eyes! The Force cannot steal treats!",
-                ],
-            ),
-            # Costume: Astronaut, Barbie, Zombie, Harry Potter
-            (
-                "costume_classics_extra",
-                [
-                    r"\bastronaut\b",
-                    r"\bbarbie\b",
-                    r"\bzombie\b",
-                    r"\bharry potter\b",
-                ],
-                [
-                    "An astronaut! Is the candy better in zero gravity, or does it just float directly into your helmet?",
-                    "Barbie! Hi Barbie! I'd invite you into the Mojo Dojo Casa Crypt, but there's a strict dress code.",
-                    "Minecraft Zombie! Bruhhhh... Brains? Sorry, pal, look inside my skull—it's like an empty attic in here!",
-                    "Harry Potter! Ten points to Gryffindor for bravery, minus fifty points for tracking cemetery mud onto my porch!",
                 ],
             ),
         ]

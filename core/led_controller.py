@@ -17,6 +17,7 @@ class LEDState(enum.Enum):
     """LED operating states."""
     IDLE = "idle"            # Smooth PWM breathing pulse (0.5 Hz)
     LISTENING = "listening"  # Solid 100% brightness
+    THINKING = "thinking"    # Heartbeat double-pulse (~1.1 Hz lub-dub)
     SPEAKING = "speaking"    # Dynamic fast audio-reactive flicker
     ERROR = "error"          # Rapid alert blink (5 Hz)
     OFF = "off"              # Completely dark
@@ -28,6 +29,8 @@ class BaseLEDController(ABC):
     def __init__(self) -> None:
         self.current_state: LEDState = LEDState.OFF
         self.button_callback: Optional[Callable[[], None]] = None
+        self.button_hold_callback: Optional[Callable[[], None]] = None
+        self.hold_time_sec: float = 5.0
 
     @abstractmethod
     def start(self) -> None:
@@ -41,11 +44,34 @@ class BaseLEDController(ABC):
     def set_state(self, state: LEDState) -> None:
         """Set the active LED state."""
 
+    @abstractmethod
+    def flash(self, count: int = 3, on_time: float = 0.09, off_time: float = 0.08) -> None:
+        """Flash the LED rapidly a specified number of times."""
+
     def set_button_callback(self, callback: Callable[[], None]) -> None:
         """Register a callback for arcade button press events."""
-        self.button_callback = callback
-        if hasattr(self, "_gpio_btn") and self._gpio_btn is not None:
-            self._gpio_btn.when_pressed = callback
+        self.set_button_callbacks(on_press=callback, on_hold=self.button_hold_callback, hold_time_sec=self.hold_time_sec)
+
+    def set_button_callbacks(
+        self,
+        on_press: Optional[Callable[[], None]] = None,
+        on_hold: Optional[Callable[[], None]] = None,
+        hold_time_sec: float = 5.0,
+    ) -> None:
+        """Register callbacks for arcade button events.
+
+        Args:
+            on_press: Callback invoked on short press / release.
+            on_hold: Callback invoked when button is held continuously for hold_time_sec.
+            hold_time_sec: Hold duration in seconds (default: 5.0).
+        """
+        self.button_callback = on_press
+        self.button_hold_callback = on_hold
+        self.hold_time_sec = hold_time_sec
+        self._wire_hardware_button()
+
+    def _wire_hardware_button(self) -> None:
+        """Wire callbacks to underlying hardware if available (overridden by subclasses)."""
 
 
 class ConsoleLEDController(BaseLEDController):
@@ -57,6 +83,7 @@ class ConsoleLEDController(BaseLEDController):
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
+        self.flash_count: int = 0
 
     def start(self) -> None:
         """Start the console LED simulator."""
@@ -80,6 +107,7 @@ class ConsoleLEDController(BaseLEDController):
             symbols = {
                 LEDState.IDLE: "🟢 [LED: IDLE (Breathing ~ ~ ~)]",
                 LEDState.LISTENING: "🟡 [LED: LISTENING (Solid 100%)]",
+                LEDState.THINKING: "💓 [LED: THINKING (Heartbeat Double-Pulse 💓💓)]",
                 LEDState.SPEAKING: "🟣 [LED: SPEAKING (Audio Flicker ⚡)]",
                 LEDState.ERROR: "🔴 [LED: ERROR (Fast Blink !)]",
                 LEDState.OFF: "⚪ [LED: OFF]",
@@ -87,6 +115,28 @@ class ConsoleLEDController(BaseLEDController):
             msg = symbols.get(state, f"[LED: {state.value}]")
             sys.stdout.write(f"\r{msg}\n")
             sys.stdout.flush()
+
+    def flash(self, count: int = 3, on_time: float = 0.09, off_time: float = 0.08) -> None:
+        """Simulate rapid flashing on the console."""
+        with self._lock:
+            self.flash_count += count
+            if self.current_state != LEDState.OFF:
+                self.current_state = LEDState.THINKING
+            if not self.verbose:
+                return
+
+            sys.stdout.write(f"\r⚡ [LED: ACKNOWLEDGED (Flashed {count}x rapidly)]\n")
+            sys.stdout.flush()
+
+    def trigger_button_press(self) -> None:
+        """Simulate arcade button short press event."""
+        if self.button_callback:
+            self.button_callback()
+
+    def trigger_button_hold(self) -> None:
+        """Simulate arcade button 5-second hold event."""
+        if self.button_hold_callback:
+            self.button_hold_callback()
 
 
 class RaspberryPiLEDController(BaseLEDController):
@@ -96,21 +146,27 @@ class RaspberryPiLEDController(BaseLEDController):
     with automatic fallback to RPi.GPIO on legacy releases.
     """
 
-    def __init__(self, led_pin: int = 25, button_pin: int = 23) -> None:
+    def __init__(self, led_pin: int = 25, button_pin: int = 23, hold_time_sec: float = 5.0) -> None:
         """Initialize AIY Voice HAT GPIO pins.
 
         Args:
             led_pin: BCM GPIO pin for button LED (default: 25 for Voice HAT V1).
             button_pin: BCM GPIO pin for button switch (default: 23 for Voice HAT V1).
+            hold_time_sec: Duration in seconds to distinguish hold from short press.
         """
         super().__init__()
         self.led_pin = led_pin
         self.button_pin = button_pin
+        self.hold_time_sec = hold_time_sec
         self._backend: Optional[str] = None
         self._gpio_led = None
         self._gpio_btn = None
         self._rpi_pwm = None
         self._running = False
+        self._flashing = False
+        self._held_fired = False
+        self._press_lock = threading.Lock()
+        self._press_timer: Optional[threading.Timer] = None
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
@@ -119,9 +175,14 @@ class RaspberryPiLEDController(BaseLEDController):
         try:
             from gpiozero import PWMLED, Button  # pylint: disable=import-error
             self._gpio_led = PWMLED(self.led_pin)
-            self._gpio_btn = Button(self.button_pin, pull_up=True, bounce_time=0.3)
-            if self.button_callback:
-                self._gpio_btn.when_pressed = self.button_callback
+            self._gpio_btn = Button(
+                self.button_pin,
+                pull_up=True,
+                bounce_time=0.05,
+                hold_time=self.hold_time_sec,
+                hold_repeat=False,
+            )
+            self._wire_gpiozero_button()
             self._backend = "gpiozero"
             self._running = True
             self._thread = threading.Thread(target=self._pwm_worker, daemon=True)
@@ -140,21 +201,99 @@ class RaspberryPiLEDController(BaseLEDController):
             self._rpi_pwm = GPIO.PWM(self.led_pin, 100)
             self._rpi_pwm.start(0)
 
-            if self.button_callback:
-                GPIO.add_event_detect(
-                    self.button_pin,
-                    GPIO.FALLING,
-                    callback=lambda ch: self.button_callback(),
-                    bouncetime=300,
-                )
-
             self._backend = "rpi.gpio"
+            self._wire_rpigpio_button()
             self._running = True
             self._thread = threading.Thread(target=self._pwm_worker, daemon=True)
             self._thread.start()
             return
         except Exception:
             sys.stderr.write("Warning: Hardware GPIO unavailable (gpiozero/RPi.GPIO). Running in console mode.\n")
+
+    def _wire_hardware_button(self) -> None:
+        """Wire callbacks to underlying hardware backend."""
+        if self._backend == "gpiozero" and self._gpio_btn is not None:
+            self._gpio_btn.hold_time = self.hold_time_sec
+            self._wire_gpiozero_button()
+        elif self._backend == "rpi.gpio":
+            self._wire_rpigpio_button()
+
+    def _wire_gpiozero_button(self) -> None:
+        """Configure gpiozero Button callbacks for press and hold."""
+        if self._gpio_btn is None:
+            return
+
+        def _on_pressed():
+            with self._press_lock:
+                self._held_fired = False
+
+        def _on_held():
+            with self._press_lock:
+                self._held_fired = True
+            if self.button_hold_callback:
+                try:
+                    self.button_hold_callback()
+                except Exception as exc:
+                    sys.stderr.write(f"Button hold callback error: {exc}\n")
+
+        def _on_released():
+            fire_short = False
+            with self._press_lock:
+                if not self._held_fired:
+                    fire_short = True
+                self._held_fired = False
+            if fire_short and self.button_callback:
+                try:
+                    self.button_callback()
+                except Exception as exc:
+                    sys.stderr.write(f"Button press callback error: {exc}\n")
+
+        self._gpio_btn.when_pressed = _on_pressed
+        self._gpio_btn.when_held = _on_held
+        self._gpio_btn.when_released = _on_released
+
+    def _wire_rpigpio_button(self) -> None:
+        """Configure RPi.GPIO edge detection for press and hold."""
+        try:
+            import RPi.GPIO as GPIO  # pylint: disable=import-error
+            try:
+                GPIO.remove_event_detect(self.button_pin)
+            except Exception:
+                pass
+
+            def _handle_edge(channel):
+                is_pressed = (GPIO.input(self.button_pin) == GPIO.LOW)
+                with self._press_lock:
+                    if is_pressed:
+                        self._held_fired = False
+                        if self._press_timer is not None:
+                            self._press_timer.cancel()
+                        def _on_hold_timeout():
+                            with self._press_lock:
+                                self._held_fired = True
+                            if self.button_hold_callback:
+                                try:
+                                    self.button_hold_callback()
+                                except Exception as exc:
+                                    sys.stderr.write(f"Button hold callback error: {exc}\n")
+                        self._press_timer = threading.Timer(self.hold_time_sec, _on_hold_timeout)
+                        self._press_timer.daemon = True
+                        self._press_timer.start()
+                    else:
+                        if self._press_timer is not None:
+                            self._press_timer.cancel()
+                            self._press_timer = None
+                        fire_short = not self._held_fired
+                        self._held_fired = False
+                        if fire_short and self.button_callback:
+                            try:
+                                self.button_callback()
+                            except Exception as exc:
+                                sys.stderr.write(f"Button press callback error: {exc}\n")
+
+            GPIO.add_event_detect(self.button_pin, GPIO.BOTH, callback=_handle_edge, bouncetime=50)
+        except Exception:
+            pass
 
     def _set_duty_cycle(self, duty_percent: float) -> None:
         """Set LED brightness duty cycle (0.0 to 100.0)."""
@@ -167,6 +306,10 @@ class RaspberryPiLEDController(BaseLEDController):
     def stop(self) -> None:
         """Stop PWM and clean up GPIO."""
         self._running = False
+        with self._press_lock:
+            if self._press_timer is not None:
+                self._press_timer.cancel()
+                self._press_timer = None
         if self._backend == "gpiozero":
             if self._gpio_led:
                 self._gpio_led.close()
@@ -185,10 +328,27 @@ class RaspberryPiLEDController(BaseLEDController):
         """Update hardware LED operating state."""
         self.current_state = state
 
+    def flash(self, count: int = 3, on_time: float = 0.09, off_time: float = 0.08) -> None:
+        """Flash the LED rapidly a specified number of times to acknowledge speech input."""
+        self._flashing = True
+        try:
+            for _ in range(count):
+                self._set_duty_cycle(100.0)
+                time.sleep(on_time)
+                self._set_duty_cycle(0.0)
+                time.sleep(off_time)
+        finally:
+            if self.current_state != LEDState.OFF:
+                self.current_state = LEDState.THINKING
+            self._flashing = False
+
     def _pwm_worker(self) -> None:
         """Background thread modulating PWM duty cycle based on current state."""
         step = 0.0
         while self._running:
+            if self._flashing:
+                time.sleep(0.01)
+                continue
             if self.current_state == LEDState.IDLE:
                 # 0.5 Hz smooth sinusoidal breathing
                 duty = (math.sin(step) + 1.0) / 2.0 * 80.0 + 5.0
@@ -198,6 +358,25 @@ class RaspberryPiLEDController(BaseLEDController):
             elif self.current_state == LEDState.LISTENING:
                 self._set_duty_cycle(100.0)
                 time.sleep(0.05)
+            elif self.current_state == LEDState.THINKING:
+                # Heartbeat double-pulse (~1.1 Hz rhythm: lub-dub... pause)
+                # Cycle length ~0.9s = 45 steps at 0.02s sleep
+                cycle_step = int(step) % 45
+                if cycle_step < 7:
+                    # First beat ("lub") ramp up and down
+                    duty = math.sin((cycle_step / 7.0) * math.pi) * 85.0 + 10.0
+                elif cycle_step < 12:
+                    # Dip between beats
+                    duty = 10.0
+                elif cycle_step < 20:
+                    # Second beat ("dub") sharper ramp up and down
+                    duty = math.sin(((cycle_step - 12) / 8.0) * math.pi) * 95.0 + 5.0
+                else:
+                    # Diastolic rest pause
+                    duty = 2.0
+                self._set_duty_cycle(duty)
+                step += 1.0
+                time.sleep(0.02)
             elif self.current_state == LEDState.SPEAKING:
                 # Syllable-rate speech cadence (3-4 Hz organic speaking pulse)
                 duty = (math.sin(step) + 1.0) / 2.0 * 85.0 + 15.0

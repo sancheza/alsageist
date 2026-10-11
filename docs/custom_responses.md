@@ -213,3 +213,68 @@ A canonical reference guide of distinct spoken prompts and questions that visito
 - Where do you live?
 
 ---
+
+## 11. Costumes & Character Recognition
+
+When trick-or-treaters announce their costumes or respond to Grimjaw's costume inquiries ("Who are you supposed to be dressed up as tonight?"):
+
+### K-Pop Demon Hunters
+- I'm dressed as Rumi!
+- I'm Mira!
+- I'm Zoey!
+- I'm Jinu!
+- We are the K-Pop Demon Hunters!
+
+### Nintendo & Gaming
+- It's-a me, Mario!
+- I'm Luigi!
+- I'm Princess Peach!
+- I'm Yoshi!
+- I'm Sonic the Hedgehog!
+- I'm Steve from Minecraft!
+
+### Animation & TV
+- I'm Bluey!
+- I'm Chase from PAW Patrol!
+- I'm Skye!
+- I'm Marshall!
+- I'm SpongeBob SquarePants!
+
+### Pokémon & Toys
+- I'm Eevee!
+- I'm Pikachu!
+- I'm Woody!
+- I'm Buzz Lightyear!
+- I'm Jessie!
+- I'm Barbie!
+- I'm Optimus Prime!
+
+### Disney & Princesses
+- I'm Elsa!
+- I'm Anna!
+- I'm Moana!
+- I'm Mickey Mouse!
+- I'm Minnie Mouse!
+- I'm Cinderella!
+
+### Superheroes & Comics
+- I'm Spider-Man!
+- I'm Miles Morales!
+- I'm Deadpool!
+- I'm Wolverine!
+- I'm Superman!
+- I'm Wonder Woman!
+- I'm the Hulk!
+
+### Teenage Mutant Ninja Turtles
+- I'm Leonardo!
+- I'm Raphael!
+- I'm Donatello!
+- I'm Michelangelo!
+- We are the Ninja Turtles!
+
+### Fantasy, Sci-Fi & Classics
+- I'm Harry Potter!
+- I'm an astronaut!
+- I'm Baby Yoda! / I'm Grogu!
+- I'm a zombie!

@@ -218,3 +218,44 @@ def test_intent_engine_reset():
     assert engine._turn_count == 1
     engine.reset_conversation()
     assert engine._turn_count == 0
+
+
+def test_costume_and_quote_specific_matching():
+    """Verify that specific character costumes and quotes match their exact responses."""
+    engine = GrimjawIntentEngine()
+
+    # Optimus Prime
+    resp, intent = engine.classify_and_respond("I'm dressed up as Optimus Prime.")
+    assert intent == "costume_optimus_prime"
+    assert "Optimus Prime" in resp
+    assert "Autobots" in resp
+
+    # Harry Potter
+    resp, intent = engine.classify_and_respond("I'm dressed up as Harry Potter.")
+    assert intent == "costume_harry_potter"
+    assert "Harry Potter" in resp
+
+    # SpongeBob
+    resp, intent = engine.classify_and_respond("I'm SpongeBob SquarePants.")
+    assert intent == "costume_spongebob"
+    assert "SpongeBob" in resp
+
+    # Barbie
+    resp, intent = engine.classify_and_respond("I'm dressed as Barbie.")
+    assert intent == "costume_barbie"
+    assert "Barbie" in resp
+
+    # Spider-Man
+    resp, intent = engine.classify_and_respond("I am Spider-Man!")
+    assert intent == "costume_spiderman"
+    assert "Spider-Man" in resp
+
+    # Say Anything quote (even with "Hey" at the beginning)
+    resp, intent = engine.classify_and_respond("Hey my brother, may I borrow a copy of your Hey SO Classics?")
+    assert intent == "hey_soul_classics"
+    assert "No, my brother" in resp
+
+    # Best friend
+    resp, intent = engine.classify_and_respond("Who's your best friend?")
+    assert intent == "skeleton_friends"
+

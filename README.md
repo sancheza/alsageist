@@ -74,17 +74,23 @@ AlsaGeist uses offline intent matching and local TTS by default. Speech-to-text 
 | :--- | :--- | :--- |
 | `GROQ_API_KEY` | Groq API key for high-speed Whisper Large v3 STT | None |
 | `GEMINI_API_KEY` | Google Gemini API key for Gemini Flash STT | None |
+| `LLM_FALLBACK` | Fetch custom LLM response for indeterminate prompts instead of generic canned response | `false` |
+| `VOLUME` | Audio playback volume multiplier (`0.0` to `1.0`) | `0.8` |
+| `MIC_GAIN` | Microphone digital input gain multiplier | `1.5` |
+| `VAD_THRESHOLD` | RMS audio energy threshold for speech detection | `0.0025` |
 
-Configure your key in a `.env` file:
+Configure your variables in a `.env` file:
 
 ```ini
 GROQ_API_KEY="your-api-key-here"
+LLM_FALLBACK=false
 ```
 
-Or export it directly in your environment:
+Or export them directly in your environment:
 
 ```bash
 export GROQ_API_KEY="your-api-key-here"
+export LLM_FALLBACK=false
 ```
 
 ---
@@ -129,31 +135,64 @@ Inspect all runtime flags:
 | `-v, --version` | Display application version and exit | Current version |
 | `--verbose` | Enable verbose diagnostic logging | False |
 | `--engine` | Dialogue engine: `intent` (offline) or `llm` (cloud) | `intent` |
+| `--llm-fallback` | Fetch custom LLM response for indeterminate prompts | `$LLM_FALLBACK` or `false` |
+| `--no-llm-fallback` | Disable LLM fallback for indeterminate prompts | True if unset |
 | `--model-path` | Path to the Piper ONNX model file | `models/piper/en_GB-alan-medium.onnx` |
 | `--input-device` | Input audio hardware device name or index | System default |
 | `--output-device` | Output audio hardware device name or index | System default |
 | `--volume` | Audio playback volume multiplier (`0.0` to `1.0`) | `0.8` (or `$VOLUME`) |
 | `--mic-gain` | Microphone digital input gain multiplier | `1.5` (or `$MIC_GAIN`) |
-| `--threshold` | RMS audio energy threshold for speech detection | `0.0035` (or `$VAD_THRESHOLD`) |
-| `--min-speech-sec` | Minimum sustained speech duration in seconds | `0.35` |
-| `--silence-timeout` | Trailing silence in seconds before speech boundary | `1.1` |
+| `--threshold` | RMS audio energy threshold for speech detection | `0.0025` (or `$VAD_THRESHOLD`) |
+| `--min-speech-sec` | Minimum sustained speech duration in seconds | `0.15` |
+| `--silence-timeout` | Trailing silence in seconds before speech boundary | `0.9` |
 | `--tempo` | Piper phoneme length scale (higher = slower speech) | `1.15` |
 | `--noise` | Piper generator noise level for gravel texture | `0.85` |
+| `--no-greeting` | Disable spoken startup greeting announcement | False |
 
 ---
 
 ## 8. Conversational Intent Architecture
 
-The offline dialogue engine in `services/intent_service.py` provides deterministic responses across over 110 categories:
+The offline dialogue engine in `services/intent_service.py` provides deterministic responses across over 150 categories:
 * **Candy Protection & Bowl Rules:** Limits visitors to one piece, detects theft inquiries, and warns against greedy hands.
-* **Classic Pop Culture & Cinema Quotes:** *I'm Gonna Git You Sucka*, *Blade Runner* (Tears in Rain), *Say Anything*, *Ali G*, *He-Man & Skeletor*.
+* **Costume & Character Recognition:** 46 distinct 1-to-1 character rules (KPop Demon Hunters: Rumi, Mira, Zoey, Jinu; Bluey; Mario, Luigi, Peach, Yoshi; Baby Yoda; Eevee; Toy Story; Frozen; Moana; Mickey, Minnie, Cinderella; DC/Marvel heroes; Sonic; Minecraft Steve; SpongeBob; Barbie; TMNT; Harry Potter; PAW Patrol).
+* **Costume Inquiry State Machine:** Once a conversation has started (turn 2+), Grimjaw has a 1-in-3 chance to ask the visitor who they are dressed as.
+* **Classic Pop Culture & Cinema Quotes:** *I'm Gonna Git You Sucka*, *Blade Runner* (Tears in Rain), *Say Anything* (Hey Soul Classics), *Ali G*, *He-Man & Skeletor*.
 * **Poetry & Music:** Edgar Allan Poe's *The Raven*, Robert Browning's *Childe Roland*, Michael Jackson's *Thriller*, *Monster Mash*, *The Time Warp*.
-* **Anatomy & Skeleton Puns:** Dynamic banter regarding bones, teeth, absent organs, zero-calorie diets, and cold weather.
+* **Anatomy & Skeleton Puns:** Banter regarding bones, teeth, absent organs, zero-calorie diets, and cold weather.
+* **Indeterminate Prompt Handling:** When `LLM_FALLBACK=true`, unrecognized phrases trigger custom LLM responses via Groq/Gemini, with automatic fallback to generic canned lines if offline or on timeout.
 * **Visitor Prompts Reference:** See [`docs/custom_responses.md`](docs/custom_responses.md) for a catalog of supported spoken prompts.
 
 ---
 
-## 9. Testing
+## 9. Hardware Arcade Button & Status LED Signaling
+
+### Arcade Button Functions
+
+The lighted arcade pushbutton on GPIO 23 provides manual controls:
+
+| Action | Duration | Result |
+| :--- | :--- | :--- |
+| **Short Press** | < 5.0 seconds | Cycles audio volume in 10% steps (`0.0` to `1.0`), stops ongoing playback, resets conversational context, and announces the new volume level. Ignored when disabled. |
+| **Long Hold** | 5.0 seconds | **Mute / Disable Toggle**: When active, holding for 5 seconds disables Grimjaw (turns off microphone capture and speaker output, stops playback, resets dialogue context, and turns the LED completely off). Holding for 5 seconds again re-enables Grimjaw, restores microphone capture and speaker output, sets the LED to breathing `IDLE`, and resumes normal operation. |
+
+### Status LED Signaling
+
+The integrated LED on GPIO 25 provides real-time operational feedback:
+
+| State | Pattern | Meaning |
+| :--- | :--- | :--- |
+| `IDLE` | 0.5 Hz smooth breathing pulse (5%–85% duty cycle) | Resting ambient state, listening for visitors on the porch. |
+| `LISTENING` | Solid 100% brightness | Speech detected; recording incoming audio. |
+| `FLASH` | 3 rapid pulses (~7 Hz) | Acknowledgment: confirmed speech was captured. |
+| `THINKING` | Heartbeat double-pulse (~1.1 Hz "lub-dub... pause") | Processing STT transcription, intent classification, LLM fallback, or TTS synthesis. |
+| `SPEAKING` | 3–4 Hz organic audio-reactive flicker | Playing character speech through the speaker. |
+| `ERROR` | 5 Hz rapid square-wave alert blink | Subsystem exception or network STT failure. |
+| `OFF` | Dark (0% duty cycle) | Muted / disabled via 5-second button hold. |
+
+---
+
+## 10. Testing
 
 ### Objective: Run the automated test suite.
 
@@ -165,12 +204,12 @@ pytest tests/
 
 Expected output:
 ```text
-============================== 21 passed in 3.05s ==============================
+============================== 47 passed in 2.80s ==============================
 ```
 
 ---
 
-## 10. Raspberry Pi & Google AIY Voice Kit Deployment
+## 11. Raspberry Pi & Google AIY Voice Kit Deployment
 
 For a complete end-to-end guide covering hardware selection, modern Pi 4/5 alternatives, audio configurations, and systemd deployment, see the [Raspberry Pi Installation & Deployment Guide](docs/raspberry_pi_installation_guide.md).
 
