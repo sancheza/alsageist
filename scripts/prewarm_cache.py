@@ -74,9 +74,10 @@ def main() -> int:
     for p in range(0, 101, 10):
         phrases.append(f"Volume {p} percent.")
 
-    # 2. Fallbacks & Escalations
+    # 2. Fallbacks, Escalations & Costume prompts
     phrases.extend(engine._fallbacks)
     phrases.extend(engine._escalation_lines)
+    phrases.extend(engine._costume_prompts)
 
     # 3. Intent responses
     if args.all:

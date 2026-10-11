@@ -17,6 +17,13 @@ class GrimjawIntentEngine:
         self._recently_used: Set[str] = set()
         self._max_recent: int = 25
         self._turn_count: int = 0
+        self._asked_costume: bool = False
+
+        self._costume_prompts: List[str] = [
+            "Hold on, mortal... who are you supposed to be dressed up as tonight?",
+            "Wait a second... what kind of creature are you dressed as?",
+            "Before you take another step, tell me: who are you dressed up as?",
+        ]
 
         self._intent_rules: List[Tuple[str, List[str], List[str]]] = [
             # 1a. I'm Gonna Git You Sucka - One Rib
@@ -1685,6 +1692,214 @@ class GrimjawIntentEngine:
                     "Off you go into the dark! Watch out for the ghouls in the bushes!",
                 ],
             ),
+            # Costume: K-Pop Demon Hunters (Rumi, Mira, Zoey, Jinu)
+            (
+                "costume_kpop_demon_hunters",
+                [
+                    r"\b(k-?pop|demon hunter|hunt demons?)\b",
+                    r"\b(rumi|mira|zoey|jinu)\b",
+                ],
+                [
+                    "A K-Pop Demon Hunter! Whoa, hold your choreography, pop star! I'm an ancient skeletal sentinel, not a rogue demon from the underworld!",
+                    "Rumi! Put down the mystical daggers! My ribcage is already well-ventilated, thank you very much!",
+                    "Mira! Don't you dare banish me! Skeletons have had legal residency in this crypt since seventeen-ninety!",
+                    "Zoey! If you're going to hunt demons on my porch, at least do it in four-part vocal harmony!",
+                    "Jinu! Are you here to drop a chart-topping hit, or just hunt the monsters lurking behind my candy cauldron?",
+                ],
+            ),
+            # Costume: Mario & Luigi
+            (
+                "costume_mario_luigi",
+                [
+                    r"\b(super )?mario\b",
+                    r"\bluigi\b",
+                    r"\bmario brothers?\b",
+                ],
+                [
+                    "Mario! It's-a you! Sorry, plumber, but your princess is in another crypt down the street!",
+                    "Luigi! Stop trembling, green bean! I'm just a skeleton, not King Boo! Put the Poltergust away!",
+                ],
+            ),
+            # Costume: Princess Peach & Yoshi
+            (
+                "costume_peach_yoshi",
+                [
+                    r"\b(princess )?peach\b",
+                    r"\byoshi\b",
+                ],
+                [
+                    "Princess Peach! Did Bowser kidnap you again, or are you just out foraging for mini Snickers bars?",
+                    "Yoshi! Mlem! Keep that sticky green tongue out of my candy bowl, dinosaur! One piece only!",
+                ],
+            ),
+            # Costume: Bluey
+            (
+                "costume_bluey",
+                [
+                    r"\bbluey\b",
+                    r"\bheeler\b",
+                    r"\bbandit\b",
+                    r"\bchilli\b",
+                    r"\bingo\b",
+                ],
+                [
+                    "Bluey! For real life?! A blue heeler on my porch! Just don't ask to play Keepy Uppy with my skull!",
+                ],
+            ),
+            # Costume: PAW Patrol (Chase, Skye, Marshall)
+            (
+                "costume_paw_patrol",
+                [
+                    r"\bpaw patrol\b",
+                    r"\bchase\b",
+                    r"\bskye\b",
+                    r"\bmarshall\b",
+                ],
+                [
+                    "Chase is on the case! Please, officer, I swear my graveyard permits are up to date! Don't impound my coffin!",
+                    "Skye! This pup's gotta fly... straight off my porch before my cape gets caught in your helicopter rotor!",
+                    "Marshall! Fired up! But please, no water cannons—my bones are already squeaking from the humidity!",
+                ],
+            ),
+            # Costume: Pokémon (Eevee & Pikachu)
+            (
+                "costume_pokemon",
+                [
+                    r"\beevee\b",
+                    r"\bpikachu\b",
+                    r"\bpokemon\b",
+                ],
+                [
+                    "Eevee! Look at that fluffy collar! What are you evolving into tonight? A Jolteon, or a Sugar-eon?",
+                    "Pikachu! Pika-pi! I choose YOU... to take one piece of chocolate and not zap my delicate Raspberry Pi!",
+                ],
+            ),
+            # Costume: Toy Story (Woody, Buzz, Jessie)
+            (
+                "costume_toy_story",
+                [
+                    r"\bwoody\b",
+                    r"\bbuzz( lightyear)?\b",
+                    r"\bjessie\b",
+                    r"\btoy story\b",
+                ],
+                [
+                    "Woody! There's a snake in my boot? Joke's on you, cowboy—I don't have boots, just bare metatarsals!",
+                    "Buzz Lightyear! To infinity and beyond! Just make sure your star command trajectory lands you on the sidewalk.",
+                    "Jessie the Yodeling Cowgirl! Yodel-ay-hee-hoo! Skeletons don't do rodeo, so keep your lasso off my femur!",
+                ],
+            ),
+            # Costume: Disney Frozen (Elsa & Anna)
+            (
+                "costume_frozen",
+                [
+                    r"\belsa\b",
+                    r"\banna\b",
+                    r"\bfrozen\b",
+                    r"\bover the ice\b",
+                ],
+                [
+                    "Elsa! The cold never bothered me anyway! ...Because I have no nerves, no skin, and no blood circulation!",
+                    "Anna! Do you want to build a snowman? Because with this October draft, my spine is already halfway to permafrost!",
+                ],
+            ),
+            # Costume: Disney Princesses & Classics (Moana, Mickey, Minnie, Cinderella)
+            (
+                "costume_disney_classics",
+                [
+                    r"\bmoana\b",
+                    r"\bmickey( mouse)?\b",
+                    r"\bminnie( mouse)?\b",
+                    r"\bcinderella\b",
+                ],
+                [
+                    "Moana! See the line where the sidewalk meets the street? It calls you! Sail your canoe to the next house!",
+                    "Mickey Mouse! Hot dog! Oh boy! Keep your cartoon white gloves out of my reserve candy stash!",
+                    "Minnie Mouse! Polka dots on Halloween? Very chic! Just tell Mickey I don't pay rent to the Mouse House!",
+                    "Cinderella! Midnight is approaching! If you leave a glass slipper on my porch, I'm using it as a candy scoop!",
+                ],
+            ),
+            # Costume: TMNT (All 4 Ninja Turtles)
+            (
+                "costume_tmnt",
+                [
+                    r"\b(ninja turtle|tmnt)\b",
+                    r"\bleonardo\b",
+                    r"\braphael\b",
+                    r"\bdonatello\b",
+                    r"\bmichelangelo\b",
+                ],
+                [
+                    "Leonardo! Katana swords? Mind the edges, Leo—one wrong slash and my ribcage becomes a xylophone!",
+                    "Raphael! Easy on the attitude, turtle! You're a little too spicy for a guy dressed in a green half-shell!",
+                    "Donatello! You're the brainy one! Can you figure out the algorithmic probability of me giving you two candies? Spoiler: it's zero!",
+                    "Michelangelo! Cowabunga, dude! Pizza power doesn't work here, but I do have chocolate! Booyakasha!",
+                ],
+            ),
+            # Costume: Superheroes (Superman, Wonder Woman, Hulk)
+            (
+                "costume_justice_avengers",
+                [
+                    r"\bsuperman\b",
+                    r"\bwonder woman\b",
+                    r"\b(the )?hulk\b",
+                ],
+                [
+                    "Superman! Faster than a speeding bullet, more powerful than a locomotive... but powerless against my one-candy rule!",
+                    "Wonder Woman! That Lasso of Truth won't work on me! The truth is, I haven't brushed my teeth in three centuries!",
+                    "The Hulk! Hulk smash? Please don't smash, big green! I'm already in two hundred and six pieces!",
+                ],
+            ),
+            # Costume: Marvel Heroes (Spider-Man, Miles Morales, Deadpool, Wolverine)
+            (
+                "costume_spider_deadpool_wolverine",
+                [
+                    r"\bspider-?man\b",
+                    r"\bmiles morales\b",
+                    r"\bdeadpool\b",
+                    r"\bwolverine\b",
+                ],
+                [
+                    "Spider-Man! Is it true that you catch thieves just like flies? Oh, I'll watch out for you, Spider-Man!",
+                    "Miles Morales! What's up, danger?! Don't you use your venom-strike on my audio amplifier, web-head!",
+                    "Deadpool! Finally, a mortal with worse skin than mine! Maximum effort on that costume, Wade!",
+                    "Wolverine! Snikt! Keep those adamantium claws off my collarbones—this isn't an all-you-can-scratch scratching post!",
+                ],
+            ),
+            # Costume: Gaming & Sci-Fi (Sonic, Minecraft, SpongeBob, Optimus Prime, Baby Yoda)
+            (
+                "costume_gaming_pop",
+                [
+                    r"\bsonic( the hedgehog)?\b",
+                    r"\bminecraft( steve)?\b",
+                    r"\bspongebob( squarepants)?\b",
+                    r"\boptimus( prime)?\b",
+                    r"\b(baby yoda|grogu)\b",
+                ],
+                [
+                    "Sonic the Hedgehog! Gotta go fast! Roll right off my porch before you wake the neighborhood canines!",
+                    "Minecraft Steve! Put down that diamond pickaxe! You cannot mine calcium blocks in this biome!",
+                    "SpongeBob SquarePants! Who lives in a pineapple under the sea? Not me, buddy, I live in a crypt under the oak tree!",
+                    "Optimus Prime! Autobots, roll out! Transform and roll down my driveway to the next charging station!",
+                    "Baby Yoda! Grogu! Stop staring at my candy bowl with those giant adorable eyes! The Force cannot steal treats!",
+                ],
+            ),
+            # Costume: Astronaut, Barbie, Zombie, Harry Potter
+            (
+                "costume_classics_extra",
+                [
+                    r"\bastronaut\b",
+                    r"\bbarbie\b",
+                    r"\bzombie\b",
+                    r"\bharry potter\b",
+                ],
+                [
+                    "An astronaut! Is the candy better in zero gravity, or does it just float directly into your helmet?",
+                    "Barbie! Hi Barbie! I'd invite you into the Mojo Dojo Casa Crypt, but there's a strict dress code.",
+                    "Minecraft Zombie! Bruhhhh... Brains? Sorry, pal, look inside my skull—it's like an empty attic in here!",
+                    "Harry Potter! Ten points to Gryffindor for bravery, minus fifty points for tracking cemetery mud onto my porch!",
+                ],
+            ),
         ]
 
         self._fallbacks: List[str] = [
@@ -1702,8 +1917,9 @@ class GrimjawIntentEngine:
         ]
 
     def reset_conversation(self) -> None:
-        """Reset turn counter for a new visitor."""
+        """Reset turn counter and costume inquiry state for a new visitor."""
         self._turn_count = 0
+        self._asked_costume = False
 
     def classify_and_respond(self, user_text: str) -> Tuple[str, str]:
         """Classify user text and return both the response and matched intent name.
@@ -1721,7 +1937,7 @@ class GrimjawIntentEngine:
         clean_text = re.sub(r"[^\w\s\']", " ", user_text.lower()).strip()
         clean_text = re.sub(r"\s+", " ", clean_text)
 
-        # Check intent rules first to always answer direct questions accurately
+        # 1. Check intent rules first to always answer direct questions and costume statements accurately
         for intent_name, patterns, responses in self._intent_rules:
             for pattern in patterns:
                 if re.search(pattern, clean_text, re.IGNORECASE):
@@ -1732,13 +1948,19 @@ class GrimjawIntentEngine:
                         self.reset_conversation()
                     return chosen, intent_name
 
-        # Lingerer escalation for unrecognized phrases on late turns
+        # 2. Once a conversation has been initiated (Turn 2), occasionally (1 in 3 chance) ask who they are dressed as
+        if self._turn_count >= 2 and not self._asked_costume and random.random() < 0.33:
+            self._asked_costume = True
+            prompt_line = random.choice(self._costume_prompts)
+            return prompt_line, "costume_inquiry"
+
+        # 3. Lingerer escalation for unrecognized phrases on late turns
         if self._turn_count >= 8 and random.random() < 0.6:
             chosen = self._pick_unique(self._escalation_lines)
             self.reset_conversation()
             return chosen, "lingerer_escalation"
 
-        # Fallback for unrecognized phrases
+        # 4. Fallback for unrecognized phrases
         return self._pick_unique(self._fallbacks), "fallback_unrecognized"
 
     def generate_response(self, user_text: str) -> str:
