@@ -259,6 +259,11 @@ def test_costume_and_quote_specific_matching():
     resp, intent = engine.classify_and_respond("Who's your best friend?")
     assert intent == "skeleton_friends"
 
+    # Woody
+    resp, intent = engine.classify_and_respond("I'm dressed as Woody.")
+    assert intent == "costume_woody"
+    assert any(w in resp.lower() for w in ["woody", "deputy", "toy", "snake", "buzz lightyear"])
+
 
 def test_new_intents_hobby_pets_costume_seinfeld():
     """Verify newly added intents for hobbies, pets, favorite costume, and Seinfeld quotes."""

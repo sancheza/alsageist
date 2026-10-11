@@ -1572,7 +1572,13 @@ class GrimjawIntentEngine:
             (
                 "costume_woody",
                 [r"\bwoody\b", r"\bsheriff woody\b"],
-                ["Woody! There's a snake in my boot? Joke's on you, cowboy—I don't have boots, just bare metatarsals!"],
+                [
+                    "Wow, you look terrific! Just like Sheriff Woody! Reach for the sky, cowboy, and grab yourself a treat!",
+                    "Well howdy, partner! You're my favorite deputy! Now round up ONE piece of candy before Sid shows up!",
+                    "You are a toy! You can't fly! ...Wait, I'm a skeleton, I can't even eat chocolate! Take a treat, Woody!",
+                    "There's a snake in my boot! Just kidding, partner, no snakes on this porch—just a friendly skeleton guarding the candy!",
+                    "Sheriff Woody! Did you leave Buzz Lightyear back at Pizza Planet, or did he fly off to infinity and beyond?",
+                ],
             ),
             (
                 "costume_buzz",
