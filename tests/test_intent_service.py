@@ -284,3 +284,31 @@ def test_new_intents_hobby_pets_costume_seinfeld():
     assert intent == "seinfeld_quote"
     assert any(w in resp.lower() for w in ["soup", "pretzels", "thirsty"])
 
+
+def test_time_and_weather_intent_classification():
+    """Verify time and weather questions map to time_and_clock and weather_and_temperature intents."""
+    engine = GrimjawIntentEngine()
+
+    time_queries = [
+        "What time is it?",
+        "What is the time?",
+        "Do you have the time?",
+        "Tell me the time",
+        "Got the time?",
+    ]
+    for q in time_queries:
+        _, intent = engine.classify_and_respond(q)
+        assert intent == "time_and_clock", f"Failed for '{q}': got intent '{intent}'"
+
+    weather_queries = [
+        "What's the temperature?",
+        "What is the weather?",
+        "How is the weather?",
+        "How cold is it?",
+        "What's it like outside?",
+        "Tell me the weather",
+    ]
+    for q in weather_queries:
+        _, intent = engine.classify_and_respond(q)
+        assert intent == "weather_and_temperature", f"Failed for '{q}': got intent '{intent}'"
+

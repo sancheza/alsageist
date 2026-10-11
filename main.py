@@ -22,6 +22,7 @@ from core.audio_io import AudioIO
 from core.led_controller import LEDState, create_led_controller
 from core.logger import InteractionLogger
 from core.vad import VoiceActivityDetector
+from services.basic_info_service import BasicInfoService
 from services.llm_service import ConversationalLLMService
 from services.stt_service import SpeechToTextService
 from services.tts_service import PiperTTSService
@@ -203,7 +204,10 @@ class AlsaGeistAgent:
         # 7. Interaction Logger
         self.logger = InteractionLogger(log_dir="logs")
 
-        # 8. Network status & Offline STT tracking
+        # 8. Basic Info Service (Live local time and weather)
+        self.basic_info = BasicInfoService()
+
+        # 9. Network status & Offline STT tracking
         self.is_online = self._check_internet()
         self.last_net_check_time = time.time()
         self.net_check_interval = 15.0 * 60.0  # 15 minutes
@@ -450,8 +454,14 @@ class AlsaGeistAgent:
         try:
             if hasattr(self.dialogue_engine, "classify_and_respond"):
                 creature_reply, matched_intent = self.dialogue_engine.classify_and_respond(user_text)
+
+                # Dynamic basic info handlers: Time and Weather
+                if matched_intent == "time_and_clock":
+                    creature_reply = self.basic_info.get_time_response()
+                elif matched_intent == "weather_and_temperature":
+                    creature_reply = self.basic_info.get_weather_response()
                 # Escalate indeterminate prompts to custom LLM response if enabled
-                if (
+                elif (
                     matched_intent == "fallback_unrecognized"
                     and self.llm_fallback_enabled
                     and self.llm_fallback_service is not None

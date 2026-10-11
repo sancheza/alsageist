@@ -1,0 +1,141 @@
+"""Local time and live weather information service for Grimjaw.
+
+Fetches accurate local time and ambient weather/temperature for real-time
+spoken responses with caching and fallback.
+"""
+
+import datetime
+import json
+import os
+import threading
+import time
+import urllib.error
+import urllib.request
+from typing import Dict, Optional, Tuple
+
+
+class BasicInfoService:
+    """Provides local time and weather responses for Grimjaw."""
+
+    def __init__(self, cache_ttl_sec: float = 600.0) -> None:
+        """Initialize the basic info service.
+
+        Args:
+            cache_ttl_sec: Weather cache time-to-live in seconds (default: 10 minutes).
+        """
+        self._cache_ttl_sec = cache_ttl_sec
+        self._weather_cache: Optional[Dict[str, str]] = None
+        self._weather_cache_time: float = 0.0
+        self._lock = threading.Lock()
+
+    def get_time_response(self, now: Optional[datetime.datetime] = None) -> str:
+        """Generate a spoken response indicating the current local time.
+
+        If the current time is at or past 10:00 PM (or before 5:00 AM),
+        includes a reminder that it is past their bedtime.
+
+        Args:
+            now: Optional datetime override for testing. Defaults to local now.
+
+        Returns:
+            A sarcastic Grimjaw response with current time.
+        """
+        if now is None:
+            now = datetime.datetime.now()
+
+        # Format 12-hour time (e.g. 8:15 PM)
+        # %I has leading zero on some platforms, strip it
+        hour_12 = now.strftime("%I").lstrip("0")
+        if not hour_12:
+            hour_12 = "12"
+        minute = now.strftime("%M")
+        am_pm = now.strftime("%p")
+        time_str = f"{hour_12}:{minute} {am_pm}"
+
+        # Check bedtime condition: >= 10 PM (22:00) or early morning before 5 AM (05:00)
+        is_past_bedtime = now.hour >= 22 or now.hour < 5
+
+        if is_past_bedtime:
+            return (
+                f"It is currently {time_str}. Which means it is way past your bedtime! "
+                "Grab ONE treat and scram before the midnight ghouls wake up!"
+            )
+        return f"It is precisely {time_str}. The night is young, but watch your fingers around my candy bowl!"
+
+    def get_weather_data(self) -> Optional[Dict[str, str]]:
+        """Fetch current weather data via wttr.in with in-memory caching.
+
+        Returns:
+            Dictionary with 'temp_f', 'temp_c', and 'desc' keys, or None if unavailable.
+        """
+        with self._lock:
+            now = time.time()
+            if self._weather_cache is not None and (now - self._weather_cache_time) < self._cache_ttl_sec:
+                return self._weather_cache
+
+        # Query wttr.in with a short timeout
+        url = "https://wttr.in/?format=j1"
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "curl/7.88.1"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=3.5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                current = data.get("current_condition", [{}])[0]
+                temp_f = str(current.get("temp_F", "")).strip()
+                temp_c = str(current.get("temp_C", "")).strip()
+                weather_descs = current.get("weatherDesc", [{}])
+                desc = str(weather_descs[0].get("value", "")).strip() if weather_descs else ""
+
+                if temp_f:
+                    result = {
+                        "temp_f": temp_f,
+                        "temp_c": temp_c,
+                        "desc": desc,
+                    }
+                    with self._lock:
+                        self._weather_cache = result
+                        self._weather_cache_time = time.time()
+                    return result
+        except Exception:
+            pass
+
+        return None
+
+    def get_weather_response(self) -> str:
+        """Generate a spoken response describing the current temperature and weather.
+
+        Returns:
+            A sarcastic Grimjaw response with current weather or offline fallback.
+        """
+        weather = self.get_weather_data()
+        if weather and weather.get("temp_f"):
+            temp_f = weather["temp_f"]
+            desc = weather.get("desc", "").lower()
+
+            try:
+                temp_val = int(temp_f)
+            except ValueError:
+                temp_val = 50
+
+            comment = ""
+            if temp_val <= 40:
+                comment = "Freezing cold! The autumn chill whistles straight through my ribs!"
+            elif temp_val <= 60:
+                comment = "Crisp and chilly! Perfect weather for rattling around a porch."
+            elif temp_val <= 75:
+                comment = "Mild and comfortable, though my bones prefer a crypt's cold draft."
+            else:
+                comment = "Sweltering! Far too warm for an ancient skeleton."
+
+            if desc and desc not in ("clear", "sunny"):
+                return (
+                    f"It is currently {temp_f} degrees Fahrenheit with {desc}. {comment}"
+                )
+            return f"It is currently {temp_f} degrees Fahrenheit outside. {comment}"
+
+        return (
+            "My internal barometer says it's chilly enough to make your teeth chatter "
+            "and my ribs rattle! Check the sky yourself, mortal."
+        )

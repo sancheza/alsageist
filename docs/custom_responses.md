@@ -183,7 +183,8 @@ A canonical reference guide of distinct spoken prompts and questions that visito
 - How did you die?
 - Are you friendly?
 - How are you doing?
-- What time is it?
+- What time is it? / Do you have the time? *(Dynamically reports local time; warns "past your bedtime" if 10:00 PM or later)*
+- What's the temperature? / How is the weather? *(Dynamically reports live ambient temperature and weather conditions via wttr.in)*
 - Are you happy?
 - Do you ever travel?
 

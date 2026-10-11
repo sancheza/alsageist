@@ -1873,11 +1873,31 @@ class GrimjawIntentEngine:
                     r"\bwhat time is it\b",
                     r"\bwhat('s| is) the time\b",
                     r"\bhave the time\b",
+                    r"\btell me the time\b",
+                    r"\bgot the time\b",
+                    r"\bdo you know what time it is\b",
                 ],
                 [
                     "What time is it? It's the witching hour! Or candy-eating time, whichever you prefer.",
                     "Time? Time has no meaning when you've been sitting on a porch since eighteen twenty-four!",
                     "It's precisely past your bedtime! Grab a treat and scram before the midnight ghouls wake up.",
+                ],
+            ),
+            # 17b2. Weather and Temperature
+            (
+                "weather_and_temperature",
+                [
+                    r"\bwhat('s| is) the (temperature|weather|forecast)\b",
+                    r"\bhow('s| is) the (weather|temperature)\b",
+                    r"\bhow (cold|warm|hot) is it\b",
+                    r"\bwhat is it outside\b",
+                    r"\bwhat does the weather look like\b",
+                    r"\bwhat('s| is) it like outside\b",
+                    r"\btell me the (weather|temperature)\b",
+                ],
+                [
+                    "My internal barometer says it's chilly enough to make your teeth chatter and my ribs rattle! Check the sky yourself, mortal.",
+                    "The autumn chill whistles straight through my ribs! Perfect weather for rattling around a porch.",
                 ],
             ),
             # 17c. Happy / Mood
