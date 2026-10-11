@@ -40,6 +40,7 @@ class AudioIO:
         self._input_queue: queue.Queue = queue.Queue()
         self._input_stream: Optional[sd.InputStream] = None
         self._is_capturing: bool = False
+        self._is_muted: bool = False
         self._lock = threading.Lock()
 
     def _resolve_device(self, name_or_index: Optional[str], kind: str) -> Optional[int]:
@@ -76,8 +77,13 @@ class AudioIO:
         status: sd.CallbackFlags,
     ) -> None:
         """Callback for sounddevice input stream."""
-        if self._is_capturing:
-            self._input_queue.put(indata.copy())
+        if self._is_capturing and not self._is_muted:
+            if indata.ndim > 1 and indata.shape[1] > 1:
+                # Downmix multi-channel / stereo audio to clean mono in RAM
+                mono = np.mean(indata, axis=1, dtype=np.float32)
+                self._input_queue.put(mono)
+            else:
+                self._input_queue.put(indata.flatten().astype(np.float32))
 
     def start_capture(self) -> None:
         """Start non-blocking continuous microphone capture."""
@@ -89,15 +95,32 @@ class AudioIO:
             while not self._input_queue.empty():
                 self._input_queue.get_nowait()
 
-            self._input_stream = sd.InputStream(
-                samplerate=self.sample_rate,
-                channels=self.channels,
-                dtype="float32",
-                blocksize=self.block_size,
-                device=self.device_input,
-                callback=self._input_callback,
-            )
-            self._input_stream.start()
+            try:
+                self._input_stream = sd.InputStream(
+                    samplerate=self.sample_rate,
+                    channels=self.channels,
+                    dtype="float32",
+                    blocksize=self.block_size,
+                    device=self.device_input,
+                    callback=self._input_callback,
+                )
+                self._input_stream.start()
+            except Exception:
+                # If hardware rejects mono (e.g. Google AIY Voice HAT dual Knowles MEMS),
+                # retry with 2 channels stereo and downmix to mono in RAM
+                if self.channels == 1:
+                    self.channels = 2
+                    self._input_stream = sd.InputStream(
+                        samplerate=self.sample_rate,
+                        channels=2,
+                        dtype="float32",
+                        blocksize=self.block_size,
+                        device=self.device_input,
+                        callback=self._input_callback,
+                    )
+                    self._input_stream.start()
+                else:
+                    raise
 
     def stop_capture(self) -> None:
         """Stop microphone capture and release stream."""
@@ -109,6 +132,26 @@ class AudioIO:
                     self._input_stream.close()
                 finally:
                     self._input_stream = None
+
+    def mute_capture(self) -> None:
+        """Temporarily mute incoming microphone frames during speech playback."""
+        with self._lock:
+            self._is_muted = True
+            while not self._input_queue.empty():
+                try:
+                    self._input_queue.get_nowait()
+                except queue.Empty:
+                    break
+
+    def unmute_capture(self) -> None:
+        """Unmute and flush queue to resume capturing clean speech."""
+        with self._lock:
+            while not self._input_queue.empty():
+                try:
+                    self._input_queue.get_nowait()
+                except queue.Empty:
+                    break
+            self._is_muted = False
 
     def drain_input_queue(self) -> None:
         """Flush and discard all buffered input audio frames."""
@@ -129,10 +172,29 @@ class AudioIO:
             1D numpy array of float32 samples, or None on timeout.
         """
         try:
-            frame_2d = self._input_queue.get(timeout=timeout)
-            return frame_2d.flatten()
+            frame = self._input_queue.get(timeout=timeout)
+            return frame.flatten() if frame.ndim > 1 else frame
         except queue.Empty:
             return None
+
+    @staticmethod
+    def resample_audio(audio_data: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
+        """Resample audio array in memory using linear interpolation.
+
+        Args:
+            audio_data: 1D float32 audio array.
+            orig_sr: Source sample rate in Hz.
+            target_sr: Target sample rate in Hz.
+
+        Returns:
+            Resampled 1D float32 audio array.
+        """
+        if orig_sr == target_sr or len(audio_data) == 0:
+            return audio_data
+        num_samples = int(len(audio_data) * (target_sr / orig_sr))
+        orig_indices = np.linspace(0, len(audio_data) - 1, len(audio_data))
+        target_indices = np.linspace(0, len(audio_data) - 1, num_samples)
+        return np.interp(target_indices, orig_indices, audio_data).astype(np.float32)
 
     def play_audio(
         self,
@@ -153,9 +215,20 @@ class AudioIO:
         else:
             play_data = audio_data.astype(np.float32)
 
-        sd.play(play_data, samplerate=sr, device=self.device_output, blocking=blocking)
-        if blocking:
-            sd.wait()
+        try:
+            sd.play(play_data, samplerate=sr, device=self.device_output, blocking=blocking)
+            if blocking:
+                sd.wait()
+        except Exception:
+            # If ALSA hardware rejects 22050 Hz (e.g. AIY Voice HAT MAX98357A I2S DAC),
+            # resample in memory to 44100 Hz
+            if sr == 22050:
+                resampled = self.resample_audio(play_data, 22050, 44100)
+                sd.play(resampled, samplerate=44100, device=self.device_output, blocking=blocking)
+                if blocking:
+                    sd.wait()
+            else:
+                raise
 
     def stop_playback(self) -> None:
         """Instantly stop any active audio playback."""

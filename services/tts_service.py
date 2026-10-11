@@ -43,6 +43,18 @@ class PiperTTSService:
                 "Please download the ONNX model and config."
             )
 
+        self._voice = None
+        self._syn_config = None
+        try:
+            import piper
+            self._voice = piper.PiperVoice.load(self.model_path)
+            self._syn_config = piper.SynthesisConfig(
+                length_scale=self.length_scale,
+                noise_scale=self.noise_scale,
+            )
+        except Exception:
+            self._voice = None
+
     def _synthesize_chunk(self, chunk_text: str) -> np.ndarray:
         """Synthesize a single text chunk into raw PCM numpy array.
 
@@ -52,6 +64,19 @@ class PiperTTSService:
         Returns:
             1D float32 numpy audio array.
         """
+        # Apply phonetic pronunciation corrections for Piper TTS
+        normalized_text = re.sub(r"\bKrueger\b", "Kruger", chunk_text, flags=re.IGNORECASE)
+        normalized_text = re.sub(r"\bTannh[aä]user\b", "Tahnhoyzer", normalized_text, flags=re.IGNORECASE)
+        normalized_text = re.sub(r"\bMwa+ha+ha+!*\b", "Ha ha ha ha ha!", normalized_text, flags=re.IGNORECASE)
+        normalized_text = re.sub(r"\bHasta\b", "Ahsta", normalized_text, flags=re.IGNORECASE)
+
+        if self._voice is not None:
+            chunks = list(self._voice.synthesize(normalized_text, syn_config=self._syn_config))
+            if chunks:
+                return np.concatenate([c.audio_float_array for c in chunks])
+            return np.zeros(0, dtype=np.float32)
+
+        # Fallback to subprocess invocation if in-memory voice failed to load
         cmd = [
             "piper",
             "-m", self.model_path,
@@ -66,12 +91,6 @@ class PiperTTSService:
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
         )
-
-        # Apply phonetic pronunciation corrections for Piper TTS
-        normalized_text = re.sub(r"\bKrueger\b", "Kruger", chunk_text, flags=re.IGNORECASE)
-        normalized_text = re.sub(r"\bTannh[aä]user\b", "Tahnhoyzer", normalized_text, flags=re.IGNORECASE)
-        normalized_text = re.sub(r"\bMwa+ha+ha+!*\b", "Ha ha ha ha ha!", normalized_text, flags=re.IGNORECASE)
-        normalized_text = re.sub(r"\bHasta\b", "Ahsta", normalized_text, flags=re.IGNORECASE)
 
         raw_pcm, _ = process.communicate(input=normalized_text.encode("utf-8"))
 

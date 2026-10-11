@@ -151,7 +151,7 @@ def test_intent_engine_user_session_queries():
         ("Are you handsome?", ["great bone structure"]),
         ("What happened to your hair?", ["Hair", "maintenance-free", "perm"]),
         ("What happened to your eyes?", ["eyeballs", "supernatural vibrations", "vision"]),
-        ("Could you lend me 20 bones?", ["Lend you twenty bones", "non-negotiable", "femurs"]),
+        ("Could you lend me 20 bones?", ["Lend you twenty bones", "non-negotiable", "femurs", "bone-broke", "bank"]),
         ("What happened to your heart?", ["heart", "cardiovascular", "organs"]),
         ("Good morning.", ["mortal", "Halloween", "candy", "Grimjaw"]),
         ("How are you doing?", ["bone-tastic", "feeling", "vertebrae", "calcium"]),
@@ -194,6 +194,14 @@ def test_intent_engine_user_session_queries():
         ("What would you ask C. Everett Koop?", ["Why is all skeletons always involved in really spooky stuff?"]),
         ("Do people ever steal candy?", ["greedy mortals", "jaw snaps shut", "empty eye sockets", "grave mistake", "guts"]),
         ("See you later", ["dentist", "Farewell", "dark"]),
+        ("Which candy is the best?", ["Skittles", "skull", "wrapper", "chocolate", "gummies"]),
+        ("Tell me an Olie G quote.", ["Why is all skeletons always involved in really spooky stuff", "spooky stuff"]),
+        ("That's great to hear.", ["Glad to hear it", "little things"]),
+        ("Good to hear.", ["Glad to hear it", "little things"]),
+        ("How many people have you seen today?", ["Dozens", "sugar-crazed", "flesh-bags", "revolving door"]),
+        ("Do you ever travel?", ["anchored", "porch", "iron bolts", "Caribbean cruise"]),
+        ("What's your favorite animal?", ["Bats", "spiders", "raven", "dogs", "bones"]),
+        ("What's your favorite year?", ["Eighteen twenty-four", "buried", "Nineteen eighty-two", "Thriller"]),
     ]
     for query, expected_substrings in test_cases:
         engine.reset_conversation()

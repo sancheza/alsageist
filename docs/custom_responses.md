@@ -77,6 +77,7 @@ A canonical reference guide of distinct spoken prompts and questions that visito
 - What's your favorite restaurant?
 - What's your favorite food?
 - What's your favorite candy?
+- Which candy is the best?
 - What's your favorite drink?
 - Do you ever eat dinner?
 
@@ -85,6 +86,8 @@ A canonical reference guide of distinct spoken prompts and questions that visito
 - What's your favorite number?
 - What's your favorite video game?
 - What's your favorite hobby?
+- What's your favorite animal?
+- What's your favorite year?
 - What's your favorite holiday?
 - What's your favorite color?
 - What's your favorite sports team?
@@ -155,6 +158,7 @@ A canonical reference guide of distinct spoken prompts and questions that visito
 - I'm going to steal the bowl!
 - Do people ever steal candy?
 - Is the candy safe to eat?
+- How many people have you seen today?
 
 ---
 
@@ -173,6 +177,7 @@ A canonical reference guide of distinct spoken prompts and questions that visito
 - How are you doing?
 - What time is it?
 - Are you happy?
+- Do you ever travel?
 
 ### Farewells
 
@@ -204,6 +209,7 @@ A canonical reference guide of distinct spoken prompts and questions that visito
 - You're ugly!
 - Don't call me a flesh bag.
 - That was funny!
+- That's great to hear! / Good to hear.
 - Where do you live?
 
 ---

@@ -321,14 +321,16 @@ class AlsaGeistAgent:
             status="PROCESSED",
         )
 
-        # 5. Audio Playback to Speaker
+        # 5. Audio Playback to Speaker (Mute mic capture to prevent self-triggering)
         self.led.set_state(LEDState.SPEAKING)
-        self.audio.play_audio(audio_data, sample_rate=sample_rate, blocking=True)
-
-        # 6. Drain speaker echo from microphone buffer and reset VAD state
-        time.sleep(0.15)
-        self.audio.drain_input_queue()
-        self.vad.reset()
+        self.audio.mute_capture()
+        try:
+            self.audio.play_audio(audio_data, sample_rate=sample_rate, blocking=True)
+        finally:
+            # 6. Cooldown to allow room resonance to dissipate, then unmute and reset VAD
+            time.sleep(0.25)
+            self.audio.unmute_capture()
+            self.vad.reset()
 
     def stop(self) -> None:
         """Clean up all audio streams and LED threads."""

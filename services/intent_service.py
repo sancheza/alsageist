@@ -249,6 +249,18 @@ class GrimjawIntentEngine:
                     "I'm here to ensure peace, order, and strict one-piece-per-person candy compliance!",
                 ],
             ),
+            # 3b2. Crowd & Visitors
+            (
+                "crowd_and_visitors",
+                [
+                    r"\bhow many (people|mortals|kids|trick-or-treaters|visitors|children)\b",
+                    r"\b(seen|met)\s+(many|a lot of|lots of)\s+(people|kids|trick-or-treaters|mortals)\b",
+                ],
+                [
+                    "Dozens of sugar-crazed mortals! Every single one trying to sneak a second piece of candy past these hollow eye sockets.",
+                    "Too many flesh-bags to count! My porch has been a revolving door of pint-sized goblins and greedy hands.",
+                ],
+            ),
             # 3c. How Did He Die / Cause of Death / Origins
             (
                 "cause_of_death",
@@ -356,6 +368,8 @@ class GrimjawIntentEngine:
                 "favorite_candy",
                 [
                     r"\b(favorite|best|like)\b.*\b(candy|candies|chocolate|treat|snack)\b",
+                    r"\b(which|what) candy\b.*\b(best|favorite|good)\b",
+                    r"\bcandy\b.*\b(is the best|is your favorite|do you like best)\b",
                     r"\bwhat (candy|chocolate|snack) do (you|he) like\b",
                 ],
                 [
@@ -398,6 +412,30 @@ class GrimjawIntentEngine:
                 [
                     "Favorite hobby? Porch surveillance, scaring sugar-crazed children, and polishing my pristine vertebrae!",
                     "Favorite hobby? Resting in my six-foot crypt, practicing sinister cackles, and organizing bone poker nights.",
+                ],
+            ),
+            (
+                "favorite_animal",
+                [
+                    r"\b(favorite|best|like)\b.*\b(animal|creature|pet|critter)\b",
+                    r"\bwhat('s| is) (your|his) favorite (animal|creature|pet|critter)\b",
+                    r"\bwhat (animal|creature|pet|critter) do (you|he) like\b",
+                ],
+                [
+                    "Bats and spiders, naturally! They keep the cobwebs tidy and never try to chew on my ribs.",
+                    "The raven! Excellent posture, very gothic, and they know how to deliver a dramatic 'Nevermore'.",
+                    "Definitely not dogs! Any creature with a natural obsession with bones is my sworn mortal enemy.",
+                ],
+            ),
+            (
+                "favorite_year",
+                [
+                    r"\b(favorite|best) year\b",
+                    r"\bwhat('s| is) (your|his) favorite year\b",
+                ],
+                [
+                    "Eighteen twenty-four, obviously! The year I was buried. Quiet, peaceful, and zero trick-or-treaters pestering me for candy!",
+                    "Nineteen eighty-two! Michael Jackson released Thriller, and skeletons finally got the cinematic respect we deserve.",
                 ],
             ),
             # 3e1a. Spice Girls & Wannabe
@@ -552,10 +590,10 @@ class GrimjawIntentEngine:
             (
                 "ali_g",
                 [
-                    r"\b(ali[\s-]?g|alli[\s-]?g|aly[\s-]?g|ollie[\s-]?g|alley[\s-]?g|sacha baron cohen|booyakasha)\b",
+                    r"\b(ali[\s-]?g|alli[\s-]?g|aly[\s-]?g|ollie[\s-]?g|olie[\s-]?g|alley[\s-]?g|sacha baron cohen|booyakasha)\b",
                     r"\b(c\.?\s*everett\s*koop|everett\s*koop|c\.?\s*everet\s*koop|c\s+everett\s+koop|c\s+everet\s+koop|koop)\b",
                     r"\bquestions? for (c\.?\s*)?everett koop\b",
-                    r"\b(quote|saying|line)\s+(from|by)\s+(ali[\s-]?g|alli[\s-]?g|aly[\s-]?g|ollie[\s-]?g|alley[\s-]?g)\b",
+                    r"\b(quote|saying|line)\s+(from|by)\s+(ali[\s-]?g|alli[\s-]?g|aly[\s-]?g|ollie[\s-]?g|olie[\s-]?g|alley[\s-]?g)\b",
                 ],
                 [
                     "Why is all skeletons always involved in really spooky stuff?",
@@ -1006,6 +1044,18 @@ class GrimjawIntentEngine:
                     "When the sun rises, I retreat under the porch floorboards until the moon comes back.",
                     "A graveyard crypt is my permanent home! Quiet neighbors, zero utility bills, plenty of fresh dirt.",
                     "Hiding in your garden? No, but I might borrow a few marigolds for my tomb.",
+                ],
+            ),
+            (
+                "travel_and_vacation",
+                [
+                    r"\b(do|did|have) (you|he) (ever )?(travel|take a trip|go on vacation|leave the porch)\b",
+                    r"\bdo (you|he) travel\b",
+                    r"\b(go|ever go) on vacation\b",
+                ],
+                [
+                    "Travel? I'm anchored to this porch by iron bolts! The only trip I take is an occasional tumble when the autumn wind picks up.",
+                    "I spent two hundred years six feet under, so this chilly front porch is practically an exotic Caribbean cruise for me!",
                 ],
             ),
             # 9b. Science Class Skeleton (Q30)
@@ -1603,6 +1653,18 @@ class GrimjawIntentEngine:
                 [
                     "Of course it's good! I've had two hundred years to practice my comedic timing.",
                     "If the label fits, wear it! You've got skin and guts, I don't. Case closed, flesh-bag!",
+                ],
+            ),
+            (
+                "polite_acknowledgment",
+                [
+                    r"\b(that('s| is)|it('s| is))\s+(great|good|nice|wonderful|cool)\s+to\s+hear\b",
+                    r"\b(glad|happy)\s+to\s+hear(\s+that|\s+it)?\b",
+                    r"\bgood\s+to\s+hear\b",
+                ],
+                [
+                    "Glad to hear it! Now grab your treat and let another mortal have their turn.",
+                    "Indeed! Two centuries six feet under gives you a wonderful appreciation for the little things.",
                 ],
             ),
             (

@@ -164,6 +164,8 @@ Expected output:
 
 ## 10. Raspberry Pi & Google AIY Voice Kit Deployment
 
+For a complete end-to-end guide covering hardware selection, modern Pi 4/5 alternatives, audio configurations, and systemd deployment, see the [Raspberry Pi Installation & Deployment Guide](docs/raspberry_pi_installation_guide.md).
+
 ### Step 1: Operating System Preparation
 Flash **Raspberry Pi OS Lite (64-bit)** to a microSD card.
 
@@ -228,7 +230,7 @@ Run `alsamixer -c sndrpigooglevoi`:
 * Set **Microphone** (`Capture`) to **75%**.
 
 ### Step 6: Autostart via systemd
-Create `/etc/systemd/system/alsageist.service`:
+Create `/etc/systemd/system/alsageist.service` (replacing `pi` with your username if different):
 
 ```ini
 [Unit]
