@@ -414,7 +414,9 @@ class GrimjawIntentEngine:
                 [
                     r"\b(favorite|best|like)\b.*\b(hobby|hobbies|free time|pastime)\b",
                     r"\bwhat (hobby|hobbies) do (you|he) (have|like|do)\b",
-                    r"\bwhat do (you|he) do for fun\b",
+                    r"\bwhat do (you|he) do for (fun|hobbies)\b",
+                    r"\b(do you have|got any)\s*(hobbies|a hobby)\b",
+                    r"\b(what|do).*(for hobbies|for fun|free time|pastime)\b",
                 ],
                 [
                     "Favorite hobby? Porch surveillance, scaring sugar-crazed children, and polishing my pristine vertebrae!",
@@ -424,14 +426,42 @@ class GrimjawIntentEngine:
             (
                 "favorite_animal",
                 [
-                    r"\b(favorite|best|like)\b.*\b(animal|creature|pet|critter)\b",
-                    r"\bwhat('s| is) (your|his) favorite (animal|creature|pet|critter)\b",
-                    r"\bwhat (animal|creature|pet|critter) do (you|he) like\b",
+                    r"\b(favorite|best|like)\b.*\b(animal|creature|critter)\b",
+                    r"\bwhat('s| is) (your|his) favorite (animal|creature|critter)\b",
+                    r"\bwhat (animal|creature|critter) do (you|he) like\b",
                 ],
                 [
                     "Bats and spiders, naturally! They keep the cobwebs tidy and never try to chew on my ribs.",
                     "The raven! Excellent posture, very gothic, and they know how to deliver a dramatic 'Nevermore'.",
                     "Definitely not dogs! Any creature with a natural obsession with bones is my sworn mortal enemy.",
+                ],
+            ),
+            (
+                "pets_and_animals",
+                [
+                    r"\b(do you|does he)\s*(have|own|keep|got).*(a )?(pet|dog|cat|animal|bat|raven|rat|spider)s?\b",
+                    r"\b(do you|does he)\s*own (a )?pet\b",
+                    r"\bhave any pets\b",
+                    r"\bgot a pet\b",
+                    r"\bhave a pet\b",
+                    r"\bown a pet\b",
+                ],
+                [
+                    "A pet? I tried keeping a dog once, but he kept burying my fibula in the backyard!",
+                    "I have a pet raven named Edgar, but he spends all night complaining about someone named Lenore.",
+                    "Do the spiders nesting inside my left eye socket count as pets? Because they don't pay rent.",
+                ],
+            ),
+            (
+                "favorite_costume",
+                [
+                    r"\b(favorite|best|coolest)\b.*\b(costume|outfit|getup|disguise)\b",
+                    r"\bwhat('s| is) (your|his) favorite (costume|outfit)\b",
+                    r"\bwhat (costume|outfit) do (you|he) like best\b",
+                ],
+                [
+                    "My favorite costume? A flesh suit! I used to wear one every single day until it went completely out of style.",
+                    "Favorite costume? A bedsheet ghost! It's classic, low-maintenance, and hides how ridiculously skinny I look.",
                 ],
             ),
             (
@@ -554,6 +584,20 @@ class GrimjawIntentEngine:
                 ],
                 [
                     "No, my brother! You have to go buy your own!",
+                ],
+            ),
+            # 3e1a9. Seinfeld Quote
+            (
+                "seinfeld_quote",
+                [
+                    r"\bseinfeld\b",
+                    r"\bno soup for you\b",
+                    r"\bthese pretzels are making me thirsty\b",
+                    r"\bsoup nazi\b",
+                ],
+                [
+                    "No soup for you! One piece of candy, and come back one year!",
+                    "These pretzels... are making me thirsty! And I don't even have a salivary gland!",
                 ],
             ),
             (
@@ -1782,9 +1826,12 @@ class GrimjawIntentEngine:
             (
                 "rebuttals_and_banter",
                 [
-                    r"\b(no (they|you|it|we) aren'?t|no (they|you|it|we) don'?t|you('re| are) lying|liar|nuh-?uh|whatever|who cares|so what)\b",
+                    r"\b(no (they|you|it|we) aren'?t|no (they|you|it|we) don'?t|you('re| are) lying|liar|nuh-?uh|whatever|who cares)\b",
                     r"\bnot true\b",
                     r"\bare not\b",
+                    r"^(well\s+)?so what\??$",
+                    r"\bso what if\b",
+                    r"\bwhat of it\b",
                 ],
                 [
                     "Deny it all you want, but the crypt never lies!",

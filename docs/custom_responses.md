@@ -20,6 +20,12 @@ A canonical reference guide of distinct spoken prompts and questions that visito
 
 - Can you recite the Tears in Rain quote from Blade Runner?
 
+### Seinfeld
+
+- Tell me a Seinfeld quote.
+- No soup for you!
+- These pretzels are making me thirsty!
+
 ### Scary & Horror Quotes
 
 - Give me a scary quote.
@@ -85,8 +91,9 @@ A canonical reference guide of distinct spoken prompts and questions that visito
 
 - What's your favorite number?
 - What's your favorite video game?
-- What's your favorite hobby?
+- What's your favorite hobby? / So what do you do for hobbies? / What do you do for fun?
 - What's your favorite animal?
+- What's your favorite costume? / What costume do you like best?
 - What's your favorite year?
 - What's your favorite holiday?
 - What's your favorite color?
@@ -123,14 +130,15 @@ A canonical reference guide of distinct spoken prompts and questions that visito
 
 ---
 
-## 6. Dogs & Bones
+## 6. Dogs & Pets
 
-### Dog Questions
+### Dog & Pet Questions
 
 - Can I borrow a rib for my dog?
 - Are you scared of dogs?
 - Will you protect my dog?
 - Do you eat dog biscuits?
+- Do you own a pet? / Do you have a pet?
 
 ---
 

@@ -259,3 +259,28 @@ def test_costume_and_quote_specific_matching():
     resp, intent = engine.classify_and_respond("Who's your best friend?")
     assert intent == "skeleton_friends"
 
+
+def test_new_intents_hobby_pets_costume_seinfeld():
+    """Verify newly added intents for hobbies, pets, favorite costume, and Seinfeld quotes."""
+    engine = GrimjawIntentEngine()
+
+    # So what do you do for hobbies? (ensures 'so what' does not trigger rebuttal)
+    resp, intent = engine.classify_and_respond("So what do you do for hobbies?")
+    assert intent == "favorite_hobby"
+    assert any(w in resp.lower() for w in ["ribcage", "xylophone", "chilling", "hobby", "hobbies", "haunt"])
+
+    # Do you own a pet?
+    resp, intent = engine.classify_and_respond("Do you own a pet?")
+    assert intent == "pets_and_animals"
+    assert any(w in resp.lower() for w in ["raven", "spider", "flesh-hound", "pet"])
+
+    # What is your favorite costume?
+    resp, intent = engine.classify_and_respond("What is your favorite costume?")
+    assert intent == "favorite_costume"
+    assert any(w in resp.lower() for w in ["flesh suit", "skin suit", "bedsheet ghost", "costume"])
+
+    # Tell me a Seinfeld quote
+    resp, intent = engine.classify_and_respond("Tell me a Seinfeld quote.")
+    assert intent == "seinfeld_quote"
+    assert any(w in resp.lower() for w in ["soup", "pretzels", "thirsty"])
+

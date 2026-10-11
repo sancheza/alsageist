@@ -12,6 +12,7 @@ Usage:
 
 import argparse
 import os
+import re
 import signal
 import socket
 import sys
@@ -423,8 +424,12 @@ class AlsaGeistAgent:
             return
 
         clean_test = user_text.strip().lower().rstrip(".,!?")
-        if clean_test in ["you", "thank you", "shh", "the", "a", "subtitles by", "bye", "uh", "um", ""] and audio_rms < 0.010:
-            print(f"  (Filtered ambient background artifact: \"{user_text}\")")
+        is_timecode = bool(re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", clean_test))
+        if (
+            (clean_test in ["you", "thank you", "shh", "the", "a", "subtitles by", "bye", "uh", "um", ""] and audio_rms < 0.010)
+            or is_timecode
+        ):
+            print(f"  (Filtered ambient background artifact / timecode: \"{user_text}\")")
             self.led.set_state(LEDState.IDLE)
             self.logger.log_interaction(
                 transcribed_text=user_text,
