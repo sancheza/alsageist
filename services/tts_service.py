@@ -45,6 +45,13 @@ class PiperTTSService:
 
         self._voice = None
         self._syn_config = None
+        self._cache: dict = {}
+        self.cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "models", "cache")
+        try:
+            os.makedirs(self.cache_dir, exist_ok=True)
+        except Exception:
+            pass
+
         try:
             import piper
             self._voice = piper.PiperVoice.load(self.model_path)
@@ -100,6 +107,19 @@ class PiperTTSService:
         int16_samples = np.frombuffer(raw_pcm, dtype=np.int16)
         return int16_samples.astype(np.float32) / 32768.0
 
+    def _get_cache_path(self, text: str) -> str:
+        """Return the filesystem path for cached audio array.
+
+        Args:
+            text: Dialogue text.
+
+        Returns:
+            Absolute path to .npy cache file.
+        """
+        import hashlib
+        cache_key = hashlib.md5(f"{text}_{self.length_scale}_{self.noise_scale}".encode("utf-8")).hexdigest()
+        return os.path.join(self.cache_dir, f"{cache_key}.npy")
+
     def synthesize(self, text: str) -> Tuple[np.ndarray, int]:
         """Synthesize text into in-memory audio array, inserting pauses at ellipsis breaks.
 
@@ -115,20 +135,42 @@ class PiperTTSService:
         if not text or not text.strip():
             return np.zeros(0, dtype=np.float32), self.sample_rate
 
+        # 1. Check in-memory RAM cache
+        if text in self._cache:
+            return self._cache[text], self.sample_rate
+
+        # 2. Check persistent disk cache
+        cache_path = self._get_cache_path(text)
+        if os.path.isfile(cache_path):
+            try:
+                audio = np.load(cache_path)
+                self._cache[text] = audio
+                return audio, self.sample_rate
+            except Exception:
+                pass
+
         # Split on explicit pauses (ellipsis '...' or multiple newlines)
         chunks = [c.strip() for c in re.split(r"\.{2,}|\n+", text) if c.strip()]
 
         if len(chunks) <= 1:
-            return self._synthesize_chunk(text), self.sample_rate
+            audio = self._synthesize_chunk(text)
+        else:
+            audio_parts = []
+            pause_samples = np.zeros(int(self.sample_rate * self.pause_duration_sec), dtype=np.float32)
 
-        audio_parts = []
-        pause_samples = np.zeros(int(self.sample_rate * self.pause_duration_sec), dtype=np.float32)
+            for i, chunk in enumerate(chunks):
+                chunk_audio = self._synthesize_chunk(chunk)
+                audio_parts.append(chunk_audio)
+                if i < len(chunks) - 1:
+                    audio_parts.append(pause_samples)
 
-        for i, chunk in enumerate(chunks):
-            chunk_audio = self._synthesize_chunk(chunk)
-            audio_parts.append(chunk_audio)
-            if i < len(chunks) - 1:
-                audio_parts.append(pause_samples)
+            audio = np.concatenate(audio_parts)
 
-        combined_audio = np.concatenate(audio_parts)
-        return combined_audio, self.sample_rate
+        # Store in RAM and disk cache
+        self._cache[text] = audio
+        try:
+            np.save(cache_path, audio)
+        except Exception:
+            pass
+
+        return audio, self.sample_rate

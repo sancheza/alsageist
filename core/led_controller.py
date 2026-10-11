@@ -44,6 +44,8 @@ class BaseLEDController(ABC):
     def set_button_callback(self, callback: Callable[[], None]) -> None:
         """Register a callback for arcade button press events."""
         self.button_callback = callback
+        if hasattr(self, "_gpio_btn") and self._gpio_btn is not None:
+            self._gpio_btn.when_pressed = callback
 
 
 class ConsoleLEDController(BaseLEDController):
@@ -197,11 +199,11 @@ class RaspberryPiLEDController(BaseLEDController):
                 self._set_duty_cycle(100.0)
                 time.sleep(0.05)
             elif self.current_state == LEDState.SPEAKING:
-                # Fast flicker modulation
-                duty = (math.sin(step * 4) + 1.0) / 2.0 * 90.0 + 10.0
+                # Syllable-rate speech cadence (3-4 Hz organic speaking pulse)
+                duty = (math.sin(step) + 1.0) / 2.0 * 85.0 + 15.0
                 self._set_duty_cycle(duty)
-                step += 0.4
-                time.sleep(0.02)
+                step += 0.35
+                time.sleep(0.04)
             elif self.current_state == LEDState.ERROR:
                 # 5 Hz rapid blink
                 self._set_duty_cycle(100.0 if int(step) % 2 == 0 else 0.0)

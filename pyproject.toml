@@ -7,7 +7,7 @@ name = "alsageist"
 version = "1.0.0"
 description = "Autonomous Voice-Driven Conversational Halloween Display"
 authors = [{ name = "sancheza" }]
-readme = "spec.md"
+readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
     "sounddevice>=0.4.6",
@@ -16,6 +16,13 @@ dependencies = [
     "onnxruntime>=1.14.0",
     "pytest>=7.0.0",
 ]
+
+[tool.setuptools]
+py-modules = ["main"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "services*"]
 
 [project.scripts]
 alsageist = "main:main"

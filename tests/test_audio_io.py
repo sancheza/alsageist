@@ -74,3 +74,30 @@ def test_audio_io_stereo_downmix_callback():
     assert mono_result.ndim == 1
     assert len(mono_result) == 480
     assert np.allclose(mono_result, 0.0, atol=1e-5)
+
+
+def test_audio_io_mic_gain():
+    """Verify that input audio callback scales incoming samples by mic_gain."""
+    audio = AudioIO(sample_rate=16000, channels=1, mic_gain=2.5)
+    audio._is_capturing = True
+    audio._is_muted = False
+
+    raw_frame = np.full((480, 1), 0.2, dtype=np.float32)
+    audio._input_callback(raw_frame, 480, {}, 0)
+
+    result = audio.read_frame(timeout=0.1)
+    assert result is not None
+    assert np.allclose(result, 0.5, atol=1e-5)
+
+
+def test_audio_io_volume_clamping_and_scaling(monkeypatch):
+    """Verify that volume attribute clamps between 0.0 and 1.0 and scales output."""
+    audio = AudioIO(sample_rate=16000, channels=1, volume=1.5)
+    assert audio.volume == 1.0
+
+    audio_low = AudioIO(sample_rate=16000, channels=1, volume=-0.2)
+    assert audio_low.volume == 0.0
+
+    audio_normal = AudioIO(sample_rate=16000, channels=1, volume=0.8)
+    assert audio_normal.volume == 0.8
+

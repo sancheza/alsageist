@@ -75,10 +75,16 @@ AlsaGeist uses offline intent matching and local TTS by default. Speech-to-text 
 | `GROQ_API_KEY` | Groq API key for high-speed Whisper Large v3 STT | None |
 | `GEMINI_API_KEY` | Google Gemini API key for Gemini Flash STT | None |
 
-Set your key in your environment:
+Configure your key in a `.env` file:
+
+```ini
+GROQ_API_KEY="your-api-key-here"
+```
+
+Or export it directly in your environment:
 
 ```bash
-export GEMINI_API_KEY="your-api-key-here"
+export GROQ_API_KEY="your-api-key-here"
 ```
 
 ---
@@ -126,7 +132,9 @@ Inspect all runtime flags:
 | `--model-path` | Path to the Piper ONNX model file | `models/piper/en_GB-alan-medium.onnx` |
 | `--input-device` | Input audio hardware device name or index | System default |
 | `--output-device` | Output audio hardware device name or index | System default |
-| `--threshold` | RMS audio energy threshold for speech detection | `0.006` |
+| `--volume` | Audio playback volume multiplier (`0.0` to `1.0`) | `0.8` (or `$VOLUME`) |
+| `--mic-gain` | Microphone digital input gain multiplier | `1.5` (or `$MIC_GAIN`) |
+| `--threshold` | RMS audio energy threshold for speech detection | `0.0035` (or `$VAD_THRESHOLD`) |
 | `--min-speech-sec` | Minimum sustained speech duration in seconds | `0.35` |
 | `--silence-timeout` | Trailing silence in seconds before speech boundary | `1.1` |
 | `--tempo` | Piper phoneme length scale (higher = slower speech) | `1.15` |
@@ -224,10 +232,13 @@ ctl.!default {
 }
 ```
 
-### Step 5: Adjust Mixer Levels
-Run `alsamixer -c sndrpigooglevoi`:
-* Set **Speaker** (`Master`) to **80%**.
-* Set **Microphone** (`Capture`) to **75%**.
+### Step 5: Test Audio Output and Microphone Capture
+The Google AIY Voice HAT uses a fixed-gain I2S codec without hardware mixer registers. Verify playback and capture directly:
+
+```bash
+speaker-test -c 2 -r 48000 -D default -t wav
+arecord -D default -d 3 -f S16_LE -r 16000 -c 1 /tmp/test.wav && aplay -D default /tmp/test.wav
+```
 
 ### Step 6: Autostart via systemd
 Create `/etc/systemd/system/alsageist.service` (replacing `pi` with your username if different):
@@ -245,7 +256,7 @@ WorkingDirectory=/home/pi/alsageist
 ExecStart=/home/pi/alsageist/venv/bin/python main.py
 Restart=always
 RestartSec=3
-Environment="GEMINI_API_KEY=your_key_here"
+EnvironmentFile=/home/pi/alsageist/.env
 StandardOutput=journal
 StandardError=journal
 

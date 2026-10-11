@@ -84,7 +84,33 @@ AlsaGeist includes an automated setup script ([`scripts/configure_rpi_os.sh`](..
 
 #### Objective: Clone the repository, configure OS audio drivers, and set user permissions automatically.
 
-1. Clone the repository into your home directory:
+1. Install Git and GitHub CLI:
+
+```bash
+sudo apt update && sudo apt install -y git gh
+```
+
+> [!NOTE]
+> **GitHub Authentication (Private Repository):**
+> If the repository is private, authenticate using GitHub CLI (`gh auth login`) before cloning. This configures Git credentials automatically without requiring manual Personal Access Tokens:
+>
+> ```bash
+> gh auth login
+> ```
+>
+> Follow the interactive prompts:
+> ```text
+> ? What account do you want to log into? GitHub.com
+> ? What is your preferred protocol for Git operations? HTTPS
+> ? Authenticate Git with your GitHub credentials? Yes
+> ? How would you like to authenticate GitHub CLI? Login with a web browser
+> ```
+>
+> GitHub CLI outputs a one-time device code. Open `https://github.com/login/device` in any browser, enter the code, and confirm.
+>
+> *(Alternative methods: generate an SSH key on the Pi via `ssh-keygen -t ed25519` and add `~/.ssh/id_ed25519.pub` to GitHub Settings, or set the repository visibility to Public).*
+
+2. Clone the repository into your home directory:
 
 ```bash
 cd ~
@@ -92,7 +118,7 @@ git clone https://github.com/sancheza/alsageist.git
 cd alsageist
 ```
 
-2. Run the automated configuration script:
+3. Run the automated configuration script:
 
 For **Google AIY Voice HAT V1 (Profile A)**:
 
@@ -145,7 +171,7 @@ Expected output:
 ======================================================================
 ```
 
-3. Reboot the Raspberry Pi after running the script:
+4. Reboot the Raspberry Pi after running the script:
 
 ```bash
 sudo reboot
@@ -242,23 +268,48 @@ card 0: sndrpigooglevoi [snd_rpi_googlevoicehat_soundcar], device 0: Google voic
 
 ---
 
-### 3.5 Setting Mixer Volume Levels
+### 3.5 Audio Mixer Controls & Hardware Verification
 
-#### Objective: Unmute audio channels and set hardware gain.
+#### Google AIY Voice HAT V1 (Profile A)
+The Google Voice HAT V1 uses an I2S DAC and Knowles digital MEMS microphones with fixed hardware gain. It does not expose hardware mixer registers to ALSA.
 
-Launch the ALSA mixer:
+When selecting `snd_rpi_googlevoicehat_soundcar` in `alsamixer`, the following message is **normal and expected**:
+```text
+This sound device does not have any controls
+```
+AlsaGeist streams digital audio directly to the I2S DAC at nominal volume and does not require mixer adjustments.
+
+##### Objective: Test Voice HAT speaker output and microphone capture.
+
+Test speaker output with spoken voice (press `Ctrl+C` to stop):
+
+```bash
+speaker-test -c 2 -r 48000 -D default -t wav
+```
+
+Alternatively, test with a 440 Hz audible tone:
+
+```bash
+speaker-test -c 2 -r 44100 -D default -t sine -f 440
+```
+
+Test microphone capture (records 3 seconds of audio, then plays it back):
+
+```bash
+arecord -D default -d 3 -f S16_LE -r 16000 -c 1 /tmp/test.wav && aplay -D default /tmp/test.wav
+```
+
+#### USB Audio Adapters & Speakerphones (Profile B)
+USB audio cards that expose hardware mixer registers can be adjusted via `alsamixer`:
 
 ```bash
 alsamixer
 ```
 
-1. Press `F6` to select the sound card (`snd_rpi_googlevoicehat_soundcar` or your USB audio card).
-2. Use arrow keys to raise Playback Master volume to `85%`.
-3. Press `F4` to switch to Capture controls.
-4. Set Microphone capture level to `80%`.
-5. Press `Esc` to exit.
-
-Persist the volume configuration across reboots:
+1. Press `F6` and select your USB audio device.
+2. Use arrow keys to set Master Playback volume to `85%`.
+3. Press `F4` to view Capture controls and set Microphone gain to `80%`.
+4. Press `Esc` to exit, then save settings:
 
 ```bash
 sudo alsactl store
@@ -295,19 +346,19 @@ Processing triggers for libc-bin...
 
 ### Objective: Clone the codebase, configure a Python virtual environment, and install package dependencies.
 
-1. Navigate into the repository directory (or clone if performing a manual setup):
+1. Ensure the repository is cloned and navigate into the directory:
 
-```bash
-cd ~/alsageist
-```
+* **If you already cloned the repository in Section 3.1:**
+  ```bash
+  cd ~/alsageist
+  ```
 
-If you did not run the automated setup script in Section 3.1, clone the repository first:
-
-```bash
-cd ~
-git clone https://github.com/sancheza/alsageist.git
-cd alsageist
-```
+* **If performing a manual setup without Section 3.1 (repository not yet cloned):**
+  ```bash
+  cd ~
+  git clone https://github.com/sancheza/alsageist.git
+  cd alsageist
+  ```
 
 2. Create and activate a Python virtual environment:
 
@@ -323,19 +374,21 @@ pip install --upgrade pip setuptools wheel
 pip install -e .
 ```
 
-4. Install GPIO controller libraries for Raspberry Pi:
+4. Install GPIO hardware libraries:
 
-On **Raspberry Pi OS Bookworm / Raspberry Pi 5 / Pi 4**:
+The required GPIO library depends on your **Raspberry Pi OS version**, not the board model:
 
-```bash
-pip install gpiozero rpi-lgpio
-```
+* **Raspberry Pi OS Bookworm (Recommended, for any Pi 3, Pi 4, or Pi 5):**
+  Bookworm uses the Linux kernel character-device GPIO interface (`lgpio`):
+  ```bash
+  pip install gpiozero rpi-lgpio
+  ```
 
-On **Legacy OS (Bullseye / Buster / Pi 3 RPi.GPIO backend)**:
-
-```bash
-pip install gpiozero RPi.GPIO
-```
+* **Legacy OS (Bullseye / Buster):**
+  Older OS releases use direct memory access (`RPi.GPIO`):
+  ```bash
+  pip install gpiozero RPi.GPIO
+  ```
 
 Verify package installation:
 
@@ -386,27 +439,34 @@ Expected output:
 
 AlsaGeist streams audio directly from memory to your chosen cloud STT provider (Groq Whisper or Gemini Flash) for intent recognition.
 
-### Objective: Set API authentication tokens in your environment.
+### Objective: Configure API authentication tokens via `.env` file or environment variables.
 
-Choose one of the following providers:
+#### Recommended: Local `.env` File
+Create a `.env` file in the `alsageist` project root directory:
 
-#### For Groq Whisper Large v3 (Fastest Latency):
+```bash
+nano .env
+```
+
+Add your API credentials (Groq Whisper Large v3 is recommended for fastest transcription latency):
+
+```ini
+GROQ_API_KEY=gsk_your_groq_api_key_here
+```
+
+Or for Google Gemini Flash:
+
+```ini
+GEMINI_API_KEY=AIzaSy_your_gemini_api_key_here
+```
+
+Save and exit (`Ctrl+O`, `Enter`, `Ctrl+X`). AlsaGeist automatically loads `.env` upon startup.
+
+#### Alternative: Shell Export
+You can also export the variable directly in your shell session:
 
 ```bash
 export GROQ_API_KEY="gsk_your_groq_api_key_here"
-```
-
-#### For Google Gemini Flash STT:
-
-```bash
-export GEMINI_API_KEY="AIzaSy_your_gemini_api_key_here"
-```
-
-To persist these variables across terminal sessions, append them to your profile:
-
-```bash
-echo 'export GROQ_API_KEY="your-api-key-here"' >> ~/.bashrc
-source ~/.bashrc
 ```
 
 ---
@@ -443,6 +503,80 @@ Expected output:
 
 ---
 
+### 8.1 Audio Tuning & Calibration (Volume & Sensitivity)
+
+Because hardware I2S DACs (such as the Google AIY Voice HAT) do not provide ALSA mixer gain controls, AlsaGeist provides software volume attenuation, digital microphone gain boosting, and voice activity energy calibration.
+
+#### Configuration Options
+
+| Parameter | Environment Variable | CLI Flag | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| **Output Volume** | `VOLUME` | `--volume` | `0.8` | Output playback scaling multiplier between `0.0` and `1.0` (e.g. `0.8` for 20% reduction). |
+| **Microphone Gain** | `MIC_GAIN` | `--mic-gain` | `1.5` | Digital input multiplier applied to captured audio frames before threshold detection. |
+| **VAD Threshold** | `VAD_THRESHOLD` | `--threshold` | `0.0035` | Minimum audio RMS energy required to trigger speech capture. |
+
+#### Tuning via `.env` File
+
+Add or modify these variables in your `.env` file:
+
+```ini
+# Audio volume & microphone sensitivity tuning
+VOLUME=0.8
+MIC_GAIN=1.5
+VAD_THRESHOLD=0.0035
+```
+
+#### Tuning via Command-Line Flags
+
+Override settings interactively during testing:
+
+```bash
+./main.py --volume 0.8 --mic-gain 2.0 --threshold 0.0030 --verbose
+```
+
+* **If the speaker is too loud:** Decrease `VOLUME` (e.g., `0.7` or `0.6`).
+* **If you have to speak too close to the microphone:** Increase `MIC_GAIN` (e.g., `1.8` or `2.0`) and/or decrease `VAD_THRESHOLD` (e.g., `0.0030`).
+* **If ambient room noise triggers false activations:** Increase `VAD_THRESHOLD` (e.g., `0.0050`).
+
+---
+
+### 8.2 Pre-Warming Dialogue Audio Cache (0ms TTFB Latency)
+
+On low-power single-board computers like the Raspberry Pi 3, neural TTS synthesis for an unfamiliar phrase can take 6–10 seconds of CPU calculation. AlsaGeist includes a pre-warming utility that synthesizes dialogue phrases in advance and saves them into `models/cache/` as NumPy audio arrays.
+
+> [!NOTE]
+> Pre-warming is a **one-time setup step**. Because cache files are stored permanently on your MicroSD card in `models/cache/`, they persist across system reboots and power cycles. You do not need to run this command again unless you delete the cache directory or add new custom dialogue lines.
+
+#### Objective: Pre-warm all dialogue responses into persistent disk cache.
+
+Execute the pre-warming script:
+
+```bash
+cd ~/alsageist
+./scripts/prewarm_cache.py --all
+```
+
+#### Checking Cache Build Progress
+
+If running the pre-warming script in the background or over SSH, check the number of compiled cache files:
+
+```bash
+ls -1 ~/alsageist/models/cache/*.npy | wc -l
+```
+
+Expected output (counts toward the 317 total responses):
+```text
+317
+```
+
+To inspect running pre-warm processes and CPU activity:
+
+```bash
+ps aux | grep prewarm
+```
+
+---
+
 ## 9. Autonomous Deployment via Systemd Service
 
 ### Objective: Configure AlsaGeist as a background systemd service that starts automatically upon power-on.
@@ -453,7 +587,7 @@ Expected output:
 sudo nano /etc/systemd/system/alsageist.service
 ```
 
-2. Add the following unit configuration (replace `<username>` with your actual Linux user, e.g. `pi` or `alsageist`):
+2. Add the following unit configuration (replace `<username>` with your actual Linux user, e.g. `alsageist` or `pi`):
 
 ```ini
 [Unit]
@@ -464,9 +598,9 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=<username>
-WorkingDirectory=/home/<username>/alsageist
 Environment="PYTHONUNBUFFERED=1"
-Environment="GROQ_API_KEY=gsk_your_groq_api_key_here"
+EnvironmentFile=-/home/<username>/alsageist/.env
+WorkingDirectory=/home/<username>/alsageist
 ExecStart=/home/<username>/alsageist/venv/bin/python3 /home/<username>/alsageist/main.py
 Restart=always
 RestartSec=3
@@ -539,3 +673,19 @@ journalctl -u alsageist.service -f
 ### Issue: `Speech recognition timed out / Network unreachable`
 * **Cause:** Wi-Fi connection dropped or DNS resolution failed during STT inference.
 * **Fix:** Verify internet routing with `curl -I https://api.groq.com` or `curl -I https://generativelanguage.googleapis.com`. If using Wi-Fi on a front porch, verify RSSI signal strength with `iwconfig wlan0`.
+
+### Issue: `Git clone prompts for password` or `Support for password authentication was removed`
+* **Cause:** The repository is private, and GitHub requires authentication credentials rather than an account password.
+* **Fix:** Authenticate using GitHub CLI (`gh auth login`) before cloning:
+  ```bash
+  sudo apt install -y gh
+  gh auth login
+  ```
+  Answer the prompts (`GitHub.com` -> `HTTPS` -> `Yes` -> `Login with a web browser`), enter the displayed code at `https://github.com/login/device`, and run `git clone` again. Alternatively, clone via SSH key (`git clone git@github.com:sancheza/alsageist.git`).
+
+### Issue: `alsamixer: This sound device does not have any controls`
+* **Cause:** The Google AIY Voice HAT V1 uses a fixed-gain I2S codec driver without hardware mixer registers.
+* **Fix:** This is normal and expected behavior for the Voice HAT. AlsaGeist outputs audio directly to the DAC and requires no mixer adjustment. Verify that hardware audio works by running:
+  ```bash
+  speaker-test -c 2 -r 48000 -D default -t wav
+  ```

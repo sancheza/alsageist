@@ -1734,7 +1734,9 @@ class GrimjawIntentEngine:
 
         # Lingerer escalation for unrecognized phrases on late turns
         if self._turn_count >= 8 and random.random() < 0.6:
-            return self._pick_unique(self._escalation_lines), "lingerer_escalation"
+            chosen = self._pick_unique(self._escalation_lines)
+            self.reset_conversation()
+            return chosen, "lingerer_escalation"
 
         # Fallback for unrecognized phrases
         return self._pick_unique(self._fallbacks), "fallback_unrecognized"

@@ -34,10 +34,13 @@ logs/*.log
 logs/*.jsonl
 !logs/.gitkeep
 
-# Large neural model weights (download on demand)
+# Large neural model weights & audio cache (download/generate on demand)
 models/piper/*.onnx
 !models/piper/*.onnx.json
 !models/piper/.gitkeep
+models/cache/*.npy
+!models/cache/.gitkeep
+models/vosk*
 
 # Root scratch and preview files
 /preview_*.wav

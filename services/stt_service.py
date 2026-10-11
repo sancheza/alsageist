@@ -21,13 +21,15 @@ class SpeechToTextService:
         self,
         groq_api_key: Optional[str] = None,
         gemini_api_key: Optional[str] = None,
+        vosk_model_path: Optional[str] = None,
         sample_rate: int = 16000,
     ) -> None:
-        """Initialize STT service with available API keys.
+        """Initialize STT service with available API keys and offline Vosk model.
 
         Args:
             groq_api_key: Optional Groq API key for Whisper Large v3.
             gemini_api_key: Optional Gemini API key for Gemini Flash audio transcription.
+            vosk_model_path: Optional path to local Vosk offline model directory.
             sample_rate: Input audio sample rate (default: 16000 Hz).
         """
         self.groq_api_key = groq_api_key or os.environ.get("GROQ_API_KEY")
@@ -36,9 +38,26 @@ class SpeechToTextService:
         )
         self.sample_rate = sample_rate
 
-        if not self.groq_api_key and not self.gemini_api_key:
+        # Initialize offline Vosk model if available
+        self._vosk_model = None
+        candidates = [
+            vosk_model_path,
+            os.environ.get("VOSK_MODEL_PATH"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "models", "vosk-model-small-en-us-0.15"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "models", "vosk-model-small-en-us"),
+        ]
+        chosen_path = next((p for p in candidates if p and os.path.isdir(p)), None)
+        if chosen_path:
+            try:
+                from vosk import Model, SetLogLevel
+                SetLogLevel(-1)
+                self._vosk_model = Model(chosen_path)
+            except Exception as exc:
+                print(f"Warning: Failed to load offline Vosk model from '{chosen_path}': {exc}")
+
+        if not self.groq_api_key and not self.gemini_api_key and not self._vosk_model:
             raise ValueError(
-                "Neither GROQ_API_KEY nor GEMINI_API_KEY is configured for Speech-to-Text."
+                "Neither GROQ_API_KEY nor GEMINI_API_KEY nor offline Vosk model is configured for Speech-to-Text."
             )
 
     def _audio_to_wav_bytes(self, audio_array: np.ndarray) -> bytes:
@@ -72,11 +91,37 @@ class SpeechToTextService:
 
         return wav_io.getvalue()
 
-    def transcribe(self, audio_array: np.ndarray) -> str:
+    def transcribe_offline(self, audio_array: np.ndarray) -> str:
+        """Transcribe in-memory audio array using local offline Vosk engine.
+
+        Args:
+            audio_array: 1D float32 or int16 numpy array.
+
+        Returns:
+            Transcribed text string.
+        """
+        if self._vosk_model is None:
+            raise RuntimeError("Offline Vosk model is not loaded.")
+
+        from vosk import KaldiRecognizer
+
+        if audio_array.dtype == np.int16:
+            int16_bytes = audio_array.tobytes()
+        else:
+            clipped = np.clip(audio_array, -1.0, 1.0)
+            int16_bytes = (clipped * 32767.0).astype(np.int16).tobytes()
+
+        rec = KaldiRecognizer(self._vosk_model, float(self.sample_rate))
+        rec.AcceptWaveform(int16_bytes)
+        res = json.loads(rec.FinalResult())
+        return res.get("text", "").strip()
+
+    def transcribe(self, audio_array: np.ndarray, offline: bool = False) -> str:
         """Transcribe in-memory audio array into text.
 
         Args:
             audio_array: 1D audio sample array.
+            offline: If True, force using the offline local model.
 
         Returns:
             Transcribed text string.
@@ -84,6 +129,9 @@ class SpeechToTextService:
         Raises:
             RuntimeError: If transcription fails.
         """
+        if offline:
+            return self.transcribe_offline(audio_array)
+
         wav_bytes = self._audio_to_wav_bytes(audio_array)
 
         if self.groq_api_key:
@@ -91,10 +139,26 @@ class SpeechToTextService:
                 return self._transcribe_groq(wav_bytes)
             except Exception as exc:
                 if self.gemini_api_key:
-                    return self._transcribe_gemini(wav_bytes)
+                    try:
+                        return self._transcribe_gemini(wav_bytes)
+                    except Exception:
+                        pass
+                if self._vosk_model:
+                    return self.transcribe_offline(audio_array)
                 raise RuntimeError(f"Groq Whisper transcription failed: {exc}") from exc
 
-        return self._transcribe_gemini(wav_bytes)
+        if self.gemini_api_key:
+            try:
+                return self._transcribe_gemini(wav_bytes)
+            except Exception as exc:
+                if self._vosk_model:
+                    return self.transcribe_offline(audio_array)
+                raise RuntimeError(f"Gemini transcription failed: {exc}") from exc
+
+        if self._vosk_model:
+            return self.transcribe_offline(audio_array)
+
+        raise RuntimeError("No transcription backend available.")
 
     def _transcribe_gemini(self, wav_bytes: bytes) -> str:
         """Transcribe using fast Google Gemini multimodal audio transcription."""

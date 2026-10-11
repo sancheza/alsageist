@@ -21,6 +21,8 @@ class AudioIO:
         block_size: int = 480,  # 30ms at 16kHz
         device_input: Optional[str] = None,
         device_output: Optional[str] = None,
+        volume: float = 1.0,
+        mic_gain: float = 1.0,
     ) -> None:
         """Initialize the Audio I/O manager.
 
@@ -30,12 +32,16 @@ class AudioIO:
             block_size: Number of samples per buffer frame (default: 480 for 30ms).
             device_input: Name or index of input hardware device.
             device_output: Name or index of output hardware device.
+            volume: Software output volume scaling (0.0 to 1.0, default: 1.0).
+            mic_gain: Software input gain multiplier (default: 1.0).
         """
         self.sample_rate = sample_rate
         self.channels = channels
         self.block_size = block_size
         self.device_input = self._resolve_device(device_input, kind="input")
         self.device_output = self._resolve_device(device_output, kind="output")
+        self.volume = min(1.0, max(0.0, float(volume)))
+        self.mic_gain = max(0.1, float(mic_gain))
 
         self._input_queue: queue.Queue = queue.Queue()
         self._input_stream: Optional[sd.InputStream] = None
@@ -81,9 +87,14 @@ class AudioIO:
             if indata.ndim > 1 and indata.shape[1] > 1:
                 # Downmix multi-channel / stereo audio to clean mono in RAM
                 mono = np.mean(indata, axis=1, dtype=np.float32)
+                if self.mic_gain != 1.0:
+                    mono = np.clip(mono * self.mic_gain, -1.0, 1.0)
                 self._input_queue.put(mono)
             else:
-                self._input_queue.put(indata.flatten().astype(np.float32))
+                flat = indata.flatten().astype(np.float32)
+                if self.mic_gain != 1.0:
+                    flat = np.clip(flat * self.mic_gain, -1.0, 1.0)
+                self._input_queue.put(flat)
 
     def start_capture(self) -> None:
         """Start non-blocking continuous microphone capture."""
@@ -214,6 +225,9 @@ class AudioIO:
             play_data = audio_data.astype(np.float32) / 32768.0
         else:
             play_data = audio_data.astype(np.float32)
+
+        if self.volume != 1.0:
+            play_data = np.clip(play_data * self.volume, -1.0, 1.0)
 
         try:
             sd.play(play_data, samplerate=sr, device=self.device_output, blocking=blocking)

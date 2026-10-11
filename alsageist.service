@@ -1,0 +1,17 @@
+[Unit]
+Description=AlsaGeist Autonomous Conversational Halloween Display
+After=sound.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=asanchez
+Environment="PYTHONUNBUFFERED=1"
+EnvironmentFile=-/home/asanchez/alsageist/.env
+WorkingDirectory=/home/asanchez/alsageist
+ExecStart=/home/asanchez/venv/bin/python3 /home/asanchez/alsageist/main.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

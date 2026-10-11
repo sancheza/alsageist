@@ -13,6 +13,7 @@ Usage:
 import argparse
 import os
 import signal
+import socket
 import sys
 import time
 
@@ -71,8 +72,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--threshold",
         type=float,
-        default=0.006,
-        help="Minimum audio RMS energy threshold for speech detection (default: 0.006). Increase if false-triggering in loud rooms.",
+        default=float(os.environ.get("VAD_THRESHOLD", 0.0035)),
+        help="Minimum audio RMS energy threshold for speech detection (default: 0.0035 or $VAD_THRESHOLD). Increase if false-triggering in loud rooms.",
+    )
+    parser.add_argument(
+        "--volume",
+        type=float,
+        default=float(os.environ.get("VOLUME", 0.8)),
+        help="Playback audio output volume multiplier between 0.0 and 1.0 (default: 0.8 or $VOLUME).",
+    )
+    parser.add_argument(
+        "--mic-gain",
+        type=float,
+        default=float(os.environ.get("MIC_GAIN", 1.5)),
+        help="Microphone digital input gain multiplier (default: 1.5 or $MIC_GAIN).",
     )
     parser.add_argument(
         "--min-speech-sec",
@@ -97,6 +110,11 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.85,
         help="Piper generator noise level (default: 0.85).",
+    )
+    parser.add_argument(
+        "--no-greeting",
+        action="store_true",
+        help="Disable spoken greeting announcement upon startup.",
     )
     return parser.parse_args()
 
@@ -125,6 +143,8 @@ class AlsaGeistAgent:
             block_size=480,  # 30ms frames
             device_input=args.input_device,
             device_output=args.output_device,
+            volume=args.volume,
+            mic_gain=args.mic_gain,
         )
 
         # 3. Voice Activity Detector (Configured for robust ambient noise rejection)
@@ -159,7 +179,43 @@ class AlsaGeistAgent:
         # 7. Interaction Logger
         self.logger = InteractionLogger(log_dir="logs")
 
+        # 8. Network status & Offline STT tracking
+        self.is_online = self._check_internet()
+        self.last_net_check_time = time.time()
+        self.net_check_interval = 15.0 * 60.0  # 15 minutes
+
         self.led.set_button_callback(self._on_button_press)
+
+    @staticmethod
+    def _check_internet(timeout: float = 2.5) -> bool:
+        """Check if external internet connectivity is available."""
+        test_hosts = [("8.8.8.8", 53), ("1.1.1.1", 53)]
+        for host, port in test_hosts:
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(timeout)
+                sock.connect((host, port))
+                sock.close()
+                return True
+            except Exception:
+                continue
+        return False
+
+    def _announce_mode(self, online: bool) -> None:
+        """Announce current online or offline operational mode."""
+        msg = "NOW IN ONLINE MODE" if online else "NOW IN OFFLINE MODE"
+        print(f"\n💀 Grimjaw (network): \"{msg}\"")
+        try:
+            audio_data, sample_rate = self.tts.synthesize(msg)
+            self.led.set_state(LEDState.SPEAKING)
+            self.audio.mute_capture()
+            self.audio.play_audio(audio_data, sample_rate=sample_rate, blocking=True)
+        except Exception as exc:
+            print(f"Mode announcement error: {exc}")
+        finally:
+            self.audio.unmute_capture()
+            self.vad.reset()
+            self.led.set_state(LEDState.IDLE)
 
     def _reset_dialogue(self) -> None:
         """Reset conversational context for the next trick-or-treater."""
@@ -169,11 +225,35 @@ class AlsaGeistAgent:
             self.dialogue_engine.reset_history()
 
     def _on_button_press(self) -> None:
-        """Handle arcade button press interrupt."""
-        print("\n[BUTTON] Arcade button pressed: interrupting/triggering!")
+        """Handle arcade button press: cycle volume by 10% and announce new level."""
+        # 1. Calculate new volume level (step by 0.10, cycle 1.0 -> 0.0)
+        current_vol = round(self.audio.volume, 2)
+        if current_vol >= 0.99:
+            new_vol = 0.0
+        else:
+            new_vol = min(1.0, round(current_vol + 0.10, 2))
+
+        self.audio.volume = new_vol
+        pct = int(round(new_vol * 100))
+        print(f"\n[BUTTON] Volume button pressed: {pct}%")
+
+        # 2. Stop ongoing playback, interrupt speech, and state new volume
         self.audio.stop_playback()
         self._reset_dialogue()
         self.vad.reset()
+
+        announcement = f"Volume {pct} percent."
+        try:
+            audio_data, sample_rate = self.tts.synthesize(announcement)
+            self.led.set_state(LEDState.SPEAKING)
+            self.audio.mute_capture()
+            self.audio.play_audio(audio_data, sample_rate=sample_rate, blocking=True)
+        except Exception as exc:
+            print(f"Volume announcement error: {exc}")
+        finally:
+            self.audio.unmute_capture()
+            self.vad.reset()
+            self.led.set_state(LEDState.IDLE)
 
     def start(self) -> None:
         """Run the real-time hands-free conversational loop."""
@@ -191,12 +271,27 @@ class AlsaGeistAgent:
         print(" Press Ctrl+C to stop.")
         print("=" * 70 + "\n")
 
+        # Spoken announcements upon startup
+        if not getattr(self.args, "no_greeting", False):
+            self._play_startup_greeting()
+            if not self.is_online:
+                self._announce_mode(online=False)
+
         try:
             while self.running:
+                # Check internet access every 15 minutes (or switch modes dynamically)
+                now = time.time()
+                if now - self.last_net_check_time > self.net_check_interval:
+                    self.last_net_check_time = now
+                    currently_online = self._check_internet()
+                    if currently_online != self.is_online:
+                        self.is_online = currently_online
+                        self._announce_mode(online=self.is_online)
+
                 frame = self.audio.read_frame(timeout=0.05)
                 if frame is None:
-                    # Check for 15s idle reset
-                    if time.time() - last_activity_time > 15.0:
+                    # Check for 10s idle reset between visitors
+                    if now - last_activity_time > 10.0:
                         self._reset_dialogue()
                     continue
 
@@ -226,7 +321,7 @@ class AlsaGeistAgent:
 
         # 1. Speech-to-Text
         try:
-            user_text = self.stt.transcribe(utterance_pcm)
+            user_text = self.stt.transcribe(utterance_pcm, offline=not self.is_online)
         except Exception as exc:
             print(f"STT Error: {exc}")
             self.led.set_state(LEDState.ERROR)
@@ -332,6 +427,22 @@ class AlsaGeistAgent:
             self.audio.unmute_capture()
             self.vad.reset()
 
+    def _play_startup_greeting(self) -> None:
+        """Play an initial greeting announcement when the agent first wakes up."""
+        greeting_text = "I am Grimjaw, sentinel of the crypt. Step forward if ye dare!"
+        print(f"\n💀 Grimjaw (startup): \"{greeting_text}\"")
+        try:
+            audio_data, sample_rate = self.tts.synthesize(greeting_text)
+            self.led.set_state(LEDState.SPEAKING)
+            self.audio.mute_capture()
+            self.audio.play_audio(audio_data, sample_rate=sample_rate, blocking=True)
+        except Exception as exc:
+            print(f"Startup Greeting Error: {exc}")
+        finally:
+            self.audio.unmute_capture()
+            self.vad.reset()
+            self.led.set_state(LEDState.IDLE)
+
     def stop(self) -> None:
         """Clean up all audio streams and LED threads."""
         self.running = False
@@ -341,12 +452,42 @@ class AlsaGeistAgent:
         print("AlsaGeist terminated cleanly.")
 
 
+def load_env_file(path: str = ".env") -> None:
+    """Load key-value environment variables from an environment file if present.
+
+    Args:
+        path: Relative or absolute path to the environment file.
+    """
+    candidates = [
+        path,
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), path),
+    ]
+    target_path = next((p for p in candidates if os.path.isfile(p)), None)
+    if not target_path:
+        return
+
+    try:
+        with open(target_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                key = key.strip()
+                val = val.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = val
+    except Exception as exc:
+        print(f"Warning: Failed to load environment file from {target_path}: {exc}")
+
+
 def main() -> int:
     """Main application entry point.
 
     Returns:
         Exit code (0 for success, non-zero for failure).
     """
+    load_env_file()
     args = parse_args()
 
     agent = AlsaGeistAgent(args)
