@@ -317,3 +317,24 @@ def test_time_and_weather_intent_classification():
         _, intent = engine.classify_and_respond(q)
         assert intent == "weather_and_temperature", f"Failed for '{q}': got intent '{intent}'"
 
+
+def test_random_content_intent():
+    """Verify that asking for something random yields a line from the general pool and never costume feedback."""
+    engine = GrimjawIntentEngine()
+
+    random_queries = [
+        "Say something random",
+        "Say a random line",
+        "Tell me something random",
+        "Give me a random quote",
+        "Say anything",
+    ]
+    for q in random_queries:
+        resp, intent = engine.classify_and_respond(q)
+        assert intent == "random_content", f"Failed for '{q}': got intent '{intent}'"
+        assert len(resp) > 5
+        # Ensure it does not provide costume feedback
+        assert "dumpster" not in resp.lower()
+        assert "dressing up as me" not in resp.lower()
+        assert "who are you supposed to be" not in resp.lower()
+

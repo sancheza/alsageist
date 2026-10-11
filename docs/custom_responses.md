@@ -218,8 +218,8 @@ A canonical reference guide of distinct spoken prompts and questions that visito
 - You're ugly!
 - Don't call me a flesh bag.
 - That was funny!
-- That's great to hear! / Good to hear.
 - Where do you live?
+- Say something random / Say a random line / Tell me something random *(Grimjaw shares a random line, movie quote, joke, song, or lore snippet across his entire repertoire, excluding costume feedback)*
 
 ---
 

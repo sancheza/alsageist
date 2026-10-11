@@ -666,7 +666,7 @@ class GrimjawIntentEngine:
                 [
                     r"\b(hey soul classics?|soul classics?)\b",
                     r"\b(can i borrow|borrow a copy|have a copy).*(hey soul|soul classics?)\b",
-                    r"\b(say anything|lloyd dobler)\b",
+                    r"\b(movie say anything|film say anything|say anything movie|lloyd dobler)\b",
                 ],
                 [
                     "No, my brother, you have to go buy your own!",
@@ -2029,7 +2029,30 @@ class GrimjawIntentEngine:
                     "Off you go into the dark! Watch out for the ghouls in the bushes!",
                 ],
             ),
+            # 22b. Random Line / Quote / Song / Content Request
+            (
+                "random_content",
+                [
+                    r"\b(say|tell me|give me|share|do)\b.*\b(something random|a random line|a random quote|a random song|anything random|random thing)\b",
+                    r"\bsay something\b",
+                    r"\bsay anything\b",
+                    r"\btell me something\b",
+                    r"\btell me anything\b",
+                    r"\brandom quote\b",
+                    r"\brandom line\b",
+                ],
+                [],  # Dynamically populated from self._random_content_pool
+            ),
         ]
+
+        # Compile a curated pool of quotes, songs, jokes, and lore (excluding costume feedback)
+        self._random_content_pool: List[str] = []
+        for name, _, responses in self._intent_rules:
+            if name.startswith("costume") or name in ("costume", "favorite_costume"):
+                continue
+            for r in responses:
+                if r and r not in self._random_content_pool:
+                    self._random_content_pool.append(r)
 
         self._fallbacks: List[str] = [
             "Speak up, flesh-bag! I have no ears, just empty holes in my skull!",
@@ -2070,7 +2093,10 @@ class GrimjawIntentEngine:
         for intent_name, patterns, responses in self._intent_rules:
             for pattern in patterns:
                 if re.search(pattern, clean_text, re.IGNORECASE):
-                    chosen = self._pick_unique(responses)
+                    if intent_name == "random_content":
+                        chosen = self._pick_unique(self._random_content_pool)
+                    else:
+                        chosen = self._pick_unique(responses)
                     if intent_name in ("goodbye", "holidays_and_farewell") and any(
                         w in clean_text for w in ["bye", "see you", "thank", "next year"]
                     ):
