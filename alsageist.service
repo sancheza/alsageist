@@ -1,5 +1,5 @@
 [Unit]
-Description=AlsaGeist Autonomous Conversational Halloween Display
+Description=AlsaGeist Autonomous Conversational Display Engine
 After=sound.target network-online.target
 Wants=network-online.target
 

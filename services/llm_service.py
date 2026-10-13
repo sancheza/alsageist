@@ -1,6 +1,6 @@
-"""Conversational LLM service managing the Grimjaw Crypt Skeleton persona.
+"""Conversational LLM service managing persona dialogue reasoning.
 
-Generates terse, sarcastic porch banter in response to trick-or-treaters
+Generates terse, character-accurate banter in response to visitors
 using Groq Llama 3.3 or Gemini Flash.
 """
 
@@ -23,7 +23,7 @@ GRIMJAW_SYSTEM_PROMPT = (
 
 
 class ConversationalLLMService:
-    """Dialogue reasoning engine for the Halloween prop."""
+    """Dialogue reasoning engine for the conversational display."""
 
     def __init__(
         self,

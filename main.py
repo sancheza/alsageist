@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""AlsaGeist - Real-Time Conversational Halloween Display.
+"""AlsaGeist - Autonomous Voice-Driven Conversational Display Engine.
 
-Autonomous voice-driven Halloween prop running in-memory streaming dialogue
-with local Piper neural TTS on macOS and Raspberry Pi.
+Autonomous voice-driven animatronic and display engine running in-memory streaming dialogue
+with pluggable personality profiles, low-latency VAD, and local Piper neural TTS.
 
 Usage:
     ./main.py
+    ./main.py --personality snowman
     ./main.py --input-device "Microphone" --output-device "Speaker"
     ./main.py --verbose
 """
@@ -37,7 +38,7 @@ def parse_args() -> argparse.Namespace:
         Parsed arguments namespace.
     """
     parser = argparse.ArgumentParser(
-        description="AlsaGeist: Autonomous Conversational Halloween Display."
+        description="AlsaGeist: Autonomous Voice-Driven Conversational Display Engine."
     )
     parser.add_argument(
         "-v",
@@ -186,19 +187,31 @@ class AlsaGeistAgent:
         self.llm_fallback_service: Optional[ConversationalLLMService] = None
 
         if args.engine == "intent":
-            from services.intent_service import GrimjawIntentEngine
-            self.dialogue_engine = GrimjawIntentEngine(
-                personality_file=getattr(args, "personality", "grimjaw")
-            )
+            from services.intent_service import PersonaIntentEngine
+            personality = getattr(args, "personality", "grimjaw")
+            self.dialogue_engine = PersonaIntentEngine(personality_name_or_path=personality)
             if self.llm_fallback_enabled:
                 try:
-                    self.llm_fallback_service = ConversationalLLMService()
+                    profile = getattr(self.dialogue_engine, "profile", None)
+                    if profile:
+                        persona_prompt = (
+                            f"You are {profile.display_name}. {profile.description}\n"
+                            "Rules you must strictly obey:\n"
+                            "1. Keep every response under 2 sentences maximum.\n"
+                            "2. Be witty, dry, and stay in character.\n"
+                            "3. Never output emojis, markdown formatting, asterisks, or sound effect tags.\n"
+                            "4. Return plain spoken dialogue only."
+                        )
+                        self.llm_fallback_service = ConversationalLLMService(system_prompt=persona_prompt)
+                    else:
+                        self.llm_fallback_service = ConversationalLLMService()
                     print("  [LLM Fallback]: Active for indeterminate prompts.")
                 except Exception as exc:
                     print(f"  [LLM Fallback Warning]: Could not initialize LLM service: {exc}. Generic fallback will be used.")
                     self.llm_fallback_service = None
         else:
             self.dialogue_engine = ConversationalLLMService()
+
 
         # 6. Local Piper Neural TTS
         self.tts = PiperTTSService(
@@ -313,8 +326,8 @@ class AlsaGeistAgent:
             self.vad.reset()
             self.led.set_state(LEDState.OFF)
         else:
-            # 2. Re-enable / Unmute Grimjaw (Mic and Speaker on, LED idle/on)
-            print("\n[BUTTON] 5-second hold detected: Re-enabling and unmuting Grimjaw (Normal operation)...")
+            # 2. Re-enable / Unmute display (Mic and Speaker on, LED idle/on)
+            print("\n[BUTTON] 5-second hold detected: Re-enabling and unmuting display (Normal operation)...")
             self.is_disabled = False
             self.audio.unmute_capture()
             self.vad.reset()
@@ -328,9 +341,17 @@ class AlsaGeistAgent:
         self.led.set_state(LEDState.IDLE)
         last_activity_time = time.time()
 
+        profile_title = "CONVERSATIONAL DISPLAY"
+        voice_desc = "Local ONNX"
+        if hasattr(self.dialogue_engine, "profile") and self.dialogue_engine.profile:
+            profile_title = self.dialogue_engine.profile.display_name.upper()
+            voice_desc = f"{self.dialogue_engine.profile.voice} (Local ONNX)"
+        elif hasattr(self.args, "model_path") and self.args.model_path:
+            voice_desc = f"{os.path.basename(self.args.model_path)} (Local ONNX)"
+
         print("\n" + "=" * 70)
-        print(" 💀 ALSA-GEIST CRYPT SKELETON IS ACTIVE & LISTENING")
-        print(f" Engine: {self.args.engine.upper()} | Voice: Piper Alan (Local ONNX)")
+        print(f" 🎙️  ALSA-GEIST [{profile_title}] IS ACTIVE & LISTENING")
+        print(f" Engine: {self.args.engine.upper()} | Voice: {voice_desc}")
         print(f" Interaction Logging: Active -> {self.logger.jsonl_path}")
         print(" Speak into your microphone to start a conversation.")
         print(" Press Ctrl+C to stop.")

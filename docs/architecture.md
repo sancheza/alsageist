@@ -1,6 +1,6 @@
 # AlsaGeist Architecture
 
-This document describes the software and hardware architecture of **AlsaGeist**, an autonomous, hands-free conversational Halloween display engine powered by Grimjaw the Crypt Skeleton.
+This document describes the software and hardware architecture of **AlsaGeist**, an autonomous, hands-free conversational display engine driven by pluggable personality profiles (defaulting to Grimjaw the Crypt Skeleton).
 
 ---
 

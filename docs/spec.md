@@ -1,4 +1,4 @@
-# Conversational Halloween Display Specification & Architecture
+# Conversational Display Specification & Architecture
 
 ## 1. Project Requirements Summary
 
@@ -163,7 +163,7 @@ alsageist/
 1. Create `/etc/systemd/system/alsageist.service`:
    ```ini
    [Unit]
-   Description=AlsaGeist Conversational Halloween Prop Service
+   Description=AlsaGeist Conversational Display Service
    After=network-online.target sound.target
    Wants=network-online.target sound.target
 

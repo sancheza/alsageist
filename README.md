@@ -1,6 +1,6 @@
 # AlsaGeist
 
-Autonomous, voice-driven conversational animatronic Halloween display engine powered by offline Piper Neural Text-to-Speech (TTS), real-time Voice Activity Detection (VAD), and an offline zero-latency banter engine.
+Autonomous, voice-driven conversational animatronic display engine powered by offline Piper Neural Text-to-Speech (TTS), real-time Voice Activity Detection (VAD), and modular personality profiles.
 
 Designed for cross-platform operation on macOS development workstations and Raspberry Pi hardware with the Google AIY Voice Kit V1.
 
@@ -8,7 +8,7 @@ Designed for cross-platform operation on macOS development workstations and Rasp
 
 ## 1. Overview
 
-AlsaGeist runs an autonomous conversational character ("Grimjaw the Crypt Skeleton") that guards a candy bowl. It captures microphone audio in memory, detects completed speech boundaries via energy-based VAD, matches visitor utterances against an offline intent library, synthesizes character audio locally via Piper neural models in RAM, and drives an illuminated arcade status LED.
+AlsaGeist runs an autonomous conversational character driven by pluggable personality profiles (defaulting to Grimjaw the Crypt Skeleton). It captures microphone audio in memory, detects completed speech boundaries via energy-based VAD, matches visitor utterances against an offline intent library, synthesizes character audio locally via Piper neural models in RAM, and drives an illuminated arcade status LED.
 
 ### Key Capabilities
 * **Zero Disk I/O:** Audio capture, VAD framing, and speech synthesis operate directly in memory as raw PCM numpy arrays.

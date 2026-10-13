@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "alsageist"
 version = "1.0.0"
-description = "Autonomous Voice-Driven Conversational Halloween Display"
+description = "Autonomous Voice-Driven Conversational Display Engine"
 authors = [{ name = "sancheza" }]
 readme = "README.md"
 requires-python = ">=3.9"

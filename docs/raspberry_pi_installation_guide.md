@@ -616,7 +616,7 @@ sudo nano /etc/systemd/system/alsageist.service
 
 ```ini
 [Unit]
-Description=AlsaGeist Autonomous Conversational Halloween Display
+Description=AlsaGeist Autonomous Conversational Display Engine
 After=sound.target network-online.target
 Wants=network-online.target
 
@@ -642,6 +642,12 @@ sudo systemctl enable alsageist.service
 sudo systemctl start alsageist.service
 ```
 
+Alternatively, use the installer script to automatically configure and enable the unit from `.env`:
+
+```bash
+./scripts/install_service.sh --enable
+```
+
 4. Verify service status:
 
 ```bash
@@ -650,7 +656,7 @@ sudo systemctl status alsageist.service
 
 Expected output:
 ```text
-● alsageist.service - AlsaGeist Autonomous Conversational Halloween Display
+● alsageist.service - AlsaGeist Autonomous Conversational Display Engine
      Loaded: loaded (/etc/systemd/system/alsageist.service; enabled; preset: enabled)
      Active: active (running) since Sat 2026-10-10 15:45:00 UTC; 5s ago
    Main PID: 1248 (python3)
