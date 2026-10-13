@@ -287,3 +287,81 @@ When trick-or-treaters announce their costumes or respond to Grimjaw's costume i
 - I'm an astronaut!
 - I'm Baby Yoda! / I'm Grogu!
 - I'm a zombie!
+
+---
+
+## 12. Adding Custom Intents & Personalities
+
+Custom intents can be added dynamically using the `add_intent.py` CLI script or the reusable `core.intent_builder` module. All intents are stored externally in `data/personalities/<personality>.json` and loaded into the runtime without code modifications.
+
+### 12.1 CLI Tool: `scripts/add_intent.py`
+
+#### Interactive Wizard
+Run without arguments or with `--interactive`:
+```bash
+./scripts/add_intent.py --interactive
+```
+The wizard tests input queries for collisions against existing intents in real time, prompting to append responses, overwrite, or force create if a conflict is detected.
+
+#### Inspecting and Searching Existing Intents
+
+**Check if a spoken phrase triggers an existing intent:**
+```bash
+./scripts/add_intent.py --check "What is your favorite movie?"
+```
+
+**Search intents by keyword in name or responses:**
+```bash
+./scripts/add_intent.py --search "movie"
+```
+
+**List all intents registered in a personality profile:**
+```bash
+./scripts/add_intent.py -p grimjaw --list
+```
+
+#### Command-Line Invocations & Collision Handling
+
+**Add intent with immediate TTS cache pre-warming:**
+```bash
+./scripts/add_intent.py -q "What is your favorite board game?" -r "Chess! I play with skulls instead of pawns." --prewarm
+```
+
+**Append new responses to an existing intent:**
+```bash
+./scripts/add_intent.py -q "What is your favorite movie?" -r "Beetlejuice, obviously!" --append --prewarm
+```
+
+**Add intent with multiple candidate responses:**
+```bash
+./scripts/add_intent.py -q "Do you like candy corn?" \
+  -r "Candy corn? Wax pretending to be sugar!" \
+  -r "Only if it's two hundred years old!" \
+  --prewarm
+```
+
+**Preview intent generation without saving (Dry Run):**
+```bash
+./scripts/add_intent.py -q "Can you swim?" -r "Only straight to the bottom!" --dry-run
+```
+
+**Target a different personality profile:**
+```bash
+./scripts/add_intent.py -p snowman -q "Are you cold?" -r "I'm literally made of snow!"
+```
+
+### 12.2 Python API Integration
+```python
+from core.intent_builder import create_custom_intent
+
+# Create custom intent with automatic collision detection
+intent, profile = create_custom_intent(
+    query_or_text="What is your favorite dessert?",
+    responses=["Ladyfingers! Actual fingers, that is."],
+    personality_name_or_path="grimjaw",
+    prewarm=True,
+    check_collision=True,
+    collision_action="append",  # 'raise', 'append', 'overwrite', or 'force'
+)
+```
+

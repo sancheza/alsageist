@@ -49,6 +49,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Pre-warm all response lines defined in the intent engine.",
     )
+    parser.add_argument(
+        "-p",
+        "--personality",
+        default=os.environ.get("PERSONALITY", "grimjaw"),
+        help="Personality profile identifier or path (default: $PERSONALITY or grimjaw).",
+    )
     return parser.parse_args()
 
 
@@ -62,7 +68,7 @@ def main() -> int:
 
     print(f"Initializing Piper TTS synthesizer ({args.model_path})...")
     tts = PiperTTSService(model_path=args.model_path)
-    engine = GrimjawIntentEngine()
+    engine = GrimjawIntentEngine(personality_file=args.personality)
 
     # Collect high-priority responses
     phrases = []

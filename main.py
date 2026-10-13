@@ -70,6 +70,11 @@ def parse_args() -> argparse.Namespace:
         help="Dialogue engine: 'intent' (fast offline banter engine) or 'llm' (neural LLM). (default: intent)",
     )
     parser.add_argument(
+        "--personality",
+        default=os.environ.get("PERSONALITY", "grimjaw"),
+        help="Personality profile identifier or JSON path (default: $PERSONALITY or grimjaw).",
+    )
+    parser.add_argument(
         "--model-path",
         default="models/piper/en_GB-alan-medium.onnx",
         help="Path to Piper ONNX model file (default: models/piper/en_GB-alan-medium.onnx).",
@@ -182,7 +187,9 @@ class AlsaGeistAgent:
 
         if args.engine == "intent":
             from services.intent_service import GrimjawIntentEngine
-            self.dialogue_engine = GrimjawIntentEngine()
+            self.dialogue_engine = GrimjawIntentEngine(
+                personality_file=getattr(args, "personality", "grimjaw")
+            )
             if self.llm_fallback_enabled:
                 try:
                     self.llm_fallback_service = ConversationalLLMService()
