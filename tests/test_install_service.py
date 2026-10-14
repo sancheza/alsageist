@@ -9,7 +9,7 @@ SCRIPT_PATH = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "scripts", "install_service.sh")
 )
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-TEMPLATE_PATH = os.path.join(REPO_ROOT, "alsageist.service.template")
+TEMPLATE_PATH = os.path.join(REPO_ROOT, "alsageist.service")
 
 
 def test_install_service_help():

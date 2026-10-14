@@ -239,6 +239,12 @@ class AlsaGeistAgent:
             hold_time_sec=5.0,
         )
 
+        # 10. Control Server (Unix Domain Socket IPC)
+        from core.control_server import ControlServer
+        self.control_server = ControlServer(agent=self)
+        self.start_time = time.time()
+
+
     @staticmethod
     def _check_internet(timeout: float = 2.5) -> bool:
         """Check if external internet connectivity is available."""
@@ -339,6 +345,8 @@ class AlsaGeistAgent:
         self.led.start()
         self.audio.start_capture()
         self.led.set_state(LEDState.IDLE)
+        if hasattr(self, "control_server"):
+            self.control_server.start()
         last_activity_time = time.time()
 
         profile_title = "CONVERSATIONAL DISPLAY"
@@ -572,8 +580,13 @@ class AlsaGeistAgent:
             self.led.set_state(LEDState.IDLE)
 
     def stop(self) -> None:
-        """Clean up all audio streams and LED threads."""
+        """Clean up all audio streams, control server, and LED threads."""
         self.running = False
+        if hasattr(self, "control_server"):
+            try:
+                self.control_server.stop()
+            except Exception:
+                pass
         self.audio.stop_playback()
         self.audio.stop_capture()
         self.led.stop()

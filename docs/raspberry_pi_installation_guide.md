@@ -435,39 +435,54 @@ Expected output:
 
 ---
 
-## 7. Speech-to-Text Environment Configuration
+## 7. Environment Configuration (.env)
 
-AlsaGeist streams audio directly from memory to your chosen cloud STT provider (Groq Whisper or Gemini Flash) for intent recognition.
+AlsaGeist reads runtime settings, API credentials, service parameters, and hardware audio calibration from a local `.env` file in the project root.
 
-### Objective: Configure API authentication tokens via `.env` file or environment variables.
+### Objective: Create and populate the `.env` configuration file from the template.
 
-#### Recommended: Local `.env` File
-Create a `.env` file in the `alsageist` project root directory:
+Copy the template file to `.env`:
 
 ```bash
+cp env.example .env
 nano .env
 ```
 
-Add your API credentials (Groq Whisper Large v3 is recommended for fastest transcription latency):
+### Configuration Parameters
+
+| Category | Variable | Default | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Cloud STT** | `GROQ_API_KEY` | None | Groq Whisper Large v3 authentication token (Recommended for sub-second cloud transcription). |
+| **Cloud STT / LLM** | `GEMINI_API_KEY` | None | Google Gemini authentication token (Alternative STT and conversational LLM fallback). |
+| **Persona** | `PERSONALITY` | `grimjaw` | Active character profile identifier matching `data/personalities/<name>.json`. |
+| **Dialogue Mode** | `LLM_FALLBACK` | `false` | Enables dynamic LLM fallback for indeterminate prompts instead of snarky canned responses (`true`/`false`). |
+| **Service User** | `ALSAGEIST_USER` | `$USER` | Linux user account configured by `scripts/install_service.sh` for background systemd execution. |
+| **Service Directory** | `ALSAGEIST_DIR` | Repository root | Installation directory path written to systemd unit file by `scripts/install_service.sh`. |
+| **Audio Volume** | `VOLUME` | `0.8` | Output playback volume scaling factor (`0.0` to `1.0`). |
+| **Microphone Gain** | `MIC_GAIN` | `1.5` | Digital input multiplier applied to raw captured audio frames before threshold detection. |
+| **VAD Threshold** | `VAD_THRESHOLD` | `0.0035` | Minimum RMS audio energy required to trigger speech capture. |
+
+### Minimal Recommended `.env` File
 
 ```ini
+# Cloud Speech-to-Text (At least one required for online mode)
 GROQ_API_KEY=gsk_your_groq_api_key_here
-```
 
-Or for Google Gemini Flash:
+# Persona Configuration
+PERSONALITY=grimjaw
+LLM_FALLBACK=false
 
-```ini
-GEMINI_API_KEY=AIzaSy_your_gemini_api_key_here
+# Systemd Service Deployment
+ALSAGEIST_USER=pi
+ALSAGEIST_DIR=/home/pi/alsageist
+
+# Audio Output & Input Calibration
+VOLUME=0.8
+MIC_GAIN=1.5
+VAD_THRESHOLD=0.0035
 ```
 
 Save and exit (`Ctrl+O`, `Enter`, `Ctrl+X`). AlsaGeist automatically loads `.env` upon startup.
-
-#### Alternative: Shell Export
-You can also export the variable directly in your shell session:
-
-```bash
-export GROQ_API_KEY="gsk_your_groq_api_key_here"
-```
 
 ---
 

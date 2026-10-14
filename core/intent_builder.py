@@ -76,10 +76,21 @@ class PersonalityProfile:
     fallbacks: List[str] = field(default_factory=list)
     escalation_lines: List[str] = field(default_factory=list)
     intents: List[CustomIntent] = field(default_factory=list)
+    docstring: Optional[Any] = None
+
+    @property
+    def doc(self) -> Optional[str]:
+        """Return the documentation string for this personality profile."""
+        if isinstance(self.docstring, list):
+            return "\n".join(self.docstring)
+        return self.docstring
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize personality profile to JSON-compatible dictionary."""
-        return {
+        data: Dict[str, Any] = {}
+        if self.docstring:
+            data["_doc"] = self.docstring
+        data.update({
             "personality": self.personality,
             "display_name": self.display_name,
             "description": self.description,
@@ -88,7 +99,8 @@ class PersonalityProfile:
             "fallbacks": self.fallbacks,
             "escalation_lines": self.escalation_lines,
             "intents": [intent.to_dict() for intent in self.intents],
-        }
+        })
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PersonalityProfile":
@@ -107,6 +119,7 @@ class PersonalityProfile:
             fallbacks=list(data.get("fallbacks", [])),
             escalation_lines=list(data.get("escalation_lines", [])),
             intents=intents,
+            docstring=data.get("_doc") or data.get("__doc__") or data.get("docstring"),
         )
 
     @classmethod

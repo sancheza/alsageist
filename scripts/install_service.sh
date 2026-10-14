@@ -1,7 +1,7 @@
 #!/bin/bash
 # scripts/install_service.sh - Generate and install AlsaGeist systemd service unit.
 #
-# Generates a systemd unit file from alsageist.service.template, substituting
+# Generates a systemd unit file from alsageist.service, substituting
 # user and directory paths defined in .env or passed via command-line arguments.
 #
 # Usage:
@@ -18,7 +18,7 @@ VERSION="1.0.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-TEMPLATE_PATH="${REPO_DIR}/alsageist.service.template"
+TEMPLATE_PATH="${REPO_DIR}/alsageist.service"
 OUTPUT_PATH="/etc/systemd/system/alsageist.service"
 ENV_PATH="${REPO_DIR}/.env"
 
@@ -36,7 +36,7 @@ Generate and install the AlsaGeist systemd unit file from template.
 Options:
   -u, --user <username>       Target Linux user (default: ALSAGEIST_USER in .env, or \$USER)
   -p, --dir <path>            Installation directory (default: ALSAGEIST_DIR in .env, or repository root)
-  -t, --template <path>       Template file path (default: alsageist.service.template)
+  -t, --template <path>       Template file path (default: alsageist.service)
   -o, --output <path>         Output service file path (default: /etc/systemd/system/alsageist.service)
   -e, --enable                Reload systemd daemon and enable/start the service
   -d, --dry-run               Preview generated service unit without writing to disk

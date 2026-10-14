@@ -96,6 +96,32 @@ def test_personality_profile_persistence():
             os.unlink(tmp_path)
 
 
+def test_personality_profile_docstring():
+    """Verify PersonalityProfile loads and serializes docstrings and parses grimjaw.json doc."""
+    # Test grimjaw.json has docstring loaded
+    grimjaw_path = find_personality_file("grimjaw")
+    grimjaw_profile = PersonalityProfile.load_from_file(grimjaw_path)
+    assert grimjaw_profile.docstring is not None
+    assert "AlsaGeist Personality Profile" in grimjaw_profile.doc
+    assert "1. Purpose & Overview" in grimjaw_profile.doc
+
+    # Test serialization preserves _doc
+    profile = PersonalityProfile(
+        personality="witch",
+        display_name="Hexcrow",
+        description="Wicked witch",
+        docstring=["Line 1", "Line 2"],
+    )
+    data = profile.to_dict()
+    assert "_doc" in data
+    assert data["_doc"] == ["Line 1", "Line 2"]
+    assert profile.doc == "Line 1\nLine 2"
+
+    restored = PersonalityProfile.from_dict(data)
+    assert restored.docstring == ["Line 1", "Line 2"]
+    assert restored.doc == "Line 1\nLine 2"
+
+
 def test_personality_add_and_overwrite_intent():
     """Verify adding intents and updating existing intents."""
     profile = PersonalityProfile(

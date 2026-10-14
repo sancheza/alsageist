@@ -68,29 +68,33 @@ Successfully saved models/piper/en_GB-alan-medium.onnx
 
 ## 5. Configuration & Environment Variables
 
-AlsaGeist uses offline intent matching and local TTS by default. Speech-to-text requires an API key for Groq Whisper or Gemini Flash:
+AlsaGeist uses offline intent matching and local TTS by default. Configure your environment using the provided template:
+
+```bash
+cp env.example .env
+nano .env
+```
 
 | Variable | Description | Default |
 | :--- | :--- | :--- |
 | `GROQ_API_KEY` | Groq API key for high-speed Whisper Large v3 STT | None |
-| `GEMINI_API_KEY` | Google Gemini API key for Gemini Flash STT | None |
-| `LLM_FALLBACK` | Fetch custom LLM response for indeterminate prompts instead of generic canned response | `false` |
+| `GEMINI_API_KEY` | Google Gemini API key for Gemini Flash STT & LLM fallback | None |
+| `PERSONALITY` | Active character personality (`data/personalities/<name>.json`) | `grimjaw` |
+| `LLM_FALLBACK` | Fetch custom LLM response for indeterminate prompts instead of canned response | `false` |
+| `ALSAGEIST_USER` | Target Linux user account for systemd service installation | `$USER` |
+| `ALSAGEIST_DIR` | Installation directory path for systemd service installation | Repository path |
 | `VOLUME` | Audio playback volume multiplier (`0.0` to `1.0`) | `0.8` |
 | `MIC_GAIN` | Microphone digital input gain multiplier | `1.5` |
 | `VAD_THRESHOLD` | RMS audio energy threshold for speech detection | `0.0025` |
 
-Configure your variables in a `.env` file:
-
 ```ini
-GROQ_API_KEY="your-api-key-here"
+# Minimal recommended .env
+GROQ_API_KEY=gsk_your_groq_api_key_here
+PERSONALITY=grimjaw
 LLM_FALLBACK=false
-```
-
-Or export them directly in your environment:
-
-```bash
-export GROQ_API_KEY="your-api-key-here"
-export LLM_FALLBACK=false
+VOLUME=0.8
+MIC_GAIN=1.5
+VAD_THRESHOLD=0.0035
 ```
 
 ---
