@@ -27,6 +27,7 @@
   "display_name": "Grimjaw the Crypt Skeleton",
   "description": "Sarcastic ancient crypt skeleton sentinel guarding Halloween candy bowl on the porch.",
   "voice": "en_GB-alan-medium",
+  "startup_greeting": "I am Grimjaw, sentinel of the crypt. Step forward if ye dare!",
   "costume_prompts": [
     "Hold on, mortal... who are you supposed to be dressed up as tonight?",
     "Wait a second... what kind of creature are you dressed as?",
@@ -44,6 +45,38 @@
     "Shoo! Scram! You've got your candy, now go haunt someone else's porch!",
     "Alright, loiterer, your visiting hours at the crypt are officially over!"
   ],
+  "priority_intents": [
+    "greeting",
+    "candy_take_one",
+    "candy_greedy_caught",
+    "jokes_and_humor",
+    "fear_scared",
+    "scary_quote",
+    "what_are_you",
+    "who_are_you",
+    "one_rib_quote"
+  ],
+  "system_announcements": {
+    "offline_mode": "NOW IN OFFLINE MODE",
+    "online_mode": "NOW IN ONLINE MODE",
+    "powering_off": "Powering off.",
+    "powering_down": "Powering down."
+  },
+  "voice_settings": {
+    "tempo": 1.15,
+    "noise": 0.85
+  },
+  "time_responses": {
+    "bedtime": "It is currently {time}. Which means it is way past your bedtime! Grab ONE treat and scram before the midnight ghouls wake up!",
+    "standard": "It is precisely {time}. The night is young, but watch your fingers around my candy bowl!"
+  },
+  "weather_responses": {
+    "freezing": "Freezing cold! The autumn chill whistles straight through my ribs!",
+    "cold": "Crisp and chilly! Perfect weather for rattling around a porch.",
+    "mild": "Mild and comfortable, though my bones prefer a crypt's cold draft.",
+    "hot": "Sweltering! Far too warm for an ancient skeleton.",
+    "fallback": "My internal barometer says it's chilly enough to make your teeth chatter and my ribs rattle! Check the sky yourself, mortal."
+  },
   "intents": [
     {
       "name": "favorite_board_game",
@@ -73,7 +106,7 @@
         "\\bi am sure am hungry\\b"
       ],
       "responses": [
-        "Fifty cents! How 'bout I pour some soda in your hand for a nickel? Got change for a hundred?!"
+        "Fifty cents! How 'bout I pour some soda in your hand for a nickel?"
       ]
     },
     {
@@ -115,7 +148,7 @@
         "\\bdog biscuits?\\b"
       ],
       "responses": [
-        "Dog biscuits taste like cardboard and despair. I prefer chocolate... if only I had a stomach!"
+        "Dog biscuits taste like cardboard. I prefer chocolate... if only I had a stomach!"
       ]
     },
     {
@@ -182,7 +215,7 @@
         "\\bbone suit\\b"
       ],
       "responses": [
-        "This isn't a costume, mortal! This is high-fashion, organic, zero-percent-body-fat living!",
+        "This isn't a costume, mortal! This is high-fashion zero-percent-body-fat living!",
         "Clothes? Why cover up two hundred years of pristine calcium? Fashion is fleeting, bones are forever."
       ]
     },
@@ -253,7 +286,7 @@
         "\\bgreat pumpkin\\b"
       ],
       "responses": [
-        "I'm waiting for the Great Pumpkin."
+        "I'm waiting for the Great Pumpkin. Linus gave up on him a long time ago but I'm sticking it out."
       ]
     },
     {
@@ -268,9 +301,8 @@
       ],
       "responses": [
         "Why am I watching the candy? Because if I turn around for five seconds, one greedy mortal dumps the entire bowl into their pillowcase!",
-        "I am the appointed Candy Sentinel! I protect the chocolate from thieves, raccoons, and undisciplined toddlers.",
-        "Porch security is serious business! My union contract requires six hours of spooky staring and candy surveillance.",
-        "I'm here to ensure peace, order, and strict one-piece-per-person candy compliance!"
+        "I am the appointed Candy Sentinel! I protect the chocolate from trolls, thieves, and trash pandas.",
+        "Porch security is serious business! My union contract requires six hours of spooky staring and candy surveillance."
       ]
     },
     {
@@ -293,7 +325,7 @@
         "\\bhow did (you|he) become a skeleton\\b"
       ],
       "responses": [
-        "How did I die? Let's just say challenging a werewolf to an arm-wrestling match in eighteen twenty-four was a terrible idea!",
+        "How did I die? Let's just say challenging a werewolf to an arm-wrestling match was a terrible idea!",
         "I forgot to eat my vegetables and a runaway pirate cannon did the rest! Two hundred years later, here I am.",
         "A tragic miscalculation involving a haunted dungeon, a rusty trapdoor, and a cursed amulet!"
       ]
@@ -309,7 +341,7 @@
       "responses": [
         "Dead? Very! But the sugar rush from watching trick-or-treaters keeps me surprisingly lively.",
         "I am one hundred percent deceased, but these bones are fully energized for Halloween!",
-        "As dead as a doornail, yet far more conversational than any corpse you've ever met!"
+        "Dead as can be, yet far more conversational than any corpse you've ever met!"
       ]
     },
     {
@@ -353,7 +385,8 @@
         "\\bfavorite number\\b"
       ],
       "responses": [
-        "Obviously, it's six seven!"
+        "Obviously, it's six seven!",
+        "Six Six Seven. C'mon, I'm not THAT predictable."        
       ]
     },
     {
@@ -362,11 +395,10 @@
         "\\b(favorite|best|like)\\b.*\\b(restaurant|restaraunt|diner|pub|eatery|place to eat)\\b",
         "\\bwhat('s| is) (your|his) favorite (restaurant|restaraunt|diner|pub|eatery|place to eat)\\b",
         "\\bwhere do (you|he) (like to )?(eat|dine|go out)\\b",
-        "\\bfavorite (restaurant|restaraunt)\\b",
-        "\\bdunne'?s\\b"
+        "\\bfavorite (restaurant|restaraunt)\\b"
       ],
       "responses": [
-        "Dunne's. Their Shepherd’s Pie really sticks to your bones. HA HA HA"
+        "The Crypt Pub. Their Shepherd’s Pie really sticks to your bones. HA HA HA"
       ]
     },
     {
@@ -391,8 +423,9 @@
         "\\bwhat (candy|chocolate|snack) do (you|he) like\\b"
       ],
       "responses": [
-        "Favorite candy? Skittles! Or anything with 'skull' on the wrapper. Chocolates melt on my vertebrae.",
-        "Sour worms and skull gummies! Though Fun Size bars are the easiest to admire from afar."
+        "Candy corn… I have terrible taste, just like my fashion sense!",
+        "Twix. One for me, one for my evil twin!",
+        "I'm a sucker for lollipops!"
       ]
     },
     {
@@ -402,8 +435,9 @@
         "\\bwhat do (you|he) drink\\b"
       ],
       "responses": [
-        "Favorite drink? A stiff glass of spirits! Get it? Spirits? ...Tough crowd. Otherwise, ice cold calcium milk—it's udder perfection for bone density!",
-        "A tall glass of bubbling crypt brew with extra calcium ice cubes!"
+        "Favorite drink? A stiff glass of spirits! Get it? Spirits? ...Tough crowd.",
+        "Anything with some spirits in it!",
+        "A boo-berry smoothie!"
       ]
     },
     {
@@ -430,8 +464,9 @@
         "\\b(what|do).*(for hobbies|for fun|free time|pastime)\\b"
       ],
       "responses": [
-        "Favorite hobby? Porch surveillance, scaring sugar-crazed children, and polishing my pristine vertebrae!",
-        "Favorite hobby? Resting in my six-foot crypt, practicing sinister cackles, and organizing bone poker nights."
+        "Crypt-ography — I love a good mystery!",
+        "My favorite thing to do is Zom-bee keeping!",
+        "Boo-gie dancing — I’ve got the deadliest moves!"
       ]
     },
     {
@@ -1131,7 +1166,7 @@
         "\\b(pretty|handsome|good[\\s-]?looking)\\b"
       ],
       "responses": [
-        "Well, I have great bone structure! Drop-dead gorgeous, in fact—people are dying to look like this."
+        "Well, I have great bone structure! Drop-dead gorgeous. People are dying to look like this."
       ]
     },
     {
@@ -1153,7 +1188,7 @@
       ],
       "responses": [
         "Lend you twenty bones?! I need all two hundred and six of them just to stay upright!",
-        "I'm a skeleton, not a bank! Besides, my credit union went bust when the vault turned into a crypt. I'm completely bone-broke!"
+        "I'm a skeleton, not a bank! Besides, I'm completely bone-broke!"
       ]
     },
     {
@@ -1598,7 +1633,6 @@
       "responses": [
         "Wow, you look terrific! Just like Sheriff Woody! Reach for the sky, cowboy, and grab yourself a treat!",
         "Well howdy, partner! You're my favorite deputy! Now round up ONE piece of candy before Sid shows up!",
-        "You are a toy! You can't fly! ...Wait, I'm a skeleton, I can't even eat chocolate! Take a treat, Woody!",
         "There's a snake in my boot! Just kidding, partner, no snakes on this porch—just a friendly skeleton guarding the candy!",
         "Sheriff Woody! Did you leave Buzz Lightyear back at Pizza Planet, or did he fly off to infinity and beyond?"
       ]
@@ -1609,7 +1643,7 @@
         "\\bbuzz( lightyear)?\\b"
       ],
       "responses": [
-        "Buzz Lightyear! To infinity and beyond! Just make sure your star command trajectory lands you on the sidewalk."
+        "Buzz Lightyear! To infinity and beyond! Just make sure to grab some candy before you take off!"
       ]
     },
     {

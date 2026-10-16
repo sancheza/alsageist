@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 
 
-GRIMJAW_SYSTEM_PROMPT = (
+DEFAULT_SYSTEM_PROMPT = (
     "You are Grimjaw, a sarcastic, ancient skeletal guardian stationed on the porch guarding "
     "the Halloween candy bowl. "
     "Rules you must strictly obey:\n"
@@ -20,6 +20,8 @@ GRIMJAW_SYSTEM_PROMPT = (
     "3. Never output emojis, markdown formatting, asterisks, stage directions, or sound effect tags (like *laughs* or [cackles]).\n"
     "4. Return plain spoken dialogue only."
 )
+GRIMJAW_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
+DEFAULT_FALLBACK_RESPONSE = "Halt, little mortal! Reach into my bowl if you dare, but leave before I take your bones!"
 
 
 class ConversationalLLMService:
@@ -29,16 +31,22 @@ class ConversationalLLMService:
         self,
         groq_api_key: Optional[str] = None,
         gemini_api_key: Optional[str] = None,
-        system_prompt: str = GRIMJAW_SYSTEM_PROMPT,
+        system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         max_history_turns: int = 6,
+        groq_model: Optional[str] = None,
+        gemini_model: Optional[str] = None,
+        fallback_response: Optional[str] = None,
     ) -> None:
         """Initialize the conversational LLM service.
 
         Args:
-            groq_api_key: Optional Groq API key for Llama 3.3.
+            groq_api_key: Optional Groq API key for Llama.
             gemini_api_key: Optional Gemini API key for Gemini Flash text.
             system_prompt: Character persona and behavioral constraints.
             max_history_turns: Max back-and-forth dialogue turns to retain.
+            groq_model: Optional Groq LLM model (default: $GROQ_LLM_MODEL or llama-3.3-70b-versatile).
+            gemini_model: Optional Gemini model override (default: $GEMINI_LLM_MODEL).
+            fallback_response: Optional dialogue string on API failure (default: $LLM_FALLBACK_RESPONSE or default warning).
         """
         self.groq_api_key = groq_api_key or os.environ.get("GROQ_API_KEY")
         self.gemini_api_key = (
@@ -46,6 +54,13 @@ class ConversationalLLMService:
         )
         self.system_prompt = system_prompt
         self.max_history_turns = max_history_turns
+        self.groq_model = groq_model or os.environ.get("GROQ_LLM_MODEL", "llama-3.3-70b-versatile")
+        self.gemini_model = gemini_model or os.environ.get("GEMINI_LLM_MODEL")
+        self.fallback_response = (
+            fallback_response
+            or os.environ.get("LLM_FALLBACK_RESPONSE")
+            or DEFAULT_FALLBACK_RESPONSE
+        )
         self.history: List[Dict[str, str]] = []
 
         if not self.groq_api_key and not self.gemini_api_key:
@@ -92,7 +107,8 @@ class ConversationalLLMService:
 
     def _generate_gemini(self, user_text: str) -> str:
         """Generate reply using fast Gemini Flash text API."""
-        models_to_try = ["gemini-3.1-flash-lite", "gemini-3.5-flash"]
+        candidates_models = [self.gemini_model, "gemini-3.1-flash-lite", "gemini-3.5-flash"]
+        models_to_try = [m for m in candidates_models if m]
 
         contents = []
         for msg in self.history:
@@ -113,12 +129,15 @@ class ConversationalLLMService:
         for model in models_to_try:
             url = (
                 f"https://generativelanguage.googleapis.com/v1beta/models/"
-                f"{model}:generateContent?key={self.gemini_api_key}"
+                f"{model}:generateContent"
             )
             req = urllib.request.Request(
                 url,
                 data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": str(self.gemini_api_key),
+                },
                 method="POST",
             )
             try:
@@ -137,17 +156,17 @@ class ConversationalLLMService:
             except Exception:
                 continue
 
-        return "Halt, little mortal! Reach into my bowl if you dare, but leave before I take your bones!"
+        return self.fallback_response
 
     def _generate_groq(self, user_text: str) -> str:
-        """Generate reply using Groq Llama 3.3 endpoint."""
+        """Generate reply using Groq Llama endpoint."""
         messages = [{"role": "system", "content": self.system_prompt}]
         for msg in self.history:
             messages.append(msg)
         messages.append({"role": "user", "content": user_text})
 
         payload = {
-            "model": "llama-3.3-70b-versatile",
+            "model": self.groq_model,
             "messages": messages,
             "temperature": 0.8,
             "max_tokens": 100,

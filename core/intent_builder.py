@@ -76,6 +76,12 @@ class PersonalityProfile:
     fallbacks: List[str] = field(default_factory=list)
     escalation_lines: List[str] = field(default_factory=list)
     intents: List[CustomIntent] = field(default_factory=list)
+    startup_greeting: Optional[str] = None
+    priority_intents: List[str] = field(default_factory=list)
+    system_announcements: Dict[str, str] = field(default_factory=dict)
+    voice_settings: Dict[str, float] = field(default_factory=dict)
+    time_responses: Dict[str, str] = field(default_factory=dict)
+    weather_responses: Dict[str, str] = field(default_factory=dict)
     docstring: Optional[Any] = None
 
     @property
@@ -100,6 +106,18 @@ class PersonalityProfile:
             "escalation_lines": self.escalation_lines,
             "intents": [intent.to_dict() for intent in self.intents],
         })
+        if self.startup_greeting:
+            data["startup_greeting"] = self.startup_greeting
+        if self.priority_intents:
+            data["priority_intents"] = self.priority_intents
+        if self.system_announcements:
+            data["system_announcements"] = self.system_announcements
+        if self.voice_settings:
+            data["voice_settings"] = self.voice_settings
+        if self.time_responses:
+            data["time_responses"] = self.time_responses
+        if self.weather_responses:
+            data["weather_responses"] = self.weather_responses
         return data
 
     @classmethod
@@ -119,6 +137,12 @@ class PersonalityProfile:
             fallbacks=list(data.get("fallbacks", [])),
             escalation_lines=list(data.get("escalation_lines", [])),
             intents=intents,
+            startup_greeting=data.get("startup_greeting"),
+            priority_intents=list(data.get("priority_intents", [])),
+            system_announcements=dict(data.get("system_announcements", {})),
+            voice_settings=dict(data.get("voice_settings", {})),
+            time_responses=dict(data.get("time_responses", {})),
+            weather_responses=dict(data.get("weather_responses", {})),
             docstring=data.get("_doc") or data.get("__doc__") or data.get("docstring"),
         )
 
@@ -431,12 +455,15 @@ class IntentParser:
         for model in models:
             url = (
                 f"https://generativelanguage.googleapis.com/v1beta/models/"
-                f"{model}:generateContent?key={self.gemini_api_key}"
+                f"{model}:generateContent"
             )
             req = urllib.request.Request(
                 url,
                 data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": str(self.gemini_api_key),
+                },
                 method="POST",
             )
             try:

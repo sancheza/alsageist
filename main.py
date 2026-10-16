@@ -15,129 +15,21 @@ import argparse
 import os
 import re
 import signal
-import socket
 import sys
 import time
+from typing import Optional, Tuple
 
+from core import system_utils
 from core.audio_io import AudioIO
+from core.config import VERSION, parse_args
 from core.led_controller import LEDState, create_led_controller
 from core.logger import InteractionLogger
+from core.system_utils import load_env_file
 from core.vad import VoiceActivityDetector
 from services.basic_info_service import BasicInfoService
 from services.llm_service import ConversationalLLMService
 from services.stt_service import SpeechToTextService
 from services.tts_service import PiperTTSService
-
-VERSION = "1.0.0"
-
-
-def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments.
-
-    Returns:
-        Parsed arguments namespace.
-    """
-    parser = argparse.ArgumentParser(
-        description="AlsaGeist: Autonomous Voice-Driven Conversational Display Engine."
-    )
-    parser.add_argument(
-        "-v",
-        "--version",
-        action="version",
-        version=f"%(prog)s {VERSION}",
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Enable detailed diagnostic logging.",
-    )
-    env_llm_fallback = os.environ.get("LLM_FALLBACK", "false").strip().lower() in ("true", "1", "yes")
-    parser.add_argument(
-        "--llm-fallback",
-        action="store_true",
-        default=env_llm_fallback,
-        help="Fetch custom LLM response for indeterminate prompts instead of generic canned response (default: $LLM_FALLBACK or false).",
-    )
-    parser.add_argument(
-        "--no-llm-fallback",
-        action="store_false",
-        dest="llm_fallback",
-        help="Disable LLM fallback for indeterminate prompts.",
-    )
-    parser.add_argument(
-        "--engine",
-        choices=["intent", "llm"],
-        default="intent",
-        help="Dialogue engine: 'intent' (fast offline banter engine) or 'llm' (neural LLM). (default: intent)",
-    )
-    parser.add_argument(
-        "--personality",
-        default=os.environ.get("PERSONALITY", "grimjaw"),
-        help="Personality profile identifier or JSON path (default: $PERSONALITY or grimjaw).",
-    )
-    parser.add_argument(
-        "--model-path",
-        default="models/piper/en_GB-alan-medium.onnx",
-        help="Path to Piper ONNX model file (default: models/piper/en_GB-alan-medium.onnx).",
-    )
-    parser.add_argument(
-        "--input-device",
-        default=None,
-        help="Optional input audio hardware device name or index.",
-    )
-    parser.add_argument(
-        "--output-device",
-        default=None,
-        help="Optional output audio hardware device name or index.",
-    )
-    parser.add_argument(
-        "--threshold",
-        type=float,
-        default=float(os.environ.get("VAD_THRESHOLD", 0.0025)),
-        help="Minimum audio RMS energy threshold for speech detection (default: 0.0025 or $VAD_THRESHOLD). Increase if false-triggering in loud rooms.",
-    )
-    parser.add_argument(
-        "--volume",
-        type=float,
-        default=float(os.environ.get("VOLUME", 0.8)),
-        help="Playback audio output volume multiplier between 0.0 and 1.0 (default: 0.8 or $VOLUME).",
-    )
-    parser.add_argument(
-        "--mic-gain",
-        type=float,
-        default=float(os.environ.get("MIC_GAIN", 1.5)),
-        help="Microphone digital input gain multiplier (default: 1.5 or $MIC_GAIN).",
-    )
-    parser.add_argument(
-        "--min-speech-sec",
-        type=float,
-        default=0.15,
-        help="Minimum sustained speech duration in seconds required to accept an utterance (default: 0.15s).",
-    )
-    parser.add_argument(
-        "--silence-timeout",
-        type=float,
-        default=0.9,
-        help="Trailing silence in seconds required before speech is considered finished (default: 0.9s).",
-    )
-    parser.add_argument(
-        "--tempo",
-        type=float,
-        default=1.15,
-        help="Piper phoneme length scale / tempo (default: 1.15 for slower gravel).",
-    )
-    parser.add_argument(
-        "--noise",
-        type=float,
-        default=0.85,
-        help="Piper generator noise level (default: 0.85).",
-    )
-    parser.add_argument(
-        "--no-greeting",
-        action="store_true",
-        help="Disable spoken greeting announcement upon startup.",
-    )
-    return parser.parse_args()
 
 
 class AlsaGeistAgent:
@@ -154,8 +46,25 @@ class AlsaGeistAgent:
 
         print(f"Initializing AlsaGeist subsystems (Dialogue Engine: {args.engine.upper()})...")
 
+        # 0. Personality Profile
+        from core.intent_builder import PersonalityProfile, find_personality_file
+        personality = getattr(args, "personality", "grimjaw")
+        self.profile: Optional[PersonalityProfile] = None
+        try:
+            p_file = find_personality_file(personality)
+            if os.path.isfile(p_file):
+                self.profile = PersonalityProfile.load_from_file(p_file)
+        except Exception:
+            pass
+
         # 1. LED & Hardware Controller
-        self.led = create_led_controller(verbose=True)
+        self.led = create_led_controller(
+            verbose=True,
+            led_pin=getattr(args, "led_pin", None),
+            button_pin=getattr(args, "button_pin", None),
+            hold_time_sec=getattr(args, "button_hold_sec", None),
+            long_hold_time_sec=getattr(args, "button_shutdown_sec", None),
+        )
 
         # 2. In-memory Audio I/O
         self.audio = AudioIO(
@@ -180,7 +89,15 @@ class AlsaGeistAgent:
         )
 
         # 4. Speech-to-Text
-        self.stt = SpeechToTextService(sample_rate=16000)
+        try:
+            self.stt = SpeechToTextService(sample_rate=16000)
+        except ValueError as exc:
+            sys.stderr.write(
+                f"\n[STT Configuration Error] {exc}\n"
+                "Please configure GROQ_API_KEY or GEMINI_API_KEY in your .env file,\n"
+                "or place a Vosk offline speech model in models/vosk-model-small-en-us-0.15\n\n"
+            )
+            sys.exit(1)
 
         # 5. Dialogue Engine (Intent vs LLM)
         self.llm_fallback_enabled = getattr(args, "llm_fallback", False)
@@ -188,11 +105,12 @@ class AlsaGeistAgent:
 
         if args.engine == "intent":
             from services.intent_service import PersonaIntentEngine
-            personality = getattr(args, "personality", "grimjaw")
-            self.dialogue_engine = PersonaIntentEngine(personality_name_or_path=personality)
+            self.dialogue_engine = PersonaIntentEngine(
+                personality_name_or_path=self.profile or personality
+            )
             if self.llm_fallback_enabled:
                 try:
-                    profile = getattr(self.dialogue_engine, "profile", None)
+                    profile = getattr(self.dialogue_engine, "profile", self.profile)
                     if profile:
                         persona_prompt = (
                             f"You are {profile.display_name}. {profile.description}\n"
@@ -210,22 +128,66 @@ class AlsaGeistAgent:
                     print(f"  [LLM Fallback Warning]: Could not initialize LLM service: {exc}. Generic fallback will be used.")
                     self.llm_fallback_service = None
         else:
-            self.dialogue_engine = ConversationalLLMService()
+            try:
+                if self.profile:
+                    persona_prompt = (
+                        f"You are {self.profile.display_name}. {self.profile.description}\n"
+                        "Rules you must strictly obey:\n"
+                        "1. Keep every response under 2 sentences maximum.\n"
+                        "2. Be witty, dry, and stay in character.\n"
+                        "3. Never output emojis, markdown formatting, asterisks, or sound effect tags.\n"
+                        "4. Return plain spoken dialogue only."
+                    )
+                    self.dialogue_engine = ConversationalLLMService(system_prompt=persona_prompt)
+                else:
+                    self.dialogue_engine = ConversationalLLMService()
+            except Exception:
+                self.dialogue_engine = ConversationalLLMService()
 
+        repo_root = os.path.dirname(os.path.abspath(__file__))
+        resolved_model = args.model_path
+        if not resolved_model:
+            if self.profile and self.profile.voice:
+                resolved_model = self.profile.voice
+            else:
+                resolved_model = "models/piper/en_GB-alan-medium.onnx"
+
+        if not os.path.isabs(resolved_model) and not os.path.exists(resolved_model):
+            candidate = os.path.join(repo_root, resolved_model)
+            if os.path.exists(candidate):
+                resolved_model = candidate
+
+        tempo = args.tempo
+        if tempo is None:
+            tempo = (
+                self.profile.voice_settings.get("tempo", 1.15)
+                if self.profile and self.profile.voice_settings
+                else 1.15
+            )
+
+        noise = args.noise
+        if noise is None:
+            noise = (
+                self.profile.voice_settings.get("noise", 0.85)
+                if self.profile and self.profile.voice_settings
+                else 0.85
+            )
+
+        log_dir = os.environ.get("LOG_DIR", os.path.join(repo_root, "logs"))
 
         # 6. Local Piper Neural TTS
         self.tts = PiperTTSService(
-            model_path=args.model_path,
+            model_path=resolved_model,
             sample_rate=22050,
-            length_scale=args.tempo,
-            noise_scale=args.noise,
+            length_scale=tempo,
+            noise_scale=noise,
         )
 
         # 7. Interaction Logger
-        self.logger = InteractionLogger(log_dir="logs")
+        self.logger = InteractionLogger(log_dir=log_dir)
 
         # 8. Basic Info Service (Live local time and weather)
-        self.basic_info = BasicInfoService()
+        self.basic_info = BasicInfoService(profile=self.profile)
 
         # 9. Network status & Offline STT tracking
         self.is_online = self._check_internet()
@@ -236,7 +198,9 @@ class AlsaGeistAgent:
         self.led.set_button_callbacks(
             on_press=self._on_button_press,
             on_hold=self._on_button_hold,
-            hold_time_sec=5.0,
+            on_long_hold=self._on_button_long_hold,
+            hold_time_sec=getattr(args, "button_hold_sec", 5.0),
+            long_hold_time_sec=getattr(args, "button_shutdown_sec", 10.0),
         )
 
         # 10. Control Server (Unix Domain Socket IPC)
@@ -248,33 +212,68 @@ class AlsaGeistAgent:
     @staticmethod
     def _check_internet(timeout: float = 2.5) -> bool:
         """Check if external internet connectivity is available."""
-        test_hosts = [("8.8.8.8", 53), ("1.1.1.1", 53)]
-        for host, port in test_hosts:
-            try:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(timeout)
-                sock.connect((host, port))
-                sock.close()
-                return True
-            except Exception:
-                continue
-        return False
+        return system_utils.check_internet_connectivity(timeout=timeout)
+
+    def _play_speech_audio(
+        self,
+        audio_data,
+        sample_rate: int,
+        blocking: bool = True,
+        cooldown_sec: float = 0.25,
+    ) -> None:
+        """Play synthesized audio while muting capture and managing LED state.
+
+        Args:
+            audio_data: Synthesized audio PCM or numpy buffer.
+            sample_rate: Sample rate in Hz.
+            blocking: Whether audio playback should block execution.
+            cooldown_sec: Trailing pause in seconds to allow room resonance to dissipate.
+        """
+        if self.is_disabled:
+            return
+        self.led.set_state(LEDState.SPEAKING)
+        self.audio.mute_capture()
+        try:
+            self.audio.play_audio(audio_data, sample_rate=sample_rate, blocking=blocking)
+        finally:
+            if cooldown_sec > 0:
+                time.sleep(cooldown_sec)
+            if not self.is_disabled:
+                self.audio.unmute_capture()
+                self.vad.reset()
+                self.led.set_state(LEDState.IDLE)
+
+    def _speak_response(
+        self,
+        text: str,
+        blocking: bool = True,
+        cooldown_sec: float = 0.25,
+    ) -> bool:
+        """Synthesize and play speech text.
+
+        Args:
+            text: Plain-text string to speak.
+            blocking: Whether audio playback should block execution.
+            cooldown_sec: Trailing pause in seconds.
+
+        Returns:
+            True if synthesis and playback succeeded, False otherwise.
+        """
+        if self.is_disabled:
+            return False
+        try:
+            audio_data, sample_rate = self.tts.synthesize(text)
+            self._play_speech_audio(audio_data, sample_rate, blocking=blocking, cooldown_sec=cooldown_sec)
+            return True
+        except Exception as exc:
+            print(f"Speech playback error: {exc}")
+            return False
 
     def _announce_mode(self, online: bool) -> None:
         """Announce current online or offline operational mode."""
         msg = "NOW IN ONLINE MODE" if online else "NOW IN OFFLINE MODE"
         print(f"\n💀 Grimjaw (network): \"{msg}\"")
-        try:
-            audio_data, sample_rate = self.tts.synthesize(msg)
-            self.led.set_state(LEDState.SPEAKING)
-            self.audio.mute_capture()
-            self.audio.play_audio(audio_data, sample_rate=sample_rate, blocking=True)
-        except Exception as exc:
-            print(f"Mode announcement error: {exc}")
-        finally:
-            self.audio.unmute_capture()
-            self.vad.reset()
-            self.led.set_state(LEDState.IDLE)
+        self._speak_response(msg, blocking=True, cooldown_sec=0.0)
 
     def _reset_dialogue(self) -> None:
         """Reset conversational context for the next trick-or-treater."""
@@ -307,18 +306,7 @@ class AlsaGeistAgent:
         self.vad.reset()
 
         announcement = f"Volume {pct} percent."
-        try:
-            audio_data, sample_rate = self.tts.synthesize(announcement)
-            self.led.set_state(LEDState.SPEAKING)
-            self.audio.mute_capture()
-            self.audio.play_audio(audio_data, sample_rate=sample_rate, blocking=True)
-        except Exception as exc:
-            print(f"Volume announcement error: {exc}")
-        finally:
-            if not self.is_disabled:
-                self.audio.unmute_capture()
-                self.vad.reset()
-                self.led.set_state(LEDState.IDLE)
+        self._speak_response(announcement, blocking=True, cooldown_sec=0.0)
 
     def _on_button_hold(self) -> None:
         """Handle 5-second arcade button hold: toggle mute/disabled state."""
@@ -338,6 +326,30 @@ class AlsaGeistAgent:
             self.audio.unmute_capture()
             self.vad.reset()
             self.led.set_state(LEDState.IDLE)
+
+    def _on_button_long_hold(self) -> None:
+        """Handle 10-second arcade button hold: announce Powering Off and shutdown the pi."""
+        print("\n[BUTTON] 10-second hold detected: Announcing shutdown and powering off...")
+        self.audio.stop_playback()
+        self._reset_dialogue()
+        self.vad.reset()
+
+        self.is_disabled = True
+        self.audio.mute_capture()
+        if self.audio.volume <= 0.05:
+            self.audio.volume = 0.5
+
+        announcement = "Powering off."
+        try:
+            audio_data, sample_rate = self.tts.synthesize(announcement)
+            self.led.set_state(LEDState.SPEAKING)
+            self.audio.play_audio(audio_data, sample_rate=sample_rate, blocking=True)
+        except Exception as exc:
+            print(f"Shutdown announcement error: {exc}")
+        finally:
+            self.led.set_state(LEDState.OFF)
+
+        system_utils.trigger_host_shutdown()
 
     def start(self) -> None:
         """Run the real-time hands-free conversational loop."""
@@ -414,6 +426,69 @@ class AlsaGeistAgent:
         finally:
             self.stop()
 
+    def _filter_utterance(
+        self, user_text: Optional[str], audio_rms: float
+    ) -> Tuple[bool, str, str]:
+        """Check if transcribed user text should be filtered as silence or ambient artifact.
+
+        Args:
+            user_text: Transcribed string from STT.
+            audio_rms: Root-mean-square energy of the audio segment.
+
+        Returns:
+            Tuple of (should_filter, matched_intent, filter_status).
+        """
+        if not user_text or len(user_text.strip()) < 2:
+            return True, "empty_silence", "FILTERED_SILENCE"
+
+        clean_test = user_text.strip().lower().rstrip(".,!?")
+        is_timecode = bool(re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", clean_test))
+        if (
+            (clean_test in ["you", "thank you", "shh", "the", "a", "subtitles by", "bye", "uh", "um", ""] and audio_rms < 0.010)
+            or is_timecode
+        ):
+            return True, "artifact_filter", "FILTERED_ARTIFACT"
+
+        return False, "", ""
+
+    def _resolve_dialogue_response(self, user_text: str) -> Tuple[str, str]:
+        """Resolve creature reply and matched intent from dialogue engine.
+
+        Args:
+            user_text: Transcribed user prompt.
+
+        Returns:
+            Tuple of (response_text, matched_intent).
+        """
+        if hasattr(self.dialogue_engine, "classify_and_respond"):
+            creature_reply, matched_intent = self.dialogue_engine.classify_and_respond(user_text)
+
+            # Dynamic basic info handlers: Time and Weather
+            if matched_intent == "time_and_clock":
+                creature_reply = self.basic_info.get_time_response()
+            elif matched_intent == "weather_and_temperature":
+                creature_reply = self.basic_info.get_weather_response()
+            # Escalate indeterminate prompts to custom LLM response if enabled
+            elif (
+                matched_intent == "fallback_unrecognized"
+                and self.llm_fallback_enabled
+                and self.llm_fallback_service is not None
+                and self.is_online
+            ):
+                try:
+                    profile = getattr(self, "profile", None)
+                    persona_name = profile.display_name if profile else "Grimjaw"
+                    print(f"💀 {persona_name}: Indeterminate prompt — fetching custom LLM response...")
+                    custom_reply = self.llm_fallback_service.generate_response(user_text)
+                    if custom_reply and custom_reply.strip():
+                        creature_reply = custom_reply.strip()
+                        matched_intent = "llm_fallback_custom"
+                except Exception as llm_exc:
+                    print(f"  (LLM fallback fetch failed: {llm_exc}; using generic fallback)")
+            return creature_reply, matched_intent
+        else:
+            return self.dialogue_engine.generate_response(user_text), "llm_generated"
+
     def _handle_utterance(self, utterance_pcm) -> None:
         """Process completed user utterance through STT -> Brain -> TTS -> Playback."""
         t_start = time.time()
@@ -448,71 +523,30 @@ class AlsaGeistAgent:
         t_stt = time.time()
         stt_ms = int((t_stt - t_start) * 1000)
 
-        if not user_text or len(user_text.strip()) < 2:
-            print("  (Silence / ambient noise filtered)")
+        should_filter, matched_intent, filter_status = self._filter_utterance(user_text, audio_rms)
+        if should_filter:
+            if filter_status == "FILTERED_SILENCE":
+                print("  (Silence / ambient noise filtered)")
+            else:
+                print(f"  (Filtered ambient background artifact / timecode: \"{user_text}\")")
             self.led.set_state(LEDState.IDLE)
             self.logger.log_interaction(
                 transcribed_text=user_text or "",
                 response_text="",
                 engine=self.args.engine,
-                matched_intent="empty_silence",
+                matched_intent=matched_intent,
                 audio_duration_sec=audio_dur,
                 audio_rms=audio_rms,
                 latencies_ms={"stt": stt_ms},
-                status="FILTERED_SILENCE",
-            )
-            return
-
-        clean_test = user_text.strip().lower().rstrip(".,!?")
-        is_timecode = bool(re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", clean_test))
-        if (
-            (clean_test in ["you", "thank you", "shh", "the", "a", "subtitles by", "bye", "uh", "um", ""] and audio_rms < 0.010)
-            or is_timecode
-        ):
-            print(f"  (Filtered ambient background artifact / timecode: \"{user_text}\")")
-            self.led.set_state(LEDState.IDLE)
-            self.logger.log_interaction(
-                transcribed_text=user_text,
-                response_text="",
-                engine=self.args.engine,
-                matched_intent="artifact_filter",
-                audio_duration_sec=audio_dur,
-                audio_rms=audio_rms,
-                latencies_ms={"stt": stt_ms},
-                status="FILTERED_ARTIFACT",
+                status=filter_status,
             )
             return
 
         print(f"👤 User: \"{user_text}\"  ({stt_ms}ms)")
 
         # 2. Dialogue Reasoning
-        matched_intent = "llm_generated"
         try:
-            if hasattr(self.dialogue_engine, "classify_and_respond"):
-                creature_reply, matched_intent = self.dialogue_engine.classify_and_respond(user_text)
-
-                # Dynamic basic info handlers: Time and Weather
-                if matched_intent == "time_and_clock":
-                    creature_reply = self.basic_info.get_time_response()
-                elif matched_intent == "weather_and_temperature":
-                    creature_reply = self.basic_info.get_weather_response()
-                # Escalate indeterminate prompts to custom LLM response if enabled
-                elif (
-                    matched_intent == "fallback_unrecognized"
-                    and self.llm_fallback_enabled
-                    and self.llm_fallback_service is not None
-                    and self.is_online
-                ):
-                    try:
-                        print("💀 Grimjaw: Indeterminate prompt — fetching custom LLM response...")
-                        custom_reply = self.llm_fallback_service.generate_response(user_text)
-                        if custom_reply and custom_reply.strip():
-                            creature_reply = custom_reply.strip()
-                            matched_intent = "llm_fallback_custom"
-                    except Exception as llm_exc:
-                        print(f"  (LLM fallback fetch failed: {llm_exc}; using generic fallback)")
-            else:
-                creature_reply = self.dialogue_engine.generate_response(user_text)
+            creature_reply, matched_intent = self._resolve_dialogue_response(user_text)
         except Exception as exc:
             print(f"Dialogue Error: {exc}")
             self.led.set_state(LEDState.ERROR)
@@ -521,7 +555,9 @@ class AlsaGeistAgent:
 
         t_llm = time.time()
         llm_ms = int((t_llm - t_stt) * 1000)
-        print(f"💀 Grimjaw ({matched_intent}): \"{creature_reply}\"  ({llm_ms}ms)")
+        profile = getattr(self, "profile", None)
+        persona_name = profile.display_name if profile else "Grimjaw"
+        print(f"💀 {persona_name} ({matched_intent}): \"{creature_reply}\"  ({llm_ms}ms)")
 
         # 3. Local Piper TTS Synthesis in RAM
         try:
@@ -550,34 +586,23 @@ class AlsaGeistAgent:
         )
 
         # 5. Audio Playback to Speaker (Mute mic capture to prevent self-triggering)
-        if self.is_disabled:
-            return
-        self.led.set_state(LEDState.SPEAKING)
-        self.audio.mute_capture()
-        try:
-            self.audio.play_audio(audio_data, sample_rate=sample_rate, blocking=True)
-        finally:
-            # 6. Cooldown to allow room resonance to dissipate, then unmute and reset VAD
-            time.sleep(0.25)
-            if not self.is_disabled:
-                self.audio.unmute_capture()
-                self.vad.reset()
+        self._play_speech_audio(audio_data, sample_rate, blocking=True, cooldown_sec=0.25)
 
     def _play_startup_greeting(self) -> None:
         """Play an initial greeting announcement when the agent first wakes up."""
-        greeting_text = "I am Grimjaw, sentinel of the crypt. Step forward if ye dare!"
-        print(f"\n💀 Grimjaw (startup): \"{greeting_text}\"")
-        try:
-            audio_data, sample_rate = self.tts.synthesize(greeting_text)
-            self.led.set_state(LEDState.SPEAKING)
-            self.audio.mute_capture()
-            self.audio.play_audio(audio_data, sample_rate=sample_rate, blocking=True)
-        except Exception as exc:
-            print(f"Startup Greeting Error: {exc}")
-        finally:
-            self.audio.unmute_capture()
-            self.vad.reset()
-            self.led.set_state(LEDState.IDLE)
+        profile = getattr(self.dialogue_engine, "profile", None)
+        if profile and getattr(profile, "startup_greeting", None):
+            greeting_text = profile.startup_greeting
+            persona_name = profile.display_name
+        elif profile:
+            greeting_text = f"I am {profile.display_name}. System online and ready."
+            persona_name = profile.display_name
+        else:
+            persona_name = getattr(self.args, "personality", "AlsaGeist")
+            greeting_text = f"I am {persona_name}. System online and ready."
+
+        print(f"\n💀 {persona_name} (startup): \"{greeting_text}\"")
+        self._speak_response(greeting_text, blocking=True, cooldown_sec=0.0)
 
     def stop(self) -> None:
         """Clean up all audio streams, control server, and LED threads."""
@@ -591,35 +616,6 @@ class AlsaGeistAgent:
         self.audio.stop_capture()
         self.led.stop()
         print("AlsaGeist terminated cleanly.")
-
-
-def load_env_file(path: str = ".env") -> None:
-    """Load key-value environment variables from an environment file if present.
-
-    Args:
-        path: Relative or absolute path to the environment file.
-    """
-    candidates = [
-        path,
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), path),
-    ]
-    target_path = next((p for p in candidates if os.path.isfile(p)), None)
-    if not target_path:
-        return
-
-    try:
-        with open(target_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, val = line.split("=", 1)
-                key = key.strip()
-                val = val.strip().strip('"').strip("'")
-                if key and key not in os.environ:
-                    os.environ[key] = val
-    except Exception as exc:
-        print(f"Warning: Failed to load environment file from {target_path}: {exc}")
 
 
 def main() -> int:

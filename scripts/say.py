@@ -15,6 +15,8 @@ import os
 import sys
 
 from core.audio_io import AudioIO
+from core.intent_builder import PersonalityProfile, find_personality_file
+from core.system_utils import load_env_file
 from services.tts_service import PiperTTSService
 
 VERSION = "1.0.0"
@@ -32,21 +34,35 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "text",
         type=str,
-        help="Text string for Grimjaw to say.",
+        help="Text string for creature to say.",
+    )
+    parser.add_argument(
+        "--personality",
+        "-p",
+        type=str,
+        default=os.environ.get("PERSONALITY", "grimjaw"),
+        help="Personality profile identifier or JSON path (default: $PERSONALITY or grimjaw).",
     )
     parser.add_argument(
         "--volume",
         "-V",
         type=float,
         default=None,
-        help="Playback volume from 0.0 to 1.0 (default: $VOLUME or 0.2).",
+        help="Playback volume from 0.0 to 1.0 (default: $VOLUME or 0.5).",
     )
     parser.add_argument(
         "--tempo",
         "-t",
         type=float,
-        default=1.15,
-        help="Speech length scale (higher = slower speech, default: 1.15).",
+        default=None,
+        help="Speech length scale (higher = slower speech, default: from personality or 1.15).",
+    )
+    parser.add_argument(
+        "--model-path",
+        "-m",
+        type=str,
+        default=None,
+        help="Path to Piper ONNX model file (default: $MODEL_PATH or resolved from personality profile).",
     )
     parser.add_argument(
         "-v",
@@ -55,32 +71,6 @@ def parse_args() -> argparse.Namespace:
         version=f"%(prog)s {VERSION}",
     )
     return parser.parse_args()
-
-
-def load_env_file(path: str = ".env") -> None:
-    """Load environment variables from .env if present."""
-    candidates = [
-        path,
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", path),
-    ]
-    target_path = next((p for p in candidates if os.path.isfile(p)), None)
-    if not target_path:
-        return
-
-    try:
-        with open(target_path, "r", encoding="utf-8") as f:
-            for raw_line in f:
-                line = raw_line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if "=" in line:
-                    key, val = line.split("=", 1)
-                    key = key.strip()
-                    val = val.strip().strip("'\"")
-                    if key and key not in os.environ:
-                        os.environ[key] = val
-    except Exception:
-        pass
 
 
 def main() -> int:
@@ -96,17 +86,41 @@ def main() -> int:
         return 1
 
     try:
-        # Resolve absolute path to Piper ONNX model
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        model_path = os.path.join(repo_root, "models", "piper", "en_GB-alan-medium.onnx")
+        profile = None
+        try:
+            p_file = find_personality_file(args.personality)
+            if os.path.isfile(p_file):
+                profile = PersonalityProfile.load_from_file(p_file)
+        except Exception:
+            pass
 
-        # Resolve volume from CLI flag, .env, or fallback
-        vol = args.volume if args.volume is not None else float(os.environ.get("VOLUME", "0.2"))
+        display_name = profile.display_name if profile else "Grimjaw"
+        default_model = (
+            profile.voice
+            if (profile and profile.voice)
+            else "models/piper/en_GB-alan-medium.onnx"
+        )
+        model_path = args.model_path or os.environ.get("MODEL_PATH") or default_model
+        if not os.path.isabs(model_path) and not os.path.exists(model_path):
+            candidate = os.path.join(repo_root, model_path)
+            if os.path.exists(candidate):
+                model_path = candidate
 
-        tts = PiperTTSService(model_path=model_path, length_scale=args.tempo)
+        tempo = args.tempo
+        if tempo is None:
+            tempo = (
+                profile.voice_settings.get("tempo", 1.15)
+                if profile and profile.voice_settings
+                else 1.15
+            )
+
+        vol = args.volume if args.volume is not None else float(os.environ.get("VOLUME", "0.5"))
+
+        tts = PiperTTSService(model_path=model_path, length_scale=tempo)
         audio = AudioIO(volume=vol)
 
-        print(f"💀 Grimjaw speaking (volume={vol}): \"{args.text}\"")
+        print(f"💀 {display_name} speaking (volume={vol}): \"{args.text}\"")
         samples, sr = tts.synthesize(args.text)
         audio.play_audio(samples, sample_rate=sr, blocking=True)
         return 0

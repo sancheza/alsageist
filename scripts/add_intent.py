@@ -51,6 +51,7 @@ from core.intent_builder import (
     create_custom_intent,
     find_personality_file,
 )
+from core.system_utils import load_env_file
 
 VERSION = "1.1.0"
 
@@ -223,32 +224,6 @@ COMMON USAGE EXAMPLES:
         version=f"%(prog)s {VERSION}",
     )
     return parser.parse_args()
-
-
-def load_env_file(path: str = ".env") -> None:
-    """Load environment variables from .env if present."""
-    candidates = [
-        path,
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", path),
-    ]
-    target_path = next((p for p in candidates if os.path.isfile(p)), None)
-    if not target_path:
-        return
-
-    try:
-        with open(target_path, "r", encoding="utf-8") as f:
-            for raw_line in f:
-                line = raw_line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if "=" in line:
-                    key, val = line.split("=", 1)
-                    key = key.strip()
-                    val = val.strip().strip("'\"")
-                    if key and key not in os.environ:
-                        os.environ[key] = val
-    except Exception:
-        pass
 
 
 def handle_check(personality_name: str, phrase: str) -> int:

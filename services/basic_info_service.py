@@ -1,4 +1,4 @@
-"""Local time and live weather information service for Grimjaw.
+"""Local time and live weather information service for voice assist personalities.
 
 Fetches accurate local time and ambient weather/temperature for real-time
 spoken responses with caching and fallback.
@@ -13,17 +13,25 @@ import urllib.error
 import urllib.request
 from typing import Dict, Optional, Tuple
 
+from core.intent_builder import PersonalityProfile
+
 
 class BasicInfoService:
-    """Provides local time and weather responses for Grimjaw."""
+    """Provides local time and weather responses for voice assist personalities."""
 
-    def __init__(self, cache_ttl_sec: float = 600.0) -> None:
+    def __init__(
+        self,
+        cache_ttl_sec: float = 600.0,
+        profile: Optional[PersonalityProfile] = None,
+    ) -> None:
         """Initialize the basic info service.
 
         Args:
             cache_ttl_sec: Weather cache time-to-live in seconds (default: 10 minutes).
+            profile: Optional personality profile with custom time and weather response templates.
         """
         self._cache_ttl_sec = cache_ttl_sec
+        self._profile = profile
         self._weather_cache: Optional[Dict[str, str]] = None
         self._weather_cache_time: float = 0.0
         self._lock = threading.Lock()
@@ -32,13 +40,13 @@ class BasicInfoService:
         """Generate a spoken response indicating the current local time.
 
         If the current time is at or past 10:00 PM (or before 5:00 AM),
-        includes a reminder that it is past their bedtime.
+        includes a reminder that it is past bedtime.
 
         Args:
             now: Optional datetime override for testing. Defaults to local now.
 
         Returns:
-            A sarcastic Grimjaw response with current time.
+            A spoken response with the current time.
         """
         if now is None:
             now = datetime.datetime.now()
@@ -55,11 +63,19 @@ class BasicInfoService:
         # Check bedtime condition: >= 10 PM (22:00) or early morning before 5 AM (05:00)
         is_past_bedtime = now.hour >= 22 or now.hour < 5
 
+        time_responses = self._profile.time_responses if self._profile else {}
         if is_past_bedtime:
+            template = time_responses.get("bedtime")
+            if template:
+                return template.format(time=time_str)
             return (
                 f"It is currently {time_str}. Which means it is way past your bedtime! "
                 "Grab ONE treat and scram before the midnight ghouls wake up!"
             )
+
+        template = time_responses.get("standard")
+        if template:
+            return template.format(time=time_str)
         return f"It is precisely {time_str}. The night is young, but watch your fingers around my candy bowl!"
 
     def get_weather_data(self) -> Optional[Dict[str, str]]:
@@ -107,9 +123,10 @@ class BasicInfoService:
         """Generate a spoken response describing the current temperature and weather.
 
         Returns:
-            A sarcastic Grimjaw response with current weather or offline fallback.
+            A spoken response with current weather or offline fallback.
         """
         weather = self.get_weather_data()
+        weather_resp = self._profile.weather_responses if self._profile else {}
         if weather and weather.get("temp_f"):
             temp_f = weather["temp_f"]
             desc = weather.get("desc", "").lower()
@@ -121,13 +138,25 @@ class BasicInfoService:
 
             comment = ""
             if temp_val <= 40:
-                comment = "Freezing cold! The autumn chill whistles straight through my ribs!"
+                comment = weather_resp.get(
+                    "freezing",
+                    "Freezing cold! The autumn chill whistles straight through my ribs!",
+                )
             elif temp_val <= 60:
-                comment = "Crisp and chilly! Perfect weather for rattling around a porch."
+                comment = weather_resp.get(
+                    "cold",
+                    "Crisp and chilly! Perfect weather for rattling around a porch.",
+                )
             elif temp_val <= 75:
-                comment = "Mild and comfortable, though my bones prefer a crypt's cold draft."
+                comment = weather_resp.get(
+                    "mild",
+                    "Mild and comfortable, though my bones prefer a crypt's cold draft.",
+                )
             else:
-                comment = "Sweltering! Far too warm for an ancient skeleton."
+                comment = weather_resp.get(
+                    "hot",
+                    "Sweltering! Far too warm for an ancient skeleton.",
+                )
 
             if desc and desc not in ("clear", "sunny"):
                 return (
@@ -135,7 +164,8 @@ class BasicInfoService:
                 )
             return f"It is currently {temp_f} degrees Fahrenheit outside. {comment}"
 
-        return (
+        return weather_resp.get(
+            "fallback",
             "My internal barometer says it's chilly enough to make your teeth chatter "
-            "and my ribs rattle! Check the sky yourself, mortal."
+            "and my ribs rattle! Check the sky yourself, mortal.",
         )

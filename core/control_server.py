@@ -265,10 +265,18 @@ class ControlServer:
             except Exception as exc:
                 return {"status": "error", "message": f"Speech failed: {exc}"}
 
+        elif cmd in ("shutdown", "poweroff"):
+            if hasattr(agent, "_on_button_long_hold"):
+                threading.Thread(target=agent._on_button_long_hold, daemon=True).start()
+            else:
+                from core.system_utils import trigger_host_shutdown
+                trigger_host_shutdown()
+            return {"status": "ok", "message": "Host system shutdown initiated."}
+
         else:
             return {
                 "status": "error",
-                "message": f"Unknown command '{cmd}'. Available: status, volume, mute, unmute, disable, enable, toggle, mode, personality, say.",
+                "message": f"Unknown command '{cmd}'. Available: status, volume, mute, unmute, disable, enable, toggle, mode, personality, say, shutdown.",
             }
 
     def _cmd_status(self) -> Dict[str, Any]:

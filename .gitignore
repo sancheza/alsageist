@@ -42,6 +42,8 @@ models/cache/*.npy
 !models/cache/.gitkeep
 models/vosk*
 
-# Root scratch and preview files
+# Root scratch, preview, and socket files
 /preview_*.wav
 *.tmp
+*.bak
+*.sock

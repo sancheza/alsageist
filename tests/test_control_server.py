@@ -265,6 +265,16 @@ def test_dispatch_say(server_and_agent):
     assert resp["status"] == "error"
 
 
+def test_dispatch_shutdown(server_and_agent, monkeypatch):
+    """Test shutdown command initiates system poweroff."""
+    server, agent = server_and_agent
+    agent._on_button_long_hold = MagicMock()
+
+    resp = server.dispatch_command("shutdown")
+    assert resp["status"] == "ok"
+    assert "shutdown initiated" in resp["message"]
+
+
 def test_dispatch_unknown_command(server_and_agent):
     """Test unknown command returns error response."""
     server, _ = server_and_agent

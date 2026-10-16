@@ -4,6 +4,7 @@ Synthesizes character speech directly into memory as raw PCM numpy arrays
 without writing temporary audio files to disk.
 """
 
+import hashlib
 import os
 import re
 import subprocess
@@ -21,6 +22,7 @@ class PiperTTSService:
         length_scale: float = 1.15,
         noise_scale: float = 0.85,
         pause_duration_sec: float = 0.55,
+        cache_dir: Optional[str] = None,
     ) -> None:
         """Initialize the Piper TTS service.
 
@@ -37,6 +39,13 @@ class PiperTTSService:
         self.noise_scale = noise_scale
         self.pause_duration_sec = pause_duration_sec
 
+        if not os.path.isabs(self.model_path) and not os.path.exists(self.model_path):
+            repo_candidate = os.path.normpath(
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", self.model_path)
+            )
+            if os.path.exists(repo_candidate):
+                self.model_path = repo_candidate
+
         if not os.path.exists(self.model_path):
             raise FileNotFoundError(
                 f"Piper model not found at '{self.model_path}'. "
@@ -46,7 +55,8 @@ class PiperTTSService:
         self._voice = None
         self._syn_config = None
         self._cache: dict = {}
-        self.cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "models", "cache")
+        default_cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "models", "cache")
+        self.cache_dir = cache_dir or os.environ.get("ALSAGEIST_CACHE_DIR", default_cache)
         try:
             os.makedirs(self.cache_dir, exist_ok=True)
         except Exception:
@@ -116,7 +126,6 @@ class PiperTTSService:
         Returns:
             Absolute path to .npy cache file.
         """
-        import hashlib
         cache_key = hashlib.md5(f"{text}_{self.length_scale}_{self.noise_scale}".encode("utf-8")).hexdigest()
         return os.path.join(self.cache_dir, f"{cache_key}.npy")
 

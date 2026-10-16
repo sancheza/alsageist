@@ -18,3 +18,25 @@ def test_llm_history_reset():
 
     llm.reset_history()
     assert len(llm.history) == 0
+
+
+def test_llm_parameterization_and_env(monkeypatch):
+    """Verify custom models, prompts, fallback responses, and env var resolution."""
+    # Test explicit parameters
+    llm = ConversationalLLMService(
+        groq_api_key="fake_groq",
+        system_prompt="Custom prompt",
+        groq_model="llama-3.1-8b-instant",
+        fallback_response="Custom fallback response",
+    )
+    assert llm.system_prompt == "Custom prompt"
+    assert llm.groq_model == "llama-3.1-8b-instant"
+    assert llm.fallback_response == "Custom fallback response"
+
+    # Test environment variable resolution
+    monkeypatch.setenv("GROQ_LLM_MODEL", "llama-custom-env")
+    monkeypatch.setenv("LLM_FALLBACK_RESPONSE", "Env fallback")
+    llm_env = ConversationalLLMService(groq_api_key="fake_groq")
+    assert llm_env.groq_model == "llama-custom-env"
+    assert llm_env.fallback_response == "Env fallback"
+

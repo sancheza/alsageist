@@ -227,6 +227,8 @@ COMMON USAGE EXAMPLES:
             "mode",
             "personality",
             "say",
+            "shutdown",
+            "poweroff",
         ],
         help="Action to execute (default: status).",
     )

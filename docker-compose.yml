@@ -1,0 +1,22 @@
+services:
+  alsageist:
+    image: ghcr.io/sancheza/alsageist:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: alsageist
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - /etc/asound.conf:/etc/asound.conf:ro
+      - /tmp:/tmp
+      - /run/systemd/system:/run/systemd/system
+      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
+    devices:
+      - /dev/snd:/dev/snd

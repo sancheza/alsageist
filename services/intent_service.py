@@ -42,6 +42,16 @@ class PersonaIntentEngine:
         self._fallbacks = list(self.profile.fallbacks)
         self._escalation_lines = list(self.profile.escalation_lines)
         self._intent_rules = self.profile.compile_rules()
+        self._compiled_intent_rules: List[Tuple[str, List[re.Pattern], List[str]]] = []
+        for name, patterns, responses in self._intent_rules:
+            compiled = []
+            for pat in patterns:
+                if pat and pat.strip():
+                    try:
+                        compiled.append(re.compile(pat, re.IGNORECASE))
+                    except re.error:
+                        pass
+            self._compiled_intent_rules.append((name, compiled, responses))
 
         # Compile a curated pool of quotes, songs, jokes, and lore (excluding costume feedback)
         self._random_content_pool: List[str] = []
@@ -74,9 +84,9 @@ class PersonaIntentEngine:
         clean_text = re.sub(r"\s+", " ", clean_text)
 
         # 1. Check intent rules first to always answer direct questions and costume statements accurately
-        for intent_name, patterns, responses in self._intent_rules:
-            for pattern in patterns:
-                if re.search(pattern, clean_text, re.IGNORECASE):
+        for intent_name, compiled_patterns, responses in self._compiled_intent_rules:
+            for pattern in compiled_patterns:
+                if pattern.search(clean_text):
                     if intent_name == "random_content":
                         chosen = self._pick_unique(self._random_content_pool)
                     else:

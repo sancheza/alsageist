@@ -1,0 +1,771 @@
+{
+  "_doc": "Golden test vectors and benchmark utterances for Grimjaw intent classification.",
+  "child_questions_and_statements_100": [
+    "Are you wearing a costume or is that just your body?",
+    "Do you get cold without any skin on?",
+    "Where do you keep your brain?",
+    "How do you eat your Halloween candy without a stomach?",
+    "Does it hurt when your bones clack together?",
+    "Can I borrow a rib for my dog?",
+    "Do you have to brush your teeth if you don't have gums?",
+    "Why don't you have any eyeballs?",
+    "How do you stay standing up without any muscles?",
+    "Do you ever get the hiccups?",
+    "Are those real bones or plastic?",
+    "Where are your clothes?",
+    "How do you talk without a tongue?",
+    "Do you like bone broth or is that weird for you?",
+    "What do you do on days that aren't Halloween?",
+    "Does the wind blow right through you?",
+    "Do you know the Skeleton Dance song?",
+    "Where is your spine attached?",
+    "Did you drink all your milk when you were little?",
+    "Do your knees squeak when you walk?",
+    "Can you tickle yourself?",
+    "How do you hold your trick-or-treat bucket with those fingers?",
+    "Are you scary or are you friendly?",
+    "Do you have a dog skeleton at home?",
+    "How do you smile all the time without getting tired?",
+    "What happens if you lose a toe bone?",
+    "Do you eat dog biscuits?",
+    "Can you break apart and put yourself back together?",
+    "Do you sleep in a closet or under the bed?",
+    "Are you related to the skeleton in my science class?",
+    "How tall are you without shoes?",
+    "Does it feel weird when it rains on your skull?",
+    "Can I take a selfie with you?",
+    "Why is your head so smooth?",
+    "Do you ever lose your funny bone?",
+    "Where do you go when the sun comes up?",
+    "Do you have a name?",
+    "Is your favorite food rib-eye steak?",
+    "Do you like playing hide-and-seek in the dark?",
+    "How do you sit down without poking yourself?",
+    "Do you get sunburnt in the summer?",
+    "Did you lose your skin in an accident?",
+    "Can you do a backflip?",
+    "Why aren't you wearing shoes?",
+    "Do you know where the nearest haunted house is?",
+    "Do you want some of my chocolate?",
+    "How do you hear me without any ears?",
+    "Are you hiding in my garden?",
+    "Do you have a heart in there anywhere?",
+    "Why are your teeth so big?",
+    "Do you get tired of being white and grey?",
+    "Can I paint your skull green?",
+    "Does soup just spill all over the floor when you eat it?",
+    "Are you allowed to go trick-or-treating after midnight?",
+    "Do you have any bone jokes?",
+    "How do you tie your shoes without thumbs?",
+    "Is your favorite holiday Halloween or Day of the Dead?",
+    "Can you glow in the dark?",
+    "Did you fall off a dinosaur?",
+    "Where is your tummy?",
+    "Do you wear hats to keep your head warm?",
+    "How do you bend your elbows?",
+    "Are you scared of dogs?",
+    "Can you play the xylophone on your ribs?",
+    "Why do you look so hungry?",
+    "Do you live in a graveyard?",
+    "Can I touch your hand?",
+    "Do you like scary movies?",
+    "How do you smell things without a nose?",
+    "Are you going to eat me?",
+    "You look like you need a hug!",
+    "My dog would love to chew on your leg!",
+    "You have a really cool smile.",
+    "You're super tall!",
+    "I can see right through your ribs.",
+    "You look very skinny.",
+    "I like your bone suit!",
+    "You look like the guy from The Nightmare Before Christmas!",
+    "My mom says I need more calcium, just like you!",
+    "You're not very scary, you're funny!",
+    "I have bones inside me too!",
+    "Your hands are freezing cold!",
+    "You need to eat some dinner!",
+    "Look, we have the same teeth!",
+    "You make a funny noise when you move.",
+    "I'm going to dress up as you next year!",
+    "You're the best decorated porch on the block!",
+    "I'm not afraid of you at all.",
+    "Your head looks like a bowling ball!",
+    "My x-ray at the doctor looked just like you!",
+    "You dropped a finger bone over there!",
+    "I think your skull is shining!",
+    "You look like a puzzle I built once.",
+    "I bet you're really good at tag.",
+    "You're missing a shoe!",
+    "My pirate costume goes great with your vibe.",
+    "You look like you're ready to dance!",
+    "Happy Halloween, Mr. Bones!",
+    "Don't worry, I won't let any dogs get you!",
+    "See you next Halloween!"
+  ],
+  "category_intent_cases": [
+    {
+      "query": "What is your favorite color?",
+      "expected_intent": "favorite_color"
+    },
+    {
+      "query": "How old are you?",
+      "expected_intent": "age_and_death"
+    },
+    {
+      "query": "What's your name?",
+      "expected_intent": "identity"
+    },
+    {
+      "query": "Are you friendly?",
+      "expected_intent": "friendliness"
+    },
+    {
+      "query": "Can I have some candy?",
+      "expected_intent": "candy_request"
+    },
+    {
+      "query": "How much candy can I take?",
+      "expected_intent": "candy_quantity"
+    },
+    {
+      "query": "Where do you live?",
+      "expected_intent": "daily_life_and_habitat"
+    },
+    {
+      "query": "How did he die?",
+      "expected_intent": "cause_of_death"
+    },
+    {
+      "query": "Are you dead?",
+      "expected_intent": "are_you_dead"
+    },
+    {
+      "query": "What's your problem?",
+      "expected_intent": "attitude_and_problem"
+    },
+    {
+      "query": "Why are you watching the candy?",
+      "expected_intent": "guarding_candy_job"
+    },
+    {
+      "query": "Do you have any family?",
+      "expected_intent": "family_and_friends"
+    },
+    {
+      "query": "What is your favorite candy?",
+      "expected_intent": "favorite_candy"
+    },
+    {
+      "query": "Can you do magic?",
+      "expected_intent": "magic_and_abilities"
+    },
+    {
+      "query": "Do you like my costume?",
+      "expected_intent": "costume"
+    },
+    {
+      "query": "Are you real or plastic?",
+      "expected_intent": "reality"
+    },
+    {
+      "query": "You're scary!",
+      "expected_intent": "fear_scared"
+    },
+    {
+      "query": "You are so ugly!",
+      "expected_intent": "insults_looks"
+    },
+    {
+      "query": "Man, you're a jerk.",
+      "expected_intent": "insults_personality"
+    },
+    {
+      "query": "Tell me a joke",
+      "expected_intent": "jokes_and_humor"
+    },
+    {
+      "query": "How do you feel about sand?",
+      "expected_intent": "sand_and_star_wars"
+    },
+    {
+      "query": "Thank you, bye!",
+      "expected_intent": "goodbye"
+    },
+    {
+      "query": "What's your favorite restaurant?",
+      "expected_intent": "favorite_restaurant"
+    },
+    {
+      "query": "Which candy is the best?",
+      "expected_intent": "favorite_candy"
+    },
+    {
+      "query": "What's your favorite hobby?",
+      "expected_intent": "favorite_hobby"
+    }
+  ],
+  "prolonged_conversation_queries": [
+    "What's your name?",
+    "Where do you live?",
+    "How old are you?",
+    "Are you friendly?",
+    "How much candy can I take?",
+    "Do you have a brain?",
+    "Do you like bone broth?",
+    "Can I borrow a rib for my dog?",
+    "Tell me a joke",
+    "Why don't you have eyes?",
+    "Do you know the skeleton dance?",
+    "Where do you keep your brain?"
+  ],
+  "third_person_and_expanded_cases": [
+    {
+      "query": "How did he die?",
+      "expected_intent": "cause_of_death"
+    },
+    {
+      "query": "Why is he watching the candy?",
+      "expected_intent": "guarding_candy_job"
+    },
+    {
+      "query": "Where is his house?",
+      "expected_intent": "daily_life_and_habitat"
+    },
+    {
+      "query": "What is his name?",
+      "expected_intent": "identity"
+    },
+    {
+      "query": "What is his favorite song?",
+      "expected_intent": "favorite_song"
+    },
+    {
+      "query": "What's your favorite movie?",
+      "expected_intent": "favorite_movie"
+    },
+    {
+      "query": "Can he do magic?",
+      "expected_intent": "magic_and_abilities"
+    },
+    {
+      "query": "Does he have a girlfriend?",
+      "expected_intent": "family_and_friends"
+    },
+    {
+      "query": "Why is he so grumpy?",
+      "expected_intent": "attitude_and_problem"
+    }
+  ],
+  "session_transcript_cases": [
+    {
+      "query": "How much candy can I take?",
+      "expected_intent": "candy_quantity"
+    },
+    {
+      "query": "How long have you been a skeleton?",
+      "expected_intent": "age_and_death"
+    },
+    {
+      "query": "You're a jerk. You're a jerk.",
+      "expected_intent": "insults_personality"
+    },
+    {
+      "query": "What's your problem?",
+      "expected_intent": "attitude_and_problem"
+    },
+    {
+      "query": "How did you die?",
+      "expected_intent": "cause_of_death"
+    },
+    {
+      "query": "No, they aren't.",
+      "expected_intent": "rebuttals_and_banter"
+    },
+    {
+      "query": "like bad words.",
+      "expected_intent": "bad_words_and_language"
+    },
+    {
+      "query": "Do you get cold without any skin?",
+      "expected_intent": "cold_and_weather"
+    },
+    {
+      "query": "Can I borrow a rib for my dog?",
+      "expected_intent": "dogs_borrow_rib"
+    },
+    {
+      "query": "How do you see?",
+      "expected_intent": "senses_eyes"
+    },
+    {
+      "query": "Do you miss your skin?",
+      "expected_intent": "missing_skin"
+    },
+    {
+      "query": "Are you scared of dogs?",
+      "expected_intent": "dogs_scared"
+    },
+    {
+      "query": "I'm not afraid of you.",
+      "expected_intent": "fear_not_afraid"
+    },
+    {
+      "query": "I'm going to steal all the candy.",
+      "expected_intent": "candy_theft"
+    },
+    {
+      "query": "How would you like a nice greasy pork sandwich?",
+      "expected_intent": "pork_sandwich"
+    },
+    {
+      "query": "What's your favorite team?",
+      "expected_intent": "sports_and_teams"
+    },
+    {
+      "query": "Who's your favorite superhero?",
+      "expected_intent": "superheroes"
+    },
+    {
+      "query": "Why did the chicken cross the road?",
+      "expected_intent": "cross_the_road_joke"
+    },
+    {
+      "query": "What's your favorite movie quote?",
+      "expected_intent": "favorite_movie_quote"
+    },
+    {
+      "query": "Give me your favorite Vince and Price quote.",
+      "expected_intent": "vincent_price_and_thriller"
+    },
+    {
+      "query": "What is your favorite Vincent Price quote?",
+      "expected_intent": "vincent_price_and_thriller"
+    },
+    {
+      "query": "Do you like Michael Jackson's Thriller?",
+      "expected_intent": "vincent_price_and_thriller"
+    },
+    {
+      "query": "Are you friends with the mummy?",
+      "expected_intent": "monsters_and_mummy"
+    },
+    {
+      "query": "How do you feel about clerics?",
+      "expected_intent": "dnd_clerics_and_paladins"
+    },
+    {
+      "query": "You're stewed, butt-wad!",
+      "expected_intent": "pork_sandwich"
+    },
+    {
+      "query": "Have you tried organizing a holiday swap with Christmas lately?",
+      "expected_intent": "jack_skellington"
+    },
+    {
+      "query": "How do you feel about He-Man?",
+      "expected_intent": "skeletor_and_he_man"
+    },
+    {
+      "query": "Without skin or organs, do you consider yourself naked?",
+      "expected_intent": "naked_and_organs"
+    },
+    {
+      "query": "What's your favorite instrument?",
+      "expected_intent": "favorite_instrument"
+    },
+    {
+      "query": "Who is your favorite skeleton friend?",
+      "expected_intent": "skeleton_friends"
+    },
+    {
+      "query": "What do you think of Skelator?",
+      "expected_intent": "skeletor_and_he_man"
+    },
+    {
+      "query": "Do you live in Castle Greyskull?",
+      "expected_intent": "skeletor_and_he_man"
+    },
+    {
+      "query": "How many experience points do I get if I kill you?",
+      "expected_intent": "dnd_xp_and_combat"
+    },
+    {
+      "query": "Why didn't the skeleton go to the Halloween party?",
+      "expected_intent": "halloween_party_joke"
+    },
+    {
+      "query": "What do you call a skeleton who won't work?",
+      "expected_intent": "lazy_bones_joke"
+    },
+    {
+      "query": "What do skeletons order at a restaurant?",
+      "expected_intent": "restaurant_spare_ribs_joke"
+    },
+    {
+      "query": "Why couldn't the skeleton rally the team?",
+      "expected_intent": "rally_the_team_joke"
+    },
+    {
+      "query": "Who's the most powerful skeleton?",
+      "expected_intent": "most_powerful_skeleton"
+    },
+    {
+      "query": "Are you friends with the Grim Reaper?",
+      "expected_intent": "grim_reaper"
+    },
+    {
+      "query": "What does Ali G say about skeletons?",
+      "expected_intent": "ali_g"
+    },
+    {
+      "query": "What's your favorite Alli G quote?",
+      "expected_intent": "ali_g"
+    },
+    {
+      "query": "do you have any questions for C. Everett Koop",
+      "expected_intent": "ali_g"
+    },
+    {
+      "query": "Can you sing Spooky Scary Skeletons?",
+      "expected_intent": "sing_song"
+    },
+    {
+      "query": "You're a poopyhead.",
+      "expected_intent": "preschool_insults"
+    },
+    {
+      "query": "They say that you're a dumbass. I didn't say that.",
+      "expected_intent": "insults_personality"
+    },
+    {
+      "query": "Don't call me a flesh bag.",
+      "expected_intent": "compliments_and_banter"
+    },
+    {
+      "query": "Did you see you in Night of the Living Dead?",
+      "expected_intent": "night_of_the_living_dead"
+    },
+    {
+      "query": "Good one.",
+      "expected_intent": "compliments_and_banter"
+    },
+    {
+      "query": "What's your favorite TV show?",
+      "expected_intent": "favorite_tv_show"
+    },
+    {
+      "query": "What's your favorite food?",
+      "expected_intent": "favorite_food"
+    },
+    {
+      "query": "What's your favorite holiday?",
+      "expected_intent": "favorite_holiday"
+    },
+    {
+      "query": "What's your favorite video game?",
+      "expected_intent": "favorite_video_game"
+    },
+    {
+      "query": "What's your favorite Spice Girls song?",
+      "expected_intent": "spice_girls"
+    },
+    {
+      "query": "What's your favorite hobby?",
+      "expected_intent": "favorite_hobby"
+    },
+    {
+      "query": "Are you pretty?",
+      "expected_intent": "pretty_and_handsome"
+    },
+    {
+      "query": "Are you handsome?",
+      "expected_intent": "pretty_and_handsome"
+    },
+    {
+      "query": "What happened to your hair?",
+      "expected_intent": "hair_and_bald"
+    },
+    {
+      "query": "What happened to your eyes?",
+      "expected_intent": "senses_eyes"
+    },
+    {
+      "query": "Could you lend me 20 bones?",
+      "expected_intent": "lend_bones_money"
+    },
+    {
+      "query": "What happened to your heart?",
+      "expected_intent": "heart_and_organs"
+    },
+    {
+      "query": "Good morning.",
+      "expected_intent": "greeting"
+    },
+    {
+      "query": "How are you doing?",
+      "expected_intent": "how_are_you"
+    },
+    {
+      "query": "How are you feeling?",
+      "expected_intent": "how_are_you"
+    },
+    {
+      "query": "What time is it?",
+      "expected_intent": "time_and_clock"
+    },
+    {
+      "query": "Are you happy?",
+      "expected_intent": "happy_and_mood"
+    },
+    {
+      "query": "Why are you so scary?",
+      "expected_intent": "fear_scared"
+    },
+    {
+      "query": "Hey my brother, can I borrow a copy of your Hey Soul Classics?",
+      "expected_intent": "hey_soul_classics"
+    },
+    {
+      "query": "How much for one rib?",
+      "expected_intent": "one_rib_quote"
+    },
+    {
+      "query": "How much is one rib?",
+      "expected_intent": "one_rib_quote"
+    },
+    {
+      "query": "I sure am hungry.",
+      "expected_intent": "one_rib_quote"
+    },
+    {
+      "query": "i am sure am hungry",
+      "expected_intent": "one_rib_quote"
+    },
+    {
+      "query": "trick or treat smell my feet",
+      "expected_intent": "smell_my_feet"
+    },
+    {
+      "query": "smell my feet",
+      "expected_intent": "smell_my_feet"
+    },
+    {
+      "query": "What's your favorite restaurant?",
+      "expected_intent": "favorite_restaurant"
+    },
+    {
+      "query": "What is your favorite restaurant",
+      "expected_intent": "favorite_restaurant"
+    },
+    {
+      "query": "can you sing Thriller",
+      "expected_intent": "vincent_price_and_thriller"
+    },
+    {
+      "query": "Can you sing Thriller?",
+      "expected_intent": "vincent_price_and_thriller"
+    },
+    {
+      "query": "Can you sing Monster Mash?",
+      "expected_intent": "monster_mash"
+    },
+    {
+      "query": "Can you sing the Adams Family song?",
+      "expected_intent": "addams_family"
+    },
+    {
+      "query": "Can you sing The Time Warp?",
+      "expected_intent": "time_warp"
+    },
+    {
+      "query": "Can you read any Edgar Allan Poe?",
+      "expected_intent": "edgar_allan_poe"
+    },
+    {
+      "query": "Can you say the raven?",
+      "expected_intent": "edgar_allan_poe"
+    },
+    {
+      "query": "Can you read me a poem?",
+      "expected_intent": "edgar_allan_poe"
+    },
+    {
+      "query": "can you recite Childe Roland to the Dark Tower came?",
+      "expected_intent": "childe_roland"
+    },
+    {
+      "query": "Can you recite child Roland",
+      "expected_intent": "childe_roland"
+    },
+    {
+      "query": "Can you recite the Tears in Rain quote from Blade Runner?",
+      "expected_intent": "blade_runner_tears_in_rain"
+    },
+    {
+      "query": "Give me a scary quote",
+      "expected_intent": "scary_quote"
+    },
+    {
+      "query": "Tell me a spooky quote",
+      "expected_intent": "scary_quote"
+    },
+    {
+      "query": "What big eyes you have!",
+      "expected_intent": "red_riding_hood_eyes"
+    },
+    {
+      "query": "Who is your favorite horror movie character?",
+      "expected_intent": "favorite_horror_character"
+    },
+    {
+      "query": "Is this candy safe to eat?",
+      "expected_intent": "candy_safety"
+    },
+    {
+      "query": "What's your favorite number?",
+      "expected_intent": "favorite_number"
+    },
+    {
+      "query": "Who's your favorite singer?",
+      "expected_intent": "favorite_singer"
+    },
+    {
+      "query": "What are you doing?",
+      "expected_intent": "what_are_you_doing"
+    },
+    {
+      "query": "Can you do the magic?",
+      "expected_intent": "magic_and_abilities"
+    },
+    {
+      "query": "Can I give you a hug?",
+      "expected_intent": "touch_and_hug"
+    },
+    {
+      "query": "What's your favorite Ali G quote?",
+      "expected_intent": "ali_g"
+    },
+    {
+      "query": "Give me an Ali G quote",
+      "expected_intent": "ali_g"
+    },
+    {
+      "query": "What would you ask C. Everett Koop?",
+      "expected_intent": "ali_g"
+    },
+    {
+      "query": "Do people ever steal candy?",
+      "expected_intent": "candy_theft_inquiry"
+    },
+    {
+      "query": "See you later",
+      "expected_intent": "goodbye"
+    },
+    {
+      "query": "Which candy is the best?",
+      "expected_intent": "favorite_candy"
+    },
+    {
+      "query": "Tell me an Olie G quote.",
+      "expected_intent": "ali_g"
+    },
+    {
+      "query": "That's great to hear.",
+      "expected_intent": "polite_acknowledgment"
+    },
+    {
+      "query": "Good to hear.",
+      "expected_intent": "polite_acknowledgment"
+    },
+    {
+      "query": "How many people have you seen today?",
+      "expected_intent": "crowd_and_visitors"
+    },
+    {
+      "query": "Do you ever travel?",
+      "expected_intent": "travel_and_vacation"
+    },
+    {
+      "query": "What's your favorite animal?",
+      "expected_intent": "favorite_animal"
+    },
+    {
+      "query": "What's your favorite year?",
+      "expected_intent": "favorite_year"
+    }
+  ],
+  "costume_and_quote_cases": [
+    {
+      "query": "I'm dressed up as Optimus Prime.",
+      "expected_intent": "costume_optimus_prime"
+    },
+    {
+      "query": "I'm dressed up as Harry Potter.",
+      "expected_intent": "costume_harry_potter"
+    },
+    {
+      "query": "I'm SpongeBob SquarePants.",
+      "expected_intent": "costume_spongebob"
+    },
+    {
+      "query": "I'm dressed as Barbie.",
+      "expected_intent": "costume_barbie"
+    },
+    {
+      "query": "I am Spider-Man!",
+      "expected_intent": "costume_spiderman"
+    },
+    {
+      "query": "Hey my brother, may I borrow a copy of your Hey SO Classics?",
+      "expected_intent": "hey_soul_classics"
+    },
+    {
+      "query": "Who's your best friend?",
+      "expected_intent": "skeleton_friends"
+    },
+    {
+      "query": "I'm dressed as Woody.",
+      "expected_intent": "costume_woody"
+    }
+  ],
+  "hobby_pets_seinfeld_cases": [
+    {
+      "query": "So what do you do for hobbies?",
+      "expected_intent": "favorite_hobby"
+    },
+    {
+      "query": "Do you own a pet?",
+      "expected_intent": "pets_and_animals"
+    },
+    {
+      "query": "What is your favorite costume?",
+      "expected_intent": "favorite_costume"
+    },
+    {
+      "query": "Tell me a Seinfeld quote.",
+      "expected_intent": "seinfeld_quote"
+    }
+  ],
+  "time_queries": [
+    "What time is it?",
+    "What is the time?",
+    "Do you have the time?",
+    "Tell me the time",
+    "Got the time?"
+  ],
+  "weather_queries": [
+    "What's the temperature?",
+    "What is the weather?",
+    "How is the weather?",
+    "How cold is it?",
+    "What's it like outside?",
+    "Tell me the weather"
+  ],
+  "random_content_queries": [
+    "Say something random",
+    "Say a random line",
+    "Tell me something random",
+    "Give me a random quote",
+    "Say anything"
+  ]
+}

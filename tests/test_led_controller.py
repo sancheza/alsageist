@@ -308,3 +308,115 @@ def test_agent_llm_fallback_error_degradation():
     agent.tts.synthesize.assert_called_once_with("Safe fallback line")
     assert agent.logger.log_interaction.call_args[1]["matched_intent"] == "fallback_unrecognized"
 
+
+def test_button_long_hold_shutdown():
+    """Verify 10-second button hold invokes long hold callback."""
+    led = ConsoleLEDController(verbose=False)
+    press_called = False
+    hold_called = False
+    long_hold_called = False
+
+    def on_p():
+        nonlocal press_called
+        press_called = True
+
+    def on_h():
+        nonlocal hold_called
+        hold_called = True
+
+    def on_lh():
+        nonlocal long_hold_called
+        long_hold_called = True
+
+    led.set_button_callbacks(
+        on_press=on_p,
+        on_hold=on_h,
+        on_long_hold=on_lh,
+        hold_time_sec=5.0,
+        long_hold_time_sec=10.0,
+    )
+    assert led.button_long_hold_callback is not None
+    assert led.long_hold_time_sec == 10.0
+
+    led.trigger_button_long_hold()
+    assert long_hold_called
+    assert not press_called
+    assert not hold_called
+
+
+def test_agent_shutdown_on_button_long_hold(monkeypatch):
+    """Verify agent announces Powering Off and triggers shutdown on 10s hold."""
+    from unittest.mock import MagicMock
+    from main import AlsaGeistAgent
+    import argparse
+    import numpy as np
+
+    args = argparse.Namespace(
+        engine="intent",
+        input_device=None,
+        output_device=None,
+        volume=0.5,
+        mic_gain=1.0,
+        silence_timeout=0.6,
+        threshold=0.003,
+        min_speech_sec=0.2,
+        tempo=1.0,
+        noise=0.667,
+        model_path=None,
+        no_greeting=True,
+    )
+
+    agent = AlsaGeistAgent.__new__(AlsaGeistAgent)
+    agent.args = args
+    agent.running = False
+    agent.is_disabled = True
+    agent.audio = MagicMock()
+    agent.audio.volume = 0.0
+    agent.vad = MagicMock()
+    agent.dialogue_engine = MagicMock()
+    agent.tts = MagicMock()
+    agent.tts.synthesize.return_value = (np.zeros(1600, dtype=np.float32), 22050)
+    agent.logger = MagicMock()
+    agent.led = ConsoleLEDController(verbose=False)
+    agent.led.set_state(LEDState.IDLE)
+
+    shutdown_called = False
+
+    def mock_shutdown(dry_run=False):
+        nonlocal shutdown_called
+        shutdown_called = True
+        return True
+
+    monkeypatch.setattr("core.system_utils.trigger_host_shutdown", mock_shutdown)
+
+    agent._on_button_long_hold()
+
+    agent.tts.synthesize.assert_called_with("Powering off.")
+    agent.audio.play_audio.assert_called_once()
+    assert agent.audio.volume == 0.5  # Restored volume for announcement
+    assert agent.led.current_state == LEDState.OFF
+    assert shutdown_called is True
+
+
+def test_create_led_controller_custom_params_and_env(monkeypatch):
+    """Verify create_led_controller respects custom parameters and environment variables."""
+    # Test explicit params
+    ctrl = create_led_controller(
+        verbose=False,
+        led_pin=18,
+        button_pin=24,
+        hold_time_sec=3.5,
+        long_hold_time_sec=7.0,
+    )
+    assert ctrl.hold_time_sec == 3.5
+    assert ctrl.long_hold_time_sec == 7.0
+
+    # Test environment variable resolution
+    monkeypatch.setenv("BUTTON_HOLD_SEC", "4.2")
+    monkeypatch.setenv("BUTTON_SHUTDOWN_SEC", "8.5")
+    ctrl_env = create_led_controller(verbose=False)
+    assert ctrl_env.hold_time_sec == 4.2
+    assert ctrl_env.long_hold_time_sec == 8.5
+
+
+

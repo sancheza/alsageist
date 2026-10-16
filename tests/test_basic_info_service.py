@@ -81,3 +81,43 @@ def test_weather_response_offline_fallback():
         resp = service.get_weather_response()
         assert "internal barometer" in resp.lower()
         assert "ribs rattle" in resp.lower()
+
+
+def test_custom_profile_time_and_weather_responses():
+    """Verify custom profile templates are used when provided."""
+    from core.intent_builder import PersonalityProfile
+
+    profile = PersonalityProfile(
+        personality="custom_bot",
+        display_name="Custom Bot",
+        description="A helpful assistant bot.",
+        voice="models/piper/custom.onnx",
+        time_responses={
+            "bedtime": "Custom bedtime: {time}",
+            "standard": "Custom standard: {time}",
+        },
+        weather_responses={
+            "freezing": "Custom freezing!",
+            "cold": "Custom cold!",
+            "mild": "Custom mild!",
+            "hot": "Custom hot!",
+            "fallback": "Custom fallback!",
+        },
+    )
+    service = BasicInfoService(profile=profile)
+    # Daytime
+    dt = datetime.datetime(2026, 10, 11, 14, 30, 0)
+    assert service.get_time_response(now=dt) == "Custom standard: 2:30 PM"
+
+    # Bedtime
+    dt_bed = datetime.datetime(2026, 10, 11, 23, 0, 0)
+    assert service.get_time_response(now=dt_bed) == "Custom bedtime: 11:00 PM"
+
+    # Weather freezing
+    fake_freezing = {"temp_f": "20", "temp_c": "-6", "desc": "Clear"}
+    with patch.object(service, "get_weather_data", return_value=fake_freezing):
+        assert "Custom freezing!" in service.get_weather_response()
+
+    # Weather fallback
+    with patch.object(service, "get_weather_data", return_value=None):
+        assert service.get_weather_response() == "Custom fallback!"

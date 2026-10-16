@@ -8,7 +8,7 @@ Designed for cross-platform operation on macOS development workstations and Rasp
 
 ## 1. Overview
 
-AlsaGeist runs an autonomous conversational character driven by pluggable personality profiles (defaulting to Grimjaw the Crypt Skeleton). It captures microphone audio in memory, detects completed speech boundaries via energy-based VAD, matches visitor utterances against an offline intent library, synthesizes character audio locally via Piper neural models in RAM, and drives an illuminated arcade status LED.
+AlsaGeist runs an autonomous conversational character driven by pluggable personality profiles (defaulting to Grimjaw the Crypt Skeleton). The name **AlsaGeist** combines **ALSA** (Advanced Linux Sound Architecture, the kernel-level audio subsystem driving low-latency microphone capture and playback on Linux) and **Geist** (German for *ghost* or *spirit*), characterizing an autonomous vocal spirit inhabiting animatronic display hardware. It captures microphone audio in memory, detects completed speech boundaries via energy-based VAD, matches visitor utterances against an offline intent library, synthesizes character audio locally via Piper neural models in RAM, and drives an illuminated arcade status LED.
 
 ### Key Capabilities
 * **Zero Disk I/O:** Audio capture, VAD framing, and speech synthesis operate directly in memory as raw PCM numpy arrays.
@@ -33,9 +33,31 @@ AlsaGeist runs an autonomous conversational character driven by pluggable person
 
 ---
 
-## 3. Installation
+## 3. Quick Start (Docker on Raspberry Pi)
+
+### Objective: Deploy AlsaGeist on a fresh Raspberry Pi OS install using the automated Docker onboarding tool.
+
+See the complete [Getting Started with Docker Guide](docs/getting_started_rpi_docker.md) for full instructions and hardware details.
+
+```bash
+git clone https://github.com/sancheza/alsageist.git
+cd alsageist
+./scripts/setup_docker.sh
+```
+
+Follow the prompts to configure audio hardware, download Grimjaw's neural voice model, and set optional API keys. When using the Google AIY Voice HAT, reboot to activate the soundcard overlay:
+
+```bash
+sudo reboot
+```
+
+---
+
+## 4. Manual Installation (Bare Metal / Python Venv)
 
 ### Objective: Set up a local Python virtual environment and install dependencies.
+
+See the complete [Getting Started on Bare Metal Guide](docs/getting_started_rpi_bare_metal.md) for full driver setup and background service configuration.
 
 ```bash
 git clone https://github.com/sancheza/alsageist.git
@@ -48,25 +70,34 @@ pip install -e .
 
 ---
 
-## 4. Downloading Voice Models
+## 5. Downloading Voice & Speech Recognition Models
 
-### Objective: Download the Piper ONNX voice weights into the `models/` directory.
+### Objective: Download the Piper ONNX voice weights and Vosk offline STT model into the `models/` directory.
 
-Run the model downloader script:
+Run the model downloader script to fetch both models:
 
 ```bash
-python3 scripts/download_model.py --voice alan
+python3 scripts/download_model.py --all
 ```
 
 Expected output:
 ```text
 Downloading https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx -> models/piper/en_GB-alan-medium.onnx
+Downloading https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx.json -> models/piper/en_GB-alan-medium.onnx.json
 Successfully saved models/piper/en_GB-alan-medium.onnx
+Successfully saved models/piper/en_GB-alan-medium.onnx.json
+Downloading https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip -> models/vosk-model-small-en-us-0.15
+Extracting models/vosk_temp.zip into models/...
+Successfully installed Vosk model to models/vosk-model-small-en-us-0.15
 ```
+
+Alternatively, download individual components:
+* `python3 scripts/download_model.py --voice alan` — Downloads Piper neural TTS voice only.
+* `python3 scripts/download_model.py --vosk` — Downloads Vosk offline STT model only.
 
 ---
 
-## 5. Configuration & Environment Variables
+## 6. Configuration & Environment Variables
 
 AlsaGeist uses offline intent matching and local TTS by default. Configure your environment using the provided template:
 
@@ -83,7 +114,7 @@ nano .env
 | `LLM_FALLBACK` | Fetch custom LLM response for indeterminate prompts instead of canned response | `false` |
 | `ALSAGEIST_USER` | Target Linux user account for systemd service installation | `$USER` |
 | `ALSAGEIST_DIR` | Installation directory path for systemd service installation | Repository path |
-| `VOLUME` | Audio playback volume multiplier (`0.0` to `1.0`) | `0.8` |
+| `VOLUME` | Audio playback volume multiplier (`0.0` to `1.0`) | `0.5` |
 | `MIC_GAIN` | Microphone digital input gain multiplier | `1.5` |
 | `VAD_THRESHOLD` | RMS audio energy threshold for speech detection | `0.0025` |
 
@@ -92,14 +123,14 @@ nano .env
 GROQ_API_KEY=gsk_your_groq_api_key_here
 PERSONALITY=grimjaw
 LLM_FALLBACK=false
-VOLUME=0.8
+VOLUME=0.5
 MIC_GAIN=1.5
 VAD_THRESHOLD=0.0035
 ```
 
 ---
 
-## 6. Usage & Running the Display
+## 7. Usage & Running the Display
 
 ### Objective: Start the interactive display daemon.
 
@@ -124,9 +155,11 @@ Expected output:
 
 Speak into your microphone. Grimjaw will detect your voice, transcribe the input, match the intent, synthesize speech, and play the response while pulsing the LED.
 
+For real-time CLI remote control (`alsageist_ctl.py`), noise calibration, online/offline operational modes, and custom personality creation, see the [User & Operations Guide](docs/usage_guide.md).
+
 ---
 
-## 7. Command-Line Options
+## 8. Command-Line Options
 
 Inspect all runtime flags:
 
@@ -144,7 +177,7 @@ Inspect all runtime flags:
 | `--model-path` | Path to the Piper ONNX model file | `models/piper/en_GB-alan-medium.onnx` |
 | `--input-device` | Input audio hardware device name or index | System default |
 | `--output-device` | Output audio hardware device name or index | System default |
-| `--volume` | Audio playback volume multiplier (`0.0` to `1.0`) | `0.8` (or `$VOLUME`) |
+| `--volume` | Audio playback volume multiplier (`0.0` to `1.0`) | `0.5` (or `$VOLUME`) |
 | `--mic-gain` | Microphone digital input gain multiplier | `1.5` (or `$MIC_GAIN`) |
 | `--threshold` | RMS audio energy threshold for speech detection | `0.0025` (or `$VAD_THRESHOLD`) |
 | `--min-speech-sec` | Minimum sustained speech duration in seconds | `0.15` |
@@ -155,7 +188,7 @@ Inspect all runtime flags:
 
 ---
 
-## 8. Conversational Intent Architecture
+## 9. Conversational Intent Architecture
 
 The offline dialogue engine in `services/intent_service.py` provides deterministic responses across over 150 categories:
 * **Candy Protection & Bowl Rules:** Limits visitors to one piece, detects theft inquiries, and warns against greedy hands.
@@ -165,11 +198,11 @@ The offline dialogue engine in `services/intent_service.py` provides determinist
 * **Poetry & Music:** Edgar Allan Poe's *The Raven*, Robert Browning's *Childe Roland*, Michael Jackson's *Thriller*, *Monster Mash*, *The Time Warp*.
 * **Anatomy & Skeleton Puns:** Banter regarding bones, teeth, absent organs, zero-calorie diets, and cold weather.
 * **Indeterminate Prompt Handling:** When `LLM_FALLBACK=true`, unrecognized phrases trigger custom LLM responses via Groq/Gemini, with automatic fallback to generic canned lines if offline or on timeout.
-* **Visitor Prompts Reference:** See [`docs/custom_responses.md`](docs/custom_responses.md) for a catalog of supported spoken prompts.
+* **Visitor Prompts Reference:** Run `./scripts/summarize_personality.py -p grimjaw` to dynamically inspect or export the catalog of supported spoken questions and answers for any personality profile.
 
 ---
 
-## 9. Hardware Arcade Button & Status LED Signaling
+## 10. Hardware Arcade Button & Status LED Signaling
 
 ### Arcade Button Functions
 
@@ -178,7 +211,8 @@ The lighted arcade pushbutton on GPIO 23 provides manual controls:
 | Action | Duration | Result |
 | :--- | :--- | :--- |
 | **Short Press** | < 5.0 seconds | Cycles audio volume in 10% steps (`0.0` to `1.0`), stops ongoing playback, resets conversational context, and announces the new volume level. Ignored when disabled. |
-| **Long Hold** | 5.0 seconds | **Mute / Disable Toggle**: When active, holding for 5 seconds disables Grimjaw (turns off microphone capture and speaker output, stops playback, resets dialogue context, and turns the LED completely off). Holding for 5 seconds again re-enables Grimjaw, restores microphone capture and speaker output, sets the LED to breathing `IDLE`, and resumes normal operation. |
+| **Medium Hold** | 5.0 seconds | **Mute / Disable Toggle**: When active, holding for 5 seconds disables Grimjaw (turns off microphone capture and speaker output, stops playback, resets dialogue context, and turns the LED completely off). Holding for 5 seconds again re-enables Grimjaw, restores microphone capture and speaker output, sets the LED to breathing `IDLE`, and resumes normal operation. |
+| **Long Hold** | 10.0 seconds | **Safe System Poweroff**: Speaks offline pre-cached "Powering off.", turns off the status LED, and cleanly powers down the Raspberry Pi operating system (supported natively and inside Docker). |
 
 ### Status LED Signaling
 
@@ -196,7 +230,7 @@ The integrated LED on GPIO 25 provides real-time operational feedback:
 
 ---
 
-## 10. Testing
+## 11. Testing
 
 ### Objective: Run the automated test suite.
 
@@ -208,14 +242,14 @@ pytest tests/
 
 Expected output:
 ```text
-============================== 47 passed in 2.80s ==============================
+============================= 133 passed in 7.21s =============================
 ```
 
 ---
 
-## 11. Raspberry Pi & Google AIY Voice Kit Deployment
+## 12. Raspberry Pi & Google AIY Voice Kit Deployment
 
-For a complete end-to-end guide covering hardware selection, modern Pi 4/5 alternatives, audio configurations, and systemd deployment, see the [Raspberry Pi Installation & Deployment Guide](docs/raspberry_pi_installation_guide.md).
+For hardware selection, acoustic enclosure design, and OS flashing, see the [Project & Hardware Overview](docs/overview.md). For step-by-step native setup and service deployment, see the [Getting Started on Bare Metal Guide](docs/getting_started_rpi_bare_metal.md).
 
 ### Step 1: Operating System Preparation
 Flash **Raspberry Pi OS Lite (64-bit)** to a microSD card.
@@ -316,6 +350,6 @@ sudo systemctl enable --now alsageist.service
 
 ---
 
-## 11. License
+## 13. License
 
 This project is licensed under the [MIT License](LICENSE).

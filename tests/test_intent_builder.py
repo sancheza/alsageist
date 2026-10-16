@@ -64,6 +64,7 @@ def test_personality_profile_persistence():
         display_name="Frosty the Snarky Snowman",
         description="A chillingly sarcastic snowman display.",
         voice="en_GB-alan-medium",
+        startup_greeting="Brrr! Who disturbed my snowdrift?",
         fallbacks=["I'm melting here, talk faster!"],
         intents=[
             CustomIntent(
@@ -83,6 +84,7 @@ def test_personality_profile_persistence():
 
         assert loaded.personality == "snowman"
         assert loaded.display_name == "Frosty the Snarky Snowman"
+        assert loaded.startup_greeting == "Brrr! Who disturbed my snowdrift?"
         assert len(loaded.intents) == 1
         assert loaded.intents[0].name == "melt_question"
         assert loaded.fallbacks == ["I'm melting here, talk faster!"]

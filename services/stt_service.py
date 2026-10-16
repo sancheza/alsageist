@@ -23,19 +23,25 @@ class SpeechToTextService:
         gemini_api_key: Optional[str] = None,
         vosk_model_path: Optional[str] = None,
         sample_rate: int = 16000,
+        groq_model: Optional[str] = None,
+        gemini_model: Optional[str] = None,
     ) -> None:
         """Initialize STT service with available API keys and offline Vosk model.
 
         Args:
-            groq_api_key: Optional Groq API key for Whisper Large v3.
+            groq_api_key: Optional Groq API key for Whisper.
             gemini_api_key: Optional Gemini API key for Gemini Flash audio transcription.
             vosk_model_path: Optional path to local Vosk offline model directory.
             sample_rate: Input audio sample rate (default: 16000 Hz).
+            groq_model: Optional Groq STT model name (default: $GROQ_STT_MODEL or whisper-large-v3).
+            gemini_model: Optional Gemini model name override (default: $GEMINI_STT_MODEL).
         """
         self.groq_api_key = groq_api_key or os.environ.get("GROQ_API_KEY")
         self.gemini_api_key = (
             gemini_api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
         )
+        self.groq_model = groq_model or os.environ.get("GROQ_STT_MODEL", "whisper-large-v3")
+        self.gemini_model = gemini_model or os.environ.get("GEMINI_STT_MODEL")
         self.sample_rate = sample_rate
 
         # Initialize offline Vosk model if available
@@ -163,11 +169,13 @@ class SpeechToTextService:
     def _transcribe_gemini(self, wav_bytes: bytes) -> str:
         """Transcribe using fast Google Gemini multimodal audio transcription."""
         b64_data = base64.b64encode(wav_bytes).decode("utf-8")
-        models_to_try = [
+        candidates_models = [
+            self.gemini_model,
             "gemini-3.5-flash-lite",
             "gemini-flash-lite-latest",
             "gemini-3.5-transcribe",
         ]
+        models_to_try = [m for m in candidates_models if m]
 
         prompt_text = (
             "Listen carefully to the audio and transcribe the spoken words verbatim. "
@@ -196,12 +204,15 @@ class SpeechToTextService:
 
             url = (
                 f"https://generativelanguage.googleapis.com/v1beta/models/"
-                f"{model}:generateContent?key={self.gemini_api_key}"
+                f"{model}:generateContent"
             )
             req = urllib.request.Request(
                 url,
                 data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": str(self.gemini_api_key),
+                },
                 method="POST",
             )
             try:
@@ -235,7 +246,7 @@ class SpeechToTextService:
         # Part 1: model
         body.write(f"--{boundary}\r\n".encode("utf-8"))
         body.write(b'Content-Disposition: form-data; name="model"\r\n\r\n')
-        body.write(b"whisper-large-v3\r\n")
+        body.write(f"{self.groq_model}\r\n".encode("utf-8"))
 
         # Part 2: file
         body.write(f"--{boundary}\r\n".encode("utf-8"))
