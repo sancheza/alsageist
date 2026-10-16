@@ -12,6 +12,7 @@ import socket
 import subprocess
 import sys
 import time
+from typing import Optional
 
 
 def is_running_in_docker() -> bool:
@@ -210,4 +211,56 @@ def check_internet_connectivity(timeout: float = 2.5) -> bool:
         except Exception:
             continue
     return False
+
+
+def resolve_piper_model_path(
+    model_path: Optional[str] = None,
+    voice_name: Optional[str] = None,
+    repo_root: Optional[str] = None,
+) -> str:
+    """Resolve the file path to a Piper ONNX neural voice model.
+
+    Evaluates explicit model paths, voice names (e.g. 'en_GB-alan-medium' or 'alan'),
+    and default locations in `models/piper/`.
+
+    Args:
+        model_path: Explicit path from CLI flags or environment variables.
+        voice_name: Character voice identifier from personality profile or string.
+        repo_root: Root directory of the repository. Auto-resolved if None.
+
+    Returns:
+        Resolved absolute or normalized model file path.
+    """
+    if repo_root is None:
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    # 1. Explicit model path from argument or environment
+    if model_path:
+        if os.path.isabs(model_path) and os.path.exists(model_path):
+            return model_path
+        candidate = os.path.join(repo_root, model_path)
+        if os.path.exists(candidate):
+            return candidate
+        return model_path
+
+    # 2. Voice name from profile (e.g. 'en_GB-alan-medium' or 'models/piper/en_GB-alan-medium.onnx')
+    if voice_name:
+        if voice_name.endswith(".onnx"):
+            if os.path.isabs(voice_name) and os.path.exists(voice_name):
+                return voice_name
+            candidate = os.path.join(repo_root, voice_name)
+            if os.path.exists(candidate):
+                return candidate
+            candidate_in_piper = os.path.join(repo_root, "models", "piper", os.path.basename(voice_name))
+            if os.path.exists(candidate_in_piper):
+                return candidate_in_piper
+            return candidate
+        else:
+            # Short name or identifier without .onnx extension
+            candidate = os.path.join(repo_root, "models", "piper", f"{voice_name}.onnx")
+            if os.path.exists(candidate):
+                return candidate
+
+    # 3. Default fallback model
+    return os.path.join(repo_root, "models", "piper", "en_GB-alan-medium.onnx")
 

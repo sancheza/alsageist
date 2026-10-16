@@ -9,6 +9,7 @@ from core.system_utils import (
     check_internet_connectivity,
     is_running_in_docker,
     load_env_file,
+    resolve_piper_model_path,
     trigger_host_shutdown,
 )
 
@@ -72,4 +73,24 @@ def test_check_internet_connectivity():
     with patch("socket.socket") as mock_sock_cls:
         mock_sock_cls.side_effect = OSError("Network unreachable")
         assert check_internet_connectivity(timeout=1.0) is False
+
+
+def test_resolve_piper_model_path(tmp_path):
+    """Verify resolve_piper_model_path handles explicit paths, voice names, and fallbacks."""
+    # 1. Fallback default
+    path = resolve_piper_model_path(repo_root=str(tmp_path))
+    assert path == str(tmp_path / "models" / "piper" / "en_GB-alan-medium.onnx")
+
+    # 2. Short voice name
+    models_dir = tmp_path / "models" / "piper"
+    models_dir.mkdir(parents=True)
+    custom_model = models_dir / "custom-voice.onnx"
+    custom_model.write_text("model_bytes")
+
+    path = resolve_piper_model_path(voice_name="custom-voice", repo_root=str(tmp_path))
+    assert path == str(custom_model)
+
+    # 3. Explicit path
+    path = resolve_piper_model_path(model_path=str(custom_model), repo_root=str(tmp_path))
+    assert path == str(custom_model)
 

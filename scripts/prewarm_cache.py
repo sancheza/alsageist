@@ -21,6 +21,7 @@ import sys
 import time
 from typing import List
 
+from core.system_utils import resolve_piper_model_path
 from services.intent_service import GrimjawIntentEngine
 from services.tts_service import PiperTTSService
 
@@ -147,15 +148,12 @@ def main() -> int:
     profile = getattr(engine, "profile", None)
 
     # Resolve Piper model path from arguments or personality voice configuration
-    model_path = args.model_path
-    if not model_path:
-        voice_name = getattr(profile, "voice", "en_GB-alan-medium") if profile else "en_GB-alan-medium"
-        model_path = os.path.join(repo_root, "models", "piper", f"{voice_name}.onnx")
-
-    if not os.path.isabs(model_path) and not os.path.exists(model_path):
-        candidate = os.path.join(repo_root, model_path)
-        if os.path.exists(candidate):
-            model_path = candidate
+    voice_name = getattr(profile, "voice", "en_GB-alan-medium") if profile else "en_GB-alan-medium"
+    model_path = resolve_piper_model_path(
+        model_path=args.model_path,
+        voice_name=voice_name,
+        repo_root=repo_root,
+    )
 
     unique_phrases = collect_phrases_to_prewarm(engine, warm_all=args.all, limit=args.limit)
 

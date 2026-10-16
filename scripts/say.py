@@ -16,7 +16,7 @@ import sys
 
 from core.audio_io import AudioIO
 from core.intent_builder import PersonalityProfile, find_personality_file
-from core.system_utils import load_env_file
+from core.system_utils import load_env_file, resolve_piper_model_path
 from services.tts_service import PiperTTSService
 
 VERSION = "1.0.0"
@@ -96,16 +96,12 @@ def main() -> int:
             pass
 
         display_name = profile.display_name if profile else "Grimjaw"
-        default_model = (
-            profile.voice
-            if (profile and profile.voice)
-            else "models/piper/en_GB-alan-medium.onnx"
+        voice_id = profile.voice if profile else None
+        model_path = resolve_piper_model_path(
+            model_path=args.model_path or os.environ.get("MODEL_PATH"),
+            voice_name=voice_id,
+            repo_root=repo_root,
         )
-        model_path = args.model_path or os.environ.get("MODEL_PATH") or default_model
-        if not os.path.isabs(model_path) and not os.path.exists(model_path):
-            candidate = os.path.join(repo_root, model_path)
-            if os.path.exists(candidate):
-                model_path = candidate
 
         tempo = args.tempo
         if tempo is None:

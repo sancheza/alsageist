@@ -145,17 +145,12 @@ class AlsaGeistAgent:
                 self.dialogue_engine = ConversationalLLMService()
 
         repo_root = os.path.dirname(os.path.abspath(__file__))
-        resolved_model = args.model_path
-        if not resolved_model:
-            if self.profile and self.profile.voice:
-                resolved_model = self.profile.voice
-            else:
-                resolved_model = "models/piper/en_GB-alan-medium.onnx"
-
-        if not os.path.isabs(resolved_model) and not os.path.exists(resolved_model):
-            candidate = os.path.join(repo_root, resolved_model)
-            if os.path.exists(candidate):
-                resolved_model = candidate
+        voice_id = self.profile.voice if self.profile else None
+        resolved_model = system_utils.resolve_piper_model_path(
+            model_path=args.model_path or os.environ.get("MODEL_PATH"),
+            voice_name=voice_id,
+            repo_root=repo_root,
+        )
 
         tempo = args.tempo
         if tempo is None:
