@@ -22,7 +22,7 @@ import time
 from typing import List
 
 from core.system_utils import resolve_piper_model_path
-from services.intent_service import GrimjawIntentEngine
+from services.intent_service import PersonaIntentEngine
 from services.tts_service import PiperTTSService
 
 VERSION = "1.1.0"
@@ -70,7 +70,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def collect_phrases_to_prewarm(engine: GrimjawIntentEngine, warm_all: bool, limit: int) -> List[str]:
+def collect_phrases_to_prewarm(engine: PersonaIntentEngine, warm_all: bool, limit: int) -> List[str]:
     """Collect dialogue phrases to prewarm based on personality profile configuration.
 
     Args:
@@ -144,7 +144,7 @@ def main() -> int:
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     print(f"Loading personality profile '{args.personality}'...")
-    engine = GrimjawIntentEngine(personality_file=args.personality)
+    engine = PersonaIntentEngine(personality_name_or_path=args.personality)
     profile = getattr(engine, "profile", None)
 
     # Resolve Piper model path from arguments or personality voice configuration

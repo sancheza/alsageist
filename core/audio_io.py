@@ -6,7 +6,7 @@ streaming directly in RAM without writing temporary files to disk.
 
 import queue
 import threading
-from typing import Callable, Generator, Optional
+from typing import Dict, Optional
 import numpy as np
 import sounddevice as sd
 
@@ -48,6 +48,13 @@ class AudioIO:
         self._is_capturing: bool = False
         self._is_muted: bool = False
         self._lock = threading.Lock()
+        # Output rates the hardware rejected, mapped to the rate that worked (e.g. 22050 -> 44100)
+        self._output_rate_fallbacks: Dict[int, int] = {}
+
+    @property
+    def is_muted(self) -> bool:
+        """Return True while microphone frames are being discarded."""
+        return self._is_muted
 
     def _resolve_device(self, name_or_index: Optional[str], kind: str) -> Optional[int]:
         """Resolve a device name substring to a sounddevice device ID.
@@ -103,8 +110,7 @@ class AudioIO:
                 return
 
             self._is_capturing = True
-            while not self._input_queue.empty():
-                self._input_queue.get_nowait()
+            self._flush_input_queue()
 
             try:
                 self._input_stream = sd.InputStream(
@@ -144,34 +150,30 @@ class AudioIO:
                 finally:
                     self._input_stream = None
 
+    def _flush_input_queue(self) -> None:
+        """Discard all buffered input frames. Caller holds self._lock."""
+        while True:
+            try:
+                self._input_queue.get_nowait()
+            except queue.Empty:
+                return
+
     def mute_capture(self) -> None:
         """Temporarily mute incoming microphone frames during speech playback."""
         with self._lock:
             self._is_muted = True
-            while not self._input_queue.empty():
-                try:
-                    self._input_queue.get_nowait()
-                except queue.Empty:
-                    break
+            self._flush_input_queue()
 
     def unmute_capture(self) -> None:
         """Unmute and flush queue to resume capturing clean speech."""
         with self._lock:
-            while not self._input_queue.empty():
-                try:
-                    self._input_queue.get_nowait()
-                except queue.Empty:
-                    break
+            self._flush_input_queue()
             self._is_muted = False
 
     def drain_input_queue(self) -> None:
         """Flush and discard all buffered input audio frames."""
         with self._lock:
-            while not self._input_queue.empty():
-                try:
-                    self._input_queue.get_nowait()
-                except queue.Empty:
-                    break
+            self._flush_input_queue()
 
     def read_frame(self, timeout: float = 0.1) -> Optional[np.ndarray]:
         """Read a single audio frame from the capture queue.
@@ -229,20 +231,27 @@ class AudioIO:
         if self.volume != 1.0:
             play_data = np.clip(play_data * self.volume, -1.0, 1.0)
 
+        # Reuse the rate that worked on earlier calls instead of retrying a rejected one
+        fallback_sr = self._output_rate_fallbacks.get(sr)
+        if fallback_sr is not None:
+            self._play_samples(self.resample_audio(play_data, sr, fallback_sr), fallback_sr, blocking)
+            return
+
         try:
-            sd.play(play_data, samplerate=sr, device=self.device_output, blocking=blocking)
-            if blocking:
-                sd.wait()
+            self._play_samples(play_data, sr, blocking)
         except Exception:
             # If ALSA hardware rejects 22050 Hz (e.g. AIY Voice HAT MAX98357A I2S DAC),
             # resample in memory to 44100 Hz
-            if sr == 22050:
-                resampled = self.resample_audio(play_data, 22050, 44100)
-                sd.play(resampled, samplerate=44100, device=self.device_output, blocking=blocking)
-                if blocking:
-                    sd.wait()
-            else:
+            if sr != 22050:
                 raise
+            self._play_samples(self.resample_audio(play_data, 22050, 44100), 44100, blocking)
+            self._output_rate_fallbacks[22050] = 44100
+
+    def _play_samples(self, samples: np.ndarray, sample_rate: int, blocking: bool) -> None:
+        """Play float32 samples at the given rate, waiting for completion when blocking."""
+        sd.play(samples, samplerate=sample_rate, device=self.device_output, blocking=blocking)
+        if blocking:
+            sd.wait()
 
     def stop_playback(self) -> None:
         """Instantly stop any active audio playback."""

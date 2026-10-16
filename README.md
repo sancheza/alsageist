@@ -82,14 +82,16 @@ python3 scripts/download_model.py --all
 
 Expected output:
 ```text
-Downloading https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx -> models/piper/en_GB-alan-medium.onnx
-Downloading https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx.json -> models/piper/en_GB-alan-medium.onnx.json
-Successfully saved models/piper/en_GB-alan-medium.onnx
-Successfully saved models/piper/en_GB-alan-medium.onnx.json
-Downloading https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip -> models/vosk-model-small-en-us-0.15
-Extracting models/vosk_temp.zip into models/...
-Successfully installed Vosk model to models/vosk-model-small-en-us-0.15
+Downloading https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx -> /home/pi/alsageist/models/piper/en_GB-alan-medium.onnx
+Successfully saved /home/pi/alsageist/models/piper/en_GB-alan-medium.onnx (SHA-256 verified)
+Downloading https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx.json -> /home/pi/alsageist/models/piper/en_GB-alan-medium.onnx.json
+Successfully saved /home/pi/alsageist/models/piper/en_GB-alan-medium.onnx.json (SHA-256 verified)
+Downloading https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip -> /home/pi/alsageist/models/vosk-model-small-en-us-0.15
+Extracting verified archive into /home/pi/alsageist/models...
+Successfully installed Vosk model to /home/pi/alsageist/models/vosk-model-small-en-us-0.15
 ```
+
+Each file is checked against a pinned SHA-256 digest before it is installed; a mismatch stops the download with a non-zero exit status.
 
 Alternatively, download individual components:
 * `python3 scripts/download_model.py --voice alan` — Downloads Piper neural TTS voice only.
@@ -170,7 +172,6 @@ Inspect all runtime flags:
 | Flag | Description | Default |
 | :--- | :--- | :--- |
 | `-v, --version` | Display application version and exit | Current version |
-| `--verbose` | Enable verbose diagnostic logging | False |
 | `--engine` | Dialogue engine: `intent` (offline) or `llm` (cloud) | `intent` |
 | `--llm-fallback` | Fetch custom LLM response for indeterminate prompts | `$LLM_FALLBACK` or `false` |
 | `--no-llm-fallback` | Disable LLM fallback for indeterminate prompts | True if unset |
@@ -234,15 +235,16 @@ The integrated LED on GPIO 25 provides real-time operational feedback:
 
 ### Objective: Run the automated test suite.
 
-Execute pytest across all unit tests:
+Install the test dependencies, then execute pytest across all unit tests:
 
 ```bash
+pip install -e ".[dev]"
 pytest tests/
 ```
 
 Expected output:
 ```text
-============================= 133 passed in 7.21s =============================
+============================= 255 passed in 15.89s =============================
 ```
 
 ---

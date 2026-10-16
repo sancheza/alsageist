@@ -116,39 +116,46 @@ class VoiceActivityDetector:
             self._active_speech_frames_count += 1
             if rms > self._peak_speech_rms:
                 self._peak_speech_rms = rms
-            return True, False, None
+        else:
+            self._consecutive_silence_frames += 1
 
-        # Silence or max duration during active speech
-        self._consecutive_silence_frames += 1
+        # The maximum length applies to speech frames as well, so continuous loud sound cannot
+        # grow the buffer without bound.
         utterance_dur = (len(self._speech_buffer) * self.frame_duration_ms) / 1000.0
         if self._consecutive_silence_frames >= self.silence_timeout_frames or utterance_dur >= self.max_utterance_sec:
-            # End of utterance reached
-            was_speaking = self.is_speaking
-            active_frames = self._active_speech_frames_count
-            peak_rms = self._peak_speech_rms
+            completed, audio = self._finish_utterance()
+            return is_speech, completed, audio
 
-            self.is_speaking = False
-            self._consecutive_speech_frames = 0
-            self._consecutive_silence_frames = 0
-            self._active_speech_frames_count = 0
-            self._peak_speech_rms = 0.0
+        return is_speech, False, None
 
-            completed_audio = np.concatenate(self._speech_buffer) if self._speech_buffer else np.array([], dtype=np.float32)
-            self._speech_buffer.clear()
-            self._pre_speech_buffer.clear()
+    def _finish_utterance(self) -> Tuple[bool, Optional[np.ndarray]]:
+        """Close the current utterance, reset tracking state, and validate the audio.
 
-            # Reject if not enough active speech frames or peak energy is too weak
-            if (
-                not was_speaking
-                or len(completed_audio) < int(self.sample_rate * 0.25)
-                or active_frames < self.min_active_speech_frames
-                or peak_rms < (self.min_energy_threshold * 0.8)
-            ):
-                return False, False, None
+        Returns:
+            Tuple of (utterance_accepted, audio). Audio is None when the utterance is rejected.
+        """
+        active_frames = self._active_speech_frames_count
+        peak_rms = self._peak_speech_rms
 
-            return False, True, completed_audio
+        self.is_speaking = False
+        self._consecutive_speech_frames = 0
+        self._consecutive_silence_frames = 0
+        self._active_speech_frames_count = 0
+        self._peak_speech_rms = 0.0
 
-        return False, False, None
+        completed_audio = np.concatenate(self._speech_buffer) if self._speech_buffer else np.array([], dtype=np.float32)
+        self._speech_buffer.clear()
+        self._pre_speech_buffer.clear()
+
+        # Reject if not enough active speech frames or peak energy is too weak
+        if (
+            len(completed_audio) < int(self.sample_rate * 0.25)
+            or active_frames < self.min_active_speech_frames
+            or peak_rms < (self.min_energy_threshold * 0.8)
+        ):
+            return False, None
+
+        return True, completed_audio
 
     def reset(self) -> None:
         """Reset internal buffers and state."""

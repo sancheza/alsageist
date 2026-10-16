@@ -15,7 +15,6 @@ services:
       - ./models:/app/models
       - ./logs:/app/logs
       - /etc/asound.conf:/etc/asound.conf:ro
-      - /tmp:/tmp
       - /run/systemd/system:/run/systemd/system
       - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
     devices:

@@ -26,7 +26,7 @@ graph TD
     end
 
     subgraph Dialogue Reasoning
-        CLOUD_STT --> ENGINE["GrimjawIntentEngine (Services)"]
+        CLOUD_STT --> ENGINE["PersonaIntentEngine (Services)"]
         VOSK_STT --> ENGINE
         ENGINE -->|"Unrecognized & LLM_FALLBACK"| LLM["Cloud LLM: Groq / Gemini (Services)"]
         BUTTON["Arcade Button (GPIO 23)"] -->|"Short: Volume / 5s: Mute"| AIO
@@ -54,10 +54,11 @@ AlsaGeist follows the dev ADR modular architecture standard (`core/`, `services/
 
 | Layer | Placement | Responsibility | Dependencies |
 | :--- | :--- | :--- | :--- |
-| **Orchestration** | `main.py` | Subsystem lifecycle, signal handling, periodic network polling, and the decomposed utterance event loop (`_filter_utterance`, `_resolve_dialogue_response`, `_play_speech_audio`, `_speak_response`). | `core`, `services` |
+| **Orchestration** | `services/agent.py` | Subsystem lifecycle, periodic network polling, the decomposed utterance event loop (`_filter_utterance`, `_resolve_dialogue_response`, `_play_speech_audio`, `speak`), and the thread-safe control API used by the button handlers and the IPC server. | `core`, `services` |
+| **Runtime Entry Point** | `main.py` | Argument parsing, `.env` loading, signal handlers, and agent start. | `core`, `services` |
 | **Configuration** | `core/config.py` | Centralized command-line argument parser (`parse_args`, `build_arg_parser`), environment variable default resolution, and semantic version constants. | Standard library, `argparse` |
 | **System Utilities** | `core/system_utils.py` | Host and operating system utilities: `.env` file parsing, TCP network connectivity probing, and platform-safe operating system shutdown triggers. | Standard library, `socket`, `subprocess` |
-| **Core Subsystems** | `core/` | Cross-platform hardware interfaces and IPC: ALSA/CoreAudio streaming (`audio_io.py`), voice activity detection (`vad.py`), PWM LED driver (`led_controller.py`), structured JSONL interaction logging (`logger.py`), personality profile parsing (`intent_builder.py`), and Unix domain socket IPC daemon server (`control_server.py`). | `sounddevice`, `numpy`, `gpiozero`, `lgpio` |
+| **Core Subsystems** | `core/` | Cross-platform hardware interfaces and IPC: ALSA/CoreAudio streaming (`audio_io.py`), voice activity detection (`vad.py`), PWM LED driver (`led_controller.py`), structured JSONL interaction logging (`logger.py`), personality profile parsing (`intent_builder.py`), Unix domain socket IPC daemon server (`control_server.py`), and HTTP transport with Groq/Gemini API wrappers (`http_client.py`, `cloud_api.py`). | `sounddevice`, `numpy`, `gpiozero`, `lgpio` |
 | **Domain Services** | `services/` | Speech-to-text conversion (cloud and offline), deterministic intent classification, costume inquiry state machine, optional cloud LLM fallback, and Piper neural TTS synthesis. | `vosk`, `piper-tts`, `onnxruntime` |
 | **Entry Points & Tools**| `scripts/` | Standalone CLI tools for system configuration, daemon control, voice synthesis previewing, and audio cache pre-warming. | Standard library, `argparse` |
 
@@ -72,11 +73,11 @@ AlsaGeist follows the dev ADR modular architecture standard (`core/`, `services/
 
 ### 3.2 Host & Operating System Utilities (`core/system_utils.py`)
 * **Environment Loading (`load_env_file`):** Robust key-value `.env` parser that ignores comments, strips enclosing quotes, skips duplicate keys, and resolves paths without third-party dependencies.
-* **Network Connectivity Probing (`check_internet_connectivity`):** Low-overhead direct TCP socket connection check against external DNS servers (`8.8.8.8:53` and `1.1.1.1:53`) with sub-second timeouts, avoiding ICMP ping permissions.
+* **Network Connectivity Probing (`check_internet_connectivity`):** Low-overhead direct TCP socket connection check against `1.1.1.1` and `8.8.8.8` on port 443, then port 53, avoiding DNS lookups and ICMP ping permissions. Periodic checks run on a background thread.
 * **Host Power Management (`trigger_host_shutdown`):** Safe system shutdown dispatch executing `sudo /sbin/shutdown -h now` on Linux platforms while safely simulating actions in dry-run mode on macOS development machines.
 
 ### 3.3 Audio Input/Output (`core/audio_io.py`)
-* **In-Memory Streaming:** Audio capture and playback utilize non-blocking callback queues through `sounddevice` and PortAudio. All audio remains in 32-bit floating point NumPy arrays without temporary file creation.
+* **In-Memory Audio:** Audio capture runs through non-blocking callback queues in `sounddevice` and PortAudio. Playback, synthesis, and transcription operate on complete utterances. All audio remains in 32-bit floating point NumPy arrays without temporary file creation.
 * **Hardware Adaptation & Resampling:** Hardware I2S DACs (such as the MAX98357A on the AIY Voice HAT) enforce fixed 44.1 kHz or 48 kHz clocks. `AudioIO` automatically downmixes stereo microphone input to mono and applies in-memory linear interpolation resampling from 22.05 kHz to 44.1 kHz during playback.
 * **Software Volume & Digital Gain:**
   $$\text{Input Frame} = \text{np.clip}(\text{frame} \times \text{mic\_gain}, -1.0, 1.0)$$
@@ -130,17 +131,22 @@ AlsaGeist follows the dev ADR modular architecture standard (`core/`, `services/
 * **Local Neural Synthesis:** Uses Piper ONNX (`en_GB-alan-medium.onnx`) with runtime phonetic normalization for character pronunciations.
 * **Two-Tier Audio Caching:**
   1. *Tier 1 (RAM Cache):* In-memory Python dictionary storing previously synthesized audio arrays for 0 ms repeated playback.
-  2. *Tier 2 (Disk Cache):* MD5-keyed float32 NumPy arrays stored in `models/cache/<hash>.npy`. Caches persist across reboots, providing 0 ms time-to-first-byte (TTFB) playback for all pre-warmed dialogue lines.
+  2. *Tier 2 (Disk Cache):* float32 NumPy arrays stored in `models/cache/<hash>.npy`, keyed by text, voice model, tempo and noise. Caches persist across reboots, providing 0 ms time-to-first-byte (TTFB) playback for all pre-warmed dialogue lines.
+* **Cache Limits:** The RAM tier keeps the 128 most recently used phrases. The disk tier is capped at `$ALSAGEIST_CACHE_MAX_MB` (default 1024 MB); the least recently used files are deleted beyond the cap. Disk writes are atomic.
 
 ### 3.10 Control Server IPC (`core/control_server.py`)
-* **UNIX Domain Socket Daemon:** Asynchronous control server listening on `/tmp/alsageist.sock`.
-* **Non-Blocking Control Interface:** Processes commands (`STATUS`, `VOLUME`, `MUTE`, `UNMUTE`, `SAY`, `MODE`, `PERSONALITY`, `SHUTDOWN`) dispatched from `scripts/alsageist_ctl.py` without interrupting the active audio loop.
+* **UNIX Domain Socket Daemon:** Asynchronous control server listening on `/tmp/alsageist-<uid>/alsageist.sock`.
+* **Access Control:** The socket directory is mode 0700 and the socket mode 0600, both created by the daemon user. On Linux the server also checks the peer UID (`SO_PEERCRED`) and accepts only the daemon user or root. A path that exists but is not a socket owned by the daemon user is never replaced. Requests are limited to 64 KB.
+* **Non-Blocking Control Interface:** Processes commands (`STATUS`, `VOLUME`, `MUTE`, `UNMUTE`, `DISABLE`, `ENABLE`, `TOGGLE`, `SAY`, `MODE`, `PERSONALITY`, `SHUTDOWN`) dispatched from `scripts/alsageist_ctl.py` without interrupting the active audio loop.
+* **Agent API Only:** Every command calls a public method on the agent (`disable`, `enable`, `toggle`, `speak`, `set_volume`, `set_online`, `switch_personality`, `request_shutdown`). The server holds no audio, VAD, or LED logic.
 
-### 3.11 Conversational Orchestration Pipeline (`main.py`)
+### 3.11 Conversational Orchestration Pipeline (`services/agent.py`)
 * **Decomposed Utterance Lifecycle:**
   1. *Utterance Filtering (`_filter_utterance`):* Filters empty silence, sub-threshold ambient noises, timecode strings, and common whisper artifacts.
   2. *Dialogue Resolution (`_resolve_dialogue_response`):* Resolves intent classification, handles dynamic time/weather intents, and coordinates cloud LLM fallback escalation.
-  3. *Audio Synthesis & Playback (`_play_speech_audio` / `_speak_response`):* Synthesizes audio in RAM, sets `LEDState.SPEAKING`, mutes microphone capture during playback, and applies an acoustic dissipation cooldown before unmuting. Reused cleanly across mode announcements, button interactions, startup greetings, and dialogue replies.
+  3. *Audio Synthesis & Playback (`_play_speech_audio` / `speak`):* Synthesizes audio in RAM, sets `LEDState.SPEAKING`, mutes microphone capture during playback, and applies an acoustic dissipation cooldown before unmuting. Reused cleanly across mode announcements, button interactions, startup greetings, and dialogue replies.
+* **Concurrency:** State changes (`disable`, `enable`, `toggle`, `switch_personality`) hold a state lock. Speech playback holds an audio lock, so button, IPC, and dialogue speech play one clip at a time.
+* **Persona Switching:** `switch_personality` builds the new dialogue engine, LLM prompt, voice, and info service before installing any of them; a failure leaves the running persona unchanged.
 
 ---
 
@@ -200,12 +206,15 @@ alsageist/
 │   ├── audio_io.py                # Sounddevice capture, resampling & playback
 │   ├── config.py                  # CLI argument parser, schema & version definition
 │   ├── control_server.py          # Asynchronous UNIX domain socket IPC daemon server
+│   ├── cloud_api.py               # Groq & Gemini endpoint wrappers
+│   ├── http_client.py             # JSON & multipart HTTP client with mandatory timeouts
 │   ├── intent_builder.py          # Personality profile loader & intent dataclass schema
 │   ├── led_controller.py          # GPIO PWM breathing, solid & speech flutter
-│   ├── logger.py                  # Structured JSONL telemetry logger
+│   ├── logger.py                  # Structured JSONL telemetry logger (rotation, optional text redaction)
 │   ├── system_utils.py            # Environment loader, TCP network probe & safe shutdown
 │   └── vad.py                     # Energy VAD & silence boundary detector
 ├── services/
+│   ├── agent.py                   # Agent orchestrator & control API
 │   ├── basic_info_service.py      # Real-time spoken time and weather status provider
 │   ├── intent_service.py          # Deterministic dialogue rules & costume state machine
 │   ├── llm_service.py             # Optional cloud LLM fallback service
@@ -235,7 +244,7 @@ alsageist/
 │   ├── overview.md                # Project & hardware specifications overview
 │   └── usage_guide.md             # Operations & day-to-day management guide
 ├── tests/                         # Unit tests covering all subsystems
-├── main.py                        # Autonomous runtime entry point
+├── main.py                        # Runtime entry point (arguments, signals, agent start)
 ├── pyproject.toml                 # Package definition & entry point
 └── alsageist.service              # Systemd unit file template
 ```

@@ -8,10 +8,14 @@ import io
 import json
 import os
 from typing import Optional
-import urllib.error
-import urllib.request
 import wave
 import numpy as np
+
+from core import cloud_api
+
+GEMINI_TIMEOUT_SEC = 4.0
+GROQ_TIMEOUT_SEC = 10.0
+MAX_TRANSCRIPT_TOKENS = 256  # an 8 s utterance is about 30 words; leave headroom
 
 
 class SpeechToTextService:
@@ -140,31 +144,24 @@ class SpeechToTextService:
 
         wav_bytes = self._audio_to_wav_bytes(audio_array)
 
+        backends = []
         if self.groq_api_key:
-            try:
-                return self._transcribe_groq(wav_bytes)
-            except Exception as exc:
-                if self.gemini_api_key:
-                    try:
-                        return self._transcribe_gemini(wav_bytes)
-                    except Exception:
-                        pass
-                if self._vosk_model:
-                    return self.transcribe_offline(audio_array)
-                raise RuntimeError(f"Groq Whisper transcription failed: {exc}") from exc
-
+            backends.append(("Groq Whisper", lambda: self._transcribe_groq(wav_bytes)))
         if self.gemini_api_key:
-            try:
-                return self._transcribe_gemini(wav_bytes)
-            except Exception as exc:
-                if self._vosk_model:
-                    return self.transcribe_offline(audio_array)
-                raise RuntimeError(f"Gemini transcription failed: {exc}") from exc
-
+            backends.append(("Gemini", lambda: self._transcribe_gemini(wav_bytes)))
         if self._vosk_model:
-            return self.transcribe_offline(audio_array)
+            backends.append(("Vosk", lambda: self.transcribe_offline(audio_array)))
+        if not backends:
+            raise RuntimeError("No transcription backend available.")
 
-        raise RuntimeError("No transcription backend available.")
+        errors = []
+        for name, run in backends:
+            try:
+                return run()
+            except Exception as exc:
+                errors.append(f"{name}: {exc}")
+                print(f"  (STT backend {name} failed: {exc})")
+        raise RuntimeError("All transcription backends failed: " + "; ".join(errors))
 
     def _transcribe_gemini(self, wav_bytes: bytes) -> str:
         """Transcribe using fast Google Gemini multimodal audio transcription."""
@@ -183,45 +180,27 @@ class SpeechToTextService:
             "Return ONLY the plain transcript text with no formatting, markdown, quotes, or commentary."
         )
 
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"inlineData": {"mimeType": "audio/wav", "data": b64_data}},
+                    {"text": prompt_text},
+                ]
+            }],
+            "generationConfig": {
+                "temperature": 0.0,
+                "maxOutputTokens": MAX_TRANSCRIPT_TOKENS,
+            },
+        }
+
+        answered = False
+        last_error: Optional[Exception] = None
         for model in models_to_try:
-            parts = [
-                {
-                    "inlineData": {
-                        "mimeType": "audio/wav",
-                        "data": b64_data,
-                    }
-                },
-                {"text": prompt_text},
-            ]
-
-            payload = {
-                "contents": [{"parts": parts}],
-                "generationConfig": {
-                    "temperature": 0.0,
-                    "maxOutputTokens": 60,
-                },
-            }
-
-            url = (
-                f"https://generativelanguage.googleapis.com/v1beta/models/"
-                f"{model}:generateContent"
-            )
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={
-                    "Content-Type": "application/json",
-                    "x-goog-api-key": str(self.gemini_api_key),
-                },
-                method="POST",
-            )
             try:
-                with urllib.request.urlopen(req, timeout=4) as response:
-                    result = json.loads(response.read().decode("utf-8"))
-                candidates = result.get("candidates", [])
-                if not candidates:
-                    continue
-                cand_parts = candidates[0].get("content", {}).get("parts", [])
+                cand_parts = cloud_api.gemini_generate_parts(
+                    self.gemini_api_key, model, payload, timeout=GEMINI_TIMEOUT_SEC
+                )
+                answered = True
                 for p in cand_parts:
                     if isinstance(p, dict):
                         if "audioTranscription" in p:
@@ -232,42 +211,17 @@ class SpeechToTextService:
                             raw_t = p.get("text", "").strip()
                             if raw_t and "cannot fulfill" not in raw_t.lower():
                                 return raw_t
-            except Exception:
-                continue
+            except Exception as exc:
+                last_error = exc
 
+        # An empty transcript is valid only when a model answered; if every model failed,
+        # raise so the caller can fall back to another backend.
+        if not answered and last_error is not None:
+            raise RuntimeError(f"all Gemini models failed: {last_error}") from last_error
         return ""
 
     def _transcribe_groq(self, wav_bytes: bytes) -> str:
         """Transcribe using Groq Whisper multipart audio endpoint."""
-        import uuid
-        boundary = f"----WebKitFormBoundary{uuid.uuid4().hex}"
-        body = io.BytesIO()
-
-        # Part 1: model
-        body.write(f"--{boundary}\r\n".encode("utf-8"))
-        body.write(b'Content-Disposition: form-data; name="model"\r\n\r\n')
-        body.write(f"{self.groq_model}\r\n".encode("utf-8"))
-
-        # Part 2: file
-        body.write(f"--{boundary}\r\n".encode("utf-8"))
-        body.write(b'Content-Disposition: form-data; name="file"; filename="audio.wav"\r\n')
-        body.write(b"Content-Type: audio/wav\r\n\r\n")
-        body.write(wav_bytes)
-        body.write(b"\r\n")
-
-        body.write(f"--{boundary}--\r\n".encode("utf-8"))
-
-        req = urllib.request.Request(
-            "https://api.groq.com/openai/v1/audio/transcriptions",
-            data=body.getvalue(),
-            headers={
-                "Authorization": f"Bearer {self.groq_api_key}",
-                "Content-Type": f"multipart/form-data; boundary={boundary}",
-            },
-            method="POST",
+        return cloud_api.groq_transcribe(
+            self.groq_api_key, self.groq_model, wav_bytes, timeout=GROQ_TIMEOUT_SEC
         )
-
-        with urllib.request.urlopen(req) as response:
-            result = json.loads(response.read().decode("utf-8"))
-
-        return result.get("text", "").strip()

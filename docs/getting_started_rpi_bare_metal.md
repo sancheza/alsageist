@@ -216,22 +216,14 @@ python3 -m venv venv
 source venv/bin/activate
 ```
 
-3. Upgrade packaging tools and install AlsaGeist in editable mode:
+3. Upgrade packaging tools and install AlsaGeist with the Raspberry Pi GPIO libraries in editable mode:
 
 ```bash
 pip install --upgrade pip setuptools wheel
-pip install -e .
+pip install -e ".[rpi]"
 ```
 
-4. Install the GPIO control libraries:
-
-For Raspberry Pi OS Bookworm (Linux kernel `lgpio` interface):
-
-```bash
-pip install gpiozero rpi-lgpio
-```
-
-5. Verify Python dependencies:
+4. Verify Python dependencies:
 
 ```bash
 python3 -c "import sounddevice, numpy, gpiozero, vosk; print('Dependencies verified successfully.')"
@@ -256,13 +248,13 @@ python3 scripts/download_model.py --all
 
 Expected output:
 ```text
-Downloading https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx -> models/piper/en_GB-alan-medium.onnx
-Downloading https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx.json -> models/piper/en_GB-alan-medium.onnx.json
-Successfully saved models/piper/en_GB-alan-medium.onnx
-Successfully saved models/piper/en_GB-alan-medium.onnx.json
-Downloading https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip -> models/vosk-model-small-en-us-0.15
-Extracting models/vosk_temp.zip into models/...
-Successfully installed Vosk model to models/vosk-model-small-en-us-0.15
+Downloading https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx -> /home/pi/alsageist/models/piper/en_GB-alan-medium.onnx
+Successfully saved /home/pi/alsageist/models/piper/en_GB-alan-medium.onnx (SHA-256 verified)
+Downloading https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium/en_GB-alan-medium.onnx.json -> /home/pi/alsageist/models/piper/en_GB-alan-medium.onnx.json
+Successfully saved /home/pi/alsageist/models/piper/en_GB-alan-medium.onnx.json (SHA-256 verified)
+Downloading https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip -> /home/pi/alsageist/models/vosk-model-small-en-us-0.15
+Extracting verified archive into /home/pi/alsageist/models...
+Successfully installed Vosk model to /home/pi/alsageist/models/vosk-model-small-en-us-0.15
 ```
 
 Verify downloaded model directories in `models/`:

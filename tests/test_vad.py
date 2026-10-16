@@ -92,3 +92,63 @@ def test_vad_rejects_brief_transient_noise():
     # Should be rejected because total active speech was only 90ms
     assert completed_utterance is None
     assert not vad.is_speaking
+
+
+def _loud_frame(seed=0):
+    return (np.random.RandomState(seed).randn(480) * 0.2).astype(np.float32)
+
+
+def test_vad_caps_utterance_length_during_continuous_loud_sound():
+    """Continuous loud sound ends an utterance at max_utterance_sec instead of buffering forever."""
+    vad = VoiceActivityDetector(min_energy_threshold=0.002, max_utterance_sec=2.0)
+    max_frames = int(2.0 * 1000 / vad.frame_duration_ms) + 1
+    loud = _loud_frame()
+
+    completions = []
+    peak_buffer = 0
+    for _ in range(1000):  # 30 seconds of unbroken loud sound
+        _, completed, audio = vad.process_frame(loud)
+        peak_buffer = max(peak_buffer, len(vad._speech_buffer))
+        if completed:
+            completions.append(len(audio))
+
+    assert peak_buffer <= max_frames
+    assert len(completions) >= 5
+    assert all(n <= max_frames * 480 for n in completions)
+
+
+def test_vad_forced_close_resets_state_for_next_utterance():
+    """After a forced close the detector is idle and can start a new utterance."""
+    vad = VoiceActivityDetector(min_energy_threshold=0.002, max_utterance_sec=1.0)
+    loud = _loud_frame()
+    for _ in range(200):
+        _, completed, _ = vad.process_frame(loud)
+        if completed:
+            break
+    assert completed
+    assert not vad.is_speaking
+    assert vad._speech_buffer == []
+
+    vad.process_frame(loud)
+    vad.process_frame(loud)
+    vad.process_frame(loud)
+    assert vad.is_speaking
+
+
+def test_vad_short_speech_unaffected_by_max_length():
+    """Speech shorter than max_utterance_sec still ends on trailing silence with its full audio."""
+    vad = VoiceActivityDetector(
+        min_energy_threshold=0.01,
+        silence_timeout_sec=0.1,
+        min_active_speech_sec=0.15,
+        max_utterance_sec=8.0,
+    )
+    tone = (np.sin(np.linspace(0, 40 * np.pi, 480)) * 0.5).astype(np.float32)
+    silence = np.zeros(480, dtype=np.float32)
+
+    results = [vad.process_frame(tone) for _ in range(20)]
+    results += [vad.process_frame(silence) for _ in range(10)]
+
+    completed = [r for r in results if r[1]]
+    assert len(completed) == 1
+    assert len(completed[0][2]) >= 20 * 480

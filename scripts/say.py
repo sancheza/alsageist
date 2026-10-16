@@ -15,7 +15,7 @@ import os
 import sys
 
 from core.audio_io import AudioIO
-from core.intent_builder import PersonalityProfile, find_personality_file
+from core.intent_builder import load_personality, resolve_voice_settings
 from core.system_utils import load_env_file, resolve_piper_model_path
 from services.tts_service import PiperTTSService
 
@@ -87,13 +87,11 @@ def main() -> int:
 
     try:
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        profile = None
         try:
-            p_file = find_personality_file(args.personality)
-            if os.path.isfile(p_file):
-                profile = PersonalityProfile.load_from_file(p_file)
-        except Exception:
-            pass
+            profile = load_personality(args.personality)
+        except Exception as exc:
+            print(f"Warning: Could not load personality '{args.personality}': {exc}", file=sys.stderr)
+            profile = None
 
         display_name = profile.display_name if profile else "Grimjaw"
         voice_id = profile.voice if profile else None
@@ -103,17 +101,11 @@ def main() -> int:
             repo_root=repo_root,
         )
 
-        tempo = args.tempo
-        if tempo is None:
-            tempo = (
-                profile.voice_settings.get("tempo", 1.15)
-                if profile and profile.voice_settings
-                else 1.15
-            )
+        tempo, noise = resolve_voice_settings(profile, args.tempo)
 
         vol = args.volume if args.volume is not None else float(os.environ.get("VOLUME", "0.5"))
 
-        tts = PiperTTSService(model_path=model_path, length_scale=tempo)
+        tts = PiperTTSService(model_path=model_path, length_scale=tempo, noise_scale=noise)
         audio = AudioIO(volume=vol)
 
         print(f"💀 {display_name} speaking (volume={vol}): \"{args.text}\"")

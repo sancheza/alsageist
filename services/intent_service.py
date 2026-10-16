@@ -4,12 +4,13 @@ Provides instant, zero-latency conversational responses to trick-or-treaters
 and visitors, loaded dynamically from external personality JSON profiles.
 """
 
+from collections import OrderedDict
 import os
 import random
 import re
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
-from core.intent_builder import PersonalityProfile, find_personality_file
+from core.intent_builder import PersonalityProfile, load_personality
 
 
 class PersonaIntentEngine:
@@ -24,7 +25,7 @@ class PersonaIntentEngine:
         Raises:
             FileNotFoundError: If the requested personality profile JSON file cannot be found.
         """
-        self._recently_used: Set[str] = set()
+        self._recently_used: "OrderedDict[str, None]" = OrderedDict()
         self._max_recent: int = 25
         self._turn_count: int = 0
         self._asked_costume: bool = False
@@ -34,12 +35,7 @@ class PersonaIntentEngine:
             self._personality_name = personality_name_or_path.personality
         else:
             self._personality_name = personality_name_or_path
-            profile_path = find_personality_file(personality_name_or_path)
-            if not os.path.isfile(profile_path):
-                raise FileNotFoundError(
-                    f"Personality profile not found: '{personality_name_or_path}' (searched at: {profile_path})"
-                )
-            self.profile = PersonalityProfile.load_from_file(profile_path)
+            self.profile = load_personality(personality_name_or_path)
         self._costume_prompts = list(self.profile.costume_prompts)
         self._fallbacks = list(self.profile.fallbacks)
         self._escalation_lines = list(self.profile.escalation_lines)
@@ -141,21 +137,11 @@ class PersonaIntentEngine:
             self._recently_used.clear()
 
         chosen = random.choice(available)
-        self._recently_used.add(chosen)
+        self._recently_used[chosen] = None
+        self._recently_used.move_to_end(chosen)
 
-        if len(self._recently_used) > self._max_recent:
-            self._recently_used.pop()
+        # Forget the oldest phrase first so a line just chosen is never the one dropped
+        while len(self._recently_used) > self._max_recent:
+            self._recently_used.popitem(last=False)
 
         return chosen
-
-
-class GrimjawIntentEngine(PersonaIntentEngine):
-    """Grimjaw Crypt Skeleton dialogue engine."""
-
-    def __init__(self, personality_file: Optional[str] = None) -> None:
-        """Initialize Grimjaw engine defaulting to the grimjaw personality.
-
-        Args:
-            personality_file: Optional path or name override (defaults to 'grimjaw').
-        """
-        super().__init__(personality_name_or_path=personality_file or "grimjaw")

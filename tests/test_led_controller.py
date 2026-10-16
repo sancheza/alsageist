@@ -113,7 +113,7 @@ def test_rpi_led_controller_hold_setup():
 
 def test_agent_mute_toggle_on_button_hold():
     from unittest.mock import MagicMock
-    from main import AlsaGeistAgent
+    from tests.agent_helpers import make_bare_agent
     import argparse
 
     args = argparse.Namespace(
@@ -131,7 +131,7 @@ def test_agent_mute_toggle_on_button_hold():
         no_greeting=True,
     )
 
-    agent = AlsaGeistAgent.__new__(AlsaGeistAgent)
+    agent = make_bare_agent()
     agent.args = args
     agent.running = False
     agent.is_disabled = False
@@ -173,10 +173,10 @@ def test_console_led_thinking_state():
 
 def test_agent_llm_fallback_custom_response():
     from unittest.mock import MagicMock
-    from main import AlsaGeistAgent
+    from tests.agent_helpers import make_bare_agent
     import numpy as np
 
-    agent = AlsaGeistAgent.__new__(AlsaGeistAgent)
+    agent = make_bare_agent()
     agent.args = MagicMock(engine="intent")
     agent.running = False
     agent.is_disabled = False
@@ -210,10 +210,10 @@ def test_agent_llm_fallback_custom_response():
 
 def test_agent_llm_fallback_disabled_uses_generic():
     from unittest.mock import MagicMock
-    from main import AlsaGeistAgent
+    from tests.agent_helpers import make_bare_agent
     import numpy as np
 
-    agent = AlsaGeistAgent.__new__(AlsaGeistAgent)
+    agent = make_bare_agent()
     agent.args = MagicMock(engine="intent")
     agent.running = False
     agent.is_disabled = False
@@ -244,10 +244,10 @@ def test_agent_llm_fallback_disabled_uses_generic():
 
 def test_agent_llm_fallback_offline_degradation():
     from unittest.mock import MagicMock
-    from main import AlsaGeistAgent
+    from tests.agent_helpers import make_bare_agent
     import numpy as np
 
-    agent = AlsaGeistAgent.__new__(AlsaGeistAgent)
+    agent = make_bare_agent()
     agent.args = MagicMock(engine="intent")
     agent.running = False
     agent.is_disabled = False
@@ -277,10 +277,10 @@ def test_agent_llm_fallback_offline_degradation():
 
 def test_agent_llm_fallback_error_degradation():
     from unittest.mock import MagicMock
-    from main import AlsaGeistAgent
+    from tests.agent_helpers import make_bare_agent
     import numpy as np
 
-    agent = AlsaGeistAgent.__new__(AlsaGeistAgent)
+    agent = make_bare_agent()
     agent.args = MagicMock(engine="intent")
     agent.running = False
     agent.is_disabled = False
@@ -347,7 +347,7 @@ def test_button_long_hold_shutdown():
 def test_agent_shutdown_on_button_long_hold(monkeypatch):
     """Verify agent announces Powering Off and triggers shutdown on 10s hold."""
     from unittest.mock import MagicMock
-    from main import AlsaGeistAgent
+    from tests.agent_helpers import make_bare_agent
     import argparse
     import numpy as np
 
@@ -366,7 +366,7 @@ def test_agent_shutdown_on_button_long_hold(monkeypatch):
         no_greeting=True,
     )
 
-    agent = AlsaGeistAgent.__new__(AlsaGeistAgent)
+    agent = make_bare_agent()
     agent.args = args
     agent.running = False
     agent.is_disabled = True
@@ -420,3 +420,102 @@ def test_create_led_controller_custom_params_and_env(monkeypatch):
 
 
 
+
+
+def _tracker_events(hold_sec=0.05, long_hold_sec=0.4):
+    """Return a controller, its gesture tracker, and the list collecting callback events."""
+    from core.led_controller import ButtonGestureTracker
+
+    led = ConsoleLEDController(verbose=False)
+    events = []
+    led.set_button_callbacks(
+        on_press=lambda: events.append("press"),
+        on_hold=lambda: events.append("hold"),
+        on_long_hold=lambda: events.append("long_hold"),
+        hold_time_sec=hold_sec,
+        long_hold_time_sec=long_hold_sec,
+    )
+    return ButtonGestureTracker(led), events
+
+
+def test_gesture_tracker_short_press():
+    """A quick press and release fires only the press callback."""
+    import time
+    tracker, events = _tracker_events()
+    tracker.pressed()
+    tracker.released()
+    time.sleep(0.6)  # timers were cancelled
+    assert events == ["press"]
+
+
+def test_gesture_tracker_hold_suppresses_press():
+    """Holding past hold_time fires hold once and no press on release."""
+    import time
+    tracker, events = _tracker_events()
+    tracker.pressed()
+    time.sleep(0.2)
+    tracker.released()
+    time.sleep(0.5)  # long-hold timer was cancelled
+    assert events == ["hold"]
+
+
+def test_gesture_tracker_long_hold_after_hold():
+    """Holding past long_hold_time fires hold then long_hold, and no press."""
+    import time
+    tracker, events = _tracker_events()
+    tracker.pressed()
+    time.sleep(0.8)
+    tracker.released()
+    assert events == ["hold", "long_hold"]
+
+
+def test_gesture_tracker_reads_updated_callbacks():
+    """Callbacks registered after construction are used for later gestures."""
+    tracker, events = _tracker_events()
+    tracker._controller.button_callback = lambda: events.append("replaced")
+    tracker.pressed()
+    tracker.released()
+    assert events == ["replaced"]
+
+
+def test_gesture_tracker_callback_error_is_reported(capsys):
+    """A failing callback is reported on stderr and does not raise."""
+    from core.led_controller import ButtonGestureTracker
+
+    led = ConsoleLEDController(verbose=False)
+
+    def boom():
+        raise RuntimeError("boom")
+
+    led.set_button_callbacks(on_press=boom)
+    tracker = ButtonGestureTracker(led)
+    tracker.pressed()
+    tracker.released()
+    assert "press callback error: boom" in capsys.readouterr().err
+
+
+def test_pi_flash_is_deferred_to_pwm_thread():
+    """flash() returns at once; the queued pulses run once on the PWM thread."""
+    from unittest.mock import patch
+    from core.led_controller import RaspberryPiLEDController
+
+    led = RaspberryPiLEDController(led_pin=25, button_pin=23)
+    led.set_state(LEDState.LISTENING)
+    with patch.object(led, "_set_duty_cycle") as duty:
+        led.flash(count=2, on_time=0.001, off_time=0.001)
+        assert led.current_state == LEDState.THINKING
+        duty.assert_not_called()
+
+        assert led._run_pending_flash() is True
+        assert [c.args[0] for c in duty.call_args_list] == [100.0, 0.0, 100.0, 0.0]
+        assert led._run_pending_flash() is False
+
+
+def test_pi_flash_does_not_wake_disabled_led():
+    """flash() leaves an OFF LED in the OFF state."""
+    from core.led_controller import RaspberryPiLEDController
+
+    led = RaspberryPiLEDController(led_pin=25, button_pin=23)
+    led.set_state(LEDState.OFF)
+    led.flash(count=1)
+    assert led.current_state == LEDState.OFF

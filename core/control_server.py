@@ -8,12 +8,59 @@ switch online/offline modes, hot-swap personalities, and query status.
 import json
 import os
 import socket
+import stat
+import struct
+import sys
 import threading
 import time
 from typing import Any, Dict, Optional
 
+MAX_REQUEST_BYTES = 64 * 1024
 
-DEFAULT_SOCKET_PATH = "/tmp/alsageist.sock"
+
+class ControlSocketError(RuntimeError):
+    """Raised when the control socket location cannot be made private."""
+
+
+def default_socket_dir() -> str:
+    """Return the per-user private directory holding the default control socket."""
+    return f"/tmp/alsageist-{os.getuid()}"
+
+
+def default_socket_path() -> str:
+    """Return the control socket path: $ALSAGEIST_SOCKET, else a per-user private path.
+
+    Returns:
+        Socket file path.
+    """
+    explicit = os.environ.get("ALSAGEIST_SOCKET")
+    if explicit:
+        return explicit
+    return os.path.join(default_socket_dir(), "alsageist.sock")
+
+
+def _secure_private_dir(directory: str) -> None:
+    """Create a directory readable only by the current user, or verify an existing one.
+
+    Args:
+        directory: Directory to create or check.
+
+    Raises:
+        ControlSocketError: If the directory is a symlink, is owned by another user,
+            or is accessible to group or others.
+    """
+    try:
+        os.mkdir(directory, 0o700)
+    except FileExistsError:
+        pass
+
+    info = os.lstat(directory)
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+        raise ControlSocketError(f"'{directory}' is not a plain directory.")
+    if info.st_uid != os.getuid():
+        raise ControlSocketError(f"'{directory}' is owned by another user.")
+    if info.st_mode & 0o077:
+        raise ControlSocketError(f"'{directory}' must not be accessible to group or others (mode 0700).")
 
 
 class ControlServer:
@@ -31,34 +78,36 @@ class ControlServer:
             socket_path: Path to the UNIX domain socket file.
         """
         self.agent = agent
-        self.socket_path = socket_path or os.environ.get("ALSAGEIST_SOCKET", DEFAULT_SOCKET_PATH)
+        self.socket_path = socket_path or default_socket_path()
         self.running = False
+        self._bound = False
         self._server_sock: Optional[socket.socket] = None
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
-        """Start the control server background listening thread."""
+        """Start the control server background listening thread.
+
+        The socket is created with mode 0600 inside a directory that only the
+        current user can open. On failure the server stays stopped and a warning
+        is printed; the agent keeps running.
+        """
         if self.running:
             return
 
-        # Clean up stale socket file if not responding
-        if os.path.exists(self.socket_path):
-            if not self._is_socket_alive():
-                try:
-                    os.unlink(self.socket_path)
-                except OSError:
-                    pass
-            else:
-                print(f"Warning: Another instance appears to be listening on {self.socket_path}")
-
         try:
+            if os.path.dirname(self.socket_path) == default_socket_dir():
+                _secure_private_dir(default_socket_dir())
+            self._remove_stale_socket()
+
             self._server_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            self._server_sock.bind(self.socket_path)
-            # Allow all users in the same Linux group or local user to communicate
+            # Create the socket file owner-only from the start (no window with wider access)
+            previous_umask = os.umask(0o177)
             try:
-                os.chmod(self.socket_path, 0o666)
-            except OSError:
-                pass
+                self._server_sock.bind(self.socket_path)
+            finally:
+                os.umask(previous_umask)
+            self._bound = True
+            os.chmod(self.socket_path, 0o600)
             self._server_sock.listen(5)
             self._server_sock.settimeout(1.0)
             self.running = True
@@ -68,22 +117,51 @@ class ControlServer:
         except Exception as exc:
             print(f"Warning: Could not start control server on {self.socket_path}: {exc}")
             self.running = False
+            if self._server_sock is not None:
+                self._server_sock.close()
+                self._server_sock = None
+            if self._bound:
+                self._unlink_socket()
+                self._bound = False
 
     def stop(self) -> None:
-        """Stop the server and remove the socket file."""
+        """Stop the server and remove the socket file it created."""
         self.running = False
         if self._server_sock:
             try:
                 self._server_sock.close()
-            except Exception:
+            except OSError:
                 pass
             self._server_sock = None
 
-        if os.path.exists(self.socket_path):
-            try:
-                os.unlink(self.socket_path)
-            except OSError:
-                pass
+        if self._bound:
+            self._unlink_socket()
+            self._bound = False
+
+    def _unlink_socket(self) -> None:
+        """Remove the socket file, ignoring errors."""
+        try:
+            os.unlink(self.socket_path)
+        except OSError:
+            pass
+
+    def _remove_stale_socket(self) -> None:
+        """Remove a dead socket file left by an earlier run.
+
+        Raises:
+            ControlSocketError: If a live server owns the path, or the path is not a
+                socket owned by the current user.
+        """
+        try:
+            info = os.lstat(self.socket_path)
+        except FileNotFoundError:
+            return
+
+        if not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.getuid():
+            raise ControlSocketError(f"'{self.socket_path}' exists and is not a socket owned by this user.")
+        if self._is_socket_alive():
+            raise ControlSocketError(f"another instance is already listening on '{self.socket_path}'.")
+        os.unlink(self.socket_path)
 
     def _is_socket_alive(self) -> bool:
         """Check if an existing socket file has an active listener."""
@@ -91,10 +169,11 @@ class ControlServer:
         try:
             test_sock.settimeout(0.5)
             test_sock.connect(self.socket_path)
-            test_sock.close()
             return True
-        except Exception:
+        except OSError:
             return False
+        finally:
+            test_sock.close()
 
     def _listen_loop(self) -> None:
         """Main connection listening loop running on background thread."""
@@ -106,6 +185,10 @@ class ControlServer:
             except Exception:
                 break
 
+            if not self._peer_allowed(conn):
+                conn.close()
+                continue
+
             # Handle each connection in a quick worker thread
             client_thread = threading.Thread(
                 target=self._handle_client,
@@ -113,6 +196,28 @@ class ControlServer:
                 daemon=True,
             )
             client_thread.start()
+
+    @staticmethod
+    def _peer_allowed(conn: socket.socket) -> bool:
+        """Check that the connecting process runs as this user (or root).
+
+        Where the OS cannot report peer credentials (non-Linux), the 0600 socket
+        file and private directory are the only access control.
+
+        Args:
+            conn: Accepted client connection.
+
+        Returns:
+            True if the connection is allowed.
+        """
+        if not sys.platform.startswith("linux"):
+            return True
+        try:
+            creds = conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
+            _pid, uid, _gid = struct.unpack("3i", creds)
+        except (OSError, AttributeError, struct.error):
+            return False
+        return uid in (os.geteuid(), 0)
 
     def _handle_client(self, conn: socket.socket) -> None:
         """Read command from client, dispatch to agent, and send JSON response."""
@@ -124,6 +229,9 @@ class ControlServer:
                 if not chunk:
                     break
                 data += chunk
+                if len(data) > MAX_REQUEST_BYTES:
+                    conn.sendall((json.dumps({"status": "error", "message": "Request too large."}) + "\n").encode("utf-8"))
+                    return
 
             if not data:
                 return
@@ -171,107 +279,71 @@ class ControlServer:
             return self._cmd_volume(value)
 
         elif cmd == "mute":
-            agent.audio.mute_capture()
+            agent.set_mic_muted(True)
             return {"status": "ok", "message": "Microphone muted.", "mic_muted": True}
 
         elif cmd == "unmute":
-            agent.audio.unmute_capture()
+            agent.set_mic_muted(False)
             return {"status": "ok", "message": "Microphone unmuted.", "mic_muted": False}
 
         elif cmd == "disable":
-            agent.is_disabled = True
-            agent.audio.stop_playback()
-            agent.audio.mute_capture()
-            agent._reset_dialogue()
-            agent.vad.reset()
-            from core.led_controller import LEDState
-            agent.led.set_state(LEDState.OFF)
+            agent.disable()
             return {"status": "ok", "message": "Display disabled (sleep mode).", "state": "DISABLED"}
 
         elif cmd == "enable":
-            agent.is_disabled = False
-            agent.audio.unmute_capture()
-            agent.vad.reset()
-            from core.led_controller import LEDState
-            agent.led.set_state(LEDState.IDLE)
+            agent.enable()
             return {"status": "ok", "message": "Display enabled (active).", "state": "ACTIVE"}
 
         elif cmd == "toggle":
-            agent._on_button_hold_toggle()
-            state_str = "DISABLED" if agent.is_disabled else "ACTIVE"
+            state_str = "DISABLED" if agent.toggle() else "ACTIVE"
             return {"status": "ok", "message": f"Display toggled to {state_str}.", "state": state_str}
 
         elif cmd == "mode":
             mode_str = str(value).strip().lower() if value else ""
             if mode_str in ("online", "on"):
-                agent.is_online = True
+                agent.set_online(True)
             elif mode_str in ("offline", "off"):
-                agent.is_online = False
+                agent.set_online(False)
+            elif mode_str == "auto":
+                agent.set_online(None)
             else:
-                return {"status": "error", "message": f"Invalid mode '{value}'. Use 'online' or 'offline'."}
+                return {"status": "error", "message": f"Invalid mode '{value}'. Use 'online', 'offline' or 'auto'."}
             mode_name = "ONLINE" if agent.is_online else "OFFLINE"
-            return {"status": "ok", "message": f"Operational mode set to {mode_name}.", "mode": mode_name}
+            if agent.mode_forced:
+                message = f"Operational mode forced to {mode_name}."
+            else:
+                message = f"Operational mode is automatic (currently {mode_name})."
+            return {"status": "ok", "message": message, "mode": mode_name, "mode_forced": agent.mode_forced}
 
         elif cmd == "personality":
             if not value:
-                p_name = getattr(agent.dialogue_engine, "profile", None) and agent.dialogue_engine.profile.personality or "unknown"
-                return {"status": "ok", "personality": p_name}
+                profile = agent.active_profile
+                return {"status": "ok", "personality": profile.personality if profile else "unknown"}
 
             try:
-                from services.intent_service import PersonaIntentEngine
-                new_engine = PersonaIntentEngine(personality_name_or_path=str(value).strip())
-                agent.dialogue_engine = new_engine
-
-                # Update LLM prompt if active
-                if agent.llm_fallback_enabled:
-                    profile = getattr(new_engine, "profile", None)
-                    if profile:
-                        from services.llm_service import ConversationalLLMService
-                        persona_prompt = (
-                            f"You are {profile.display_name}. {profile.description}\n"
-                            "Rules you must strictly obey:\n"
-                            "1. Keep every response under 2 sentences maximum.\n"
-                            "2. Be witty, dry, and stay in character.\n"
-                            "3. Never output emojis, markdown formatting, asterisks, or sound effect tags.\n"
-                            "4. Return plain spoken dialogue only."
-                        )
-                        agent.llm_fallback_service = ConversationalLLMService(system_prompt=persona_prompt)
-
-                display_title = new_engine.profile.display_name if new_engine.profile else str(value)
-                return {
-                    "status": "ok",
-                    "message": f"Personality switched to '{display_title}'.",
-                    "personality": new_engine.profile.personality if new_engine.profile else str(value),
-                    "display_name": display_title,
-                }
+                profile = agent.switch_personality(str(value).strip())
             except Exception as exc:
                 return {"status": "error", "message": f"Failed to switch personality: {exc}"}
+            return {
+                "status": "ok",
+                "message": f"Personality switched to '{profile.display_name}'.",
+                "personality": profile.personality,
+                "display_name": profile.display_name,
+            }
 
         elif cmd == "say":
             phrase = str(value).strip() if value else ""
             if not phrase:
                 return {"status": "error", "message": "No phrase provided to speak."}
-
-            try:
-                from core.led_controller import LEDState
-                audio_data, sample_rate = agent.tts.synthesize(phrase)
-                agent.led.set_state(LEDState.SPEAKING)
-                agent.audio.mute_capture()
-                agent.audio.play_audio(audio_data, sample_rate=sample_rate, blocking=True)
-                agent.audio.unmute_capture()
-                agent.vad.reset()
-                agent.led.set_state(LEDState.IDLE)
-                return {"status": "ok", "message": f"Spoke: \"{phrase}\"", "spoken": phrase}
-            except Exception as exc:
-                return {"status": "error", "message": f"Speech failed: {exc}"}
+            if agent.is_disabled:
+                return {"status": "error", "message": "Display is disabled (sleep mode); enable it first."}
+            if not agent.speak(phrase):
+                return {"status": "error", "message": "Speech failed."}
+            return {"status": "ok", "message": f"Spoke: \"{phrase}\"", "spoken": phrase}
 
         elif cmd in ("shutdown", "poweroff"):
-            if hasattr(agent, "_on_button_long_hold"):
-                threading.Thread(target=agent._on_button_long_hold, daemon=True).start()
-            else:
-                from core.system_utils import trigger_host_shutdown
-                trigger_host_shutdown()
-            return {"status": "ok", "message": "Host system shutdown initiated."}
+            agent.request_shutdown()
+            return {"status": "ok", "message": "Host system shutdown initiated. If the host stays up, see the daemon log."}
 
         else:
             return {
@@ -282,15 +354,10 @@ class ControlServer:
     def _cmd_status(self) -> Dict[str, Any]:
         """Compile comprehensive runtime status."""
         agent = self.agent
-        profile = getattr(agent.dialogue_engine, "profile", None)
-        vol_pct = int(round(agent.audio.volume * 100))
+        profile = agent.active_profile
+        vol_pct = int(round(agent.volume * 100))
 
-        start_time = getattr(agent, "start_time", None) or time.time()
-        uptime_sec = int(time.time() - start_time)
-
-        led_state = "UNKNOWN"
-        if hasattr(agent.led, "current_state"):
-            led_state = getattr(agent.led.current_state, "name", str(agent.led.current_state))
+        uptime_sec = int(time.time() - agent.start_time)
 
         return {
             "status": "ok",
@@ -299,13 +366,14 @@ class ControlServer:
             "display_name": profile.display_name if profile else "AlsaGeist Persona",
             "voice": profile.voice if profile else "default",
             "volume_pct": vol_pct,
-            "volume_float": round(agent.audio.volume, 2),
-            "mic_muted": getattr(agent.audio, "_is_muted", False),
+            "volume_float": round(agent.volume, 2),
+            "mic_muted": agent.mic_muted,
             "disabled": agent.is_disabled,
             "mode": "ONLINE" if agent.is_online else "OFFLINE",
+            "mode_forced": agent.mode_forced,
             "engine": agent.args.engine.upper(),
             "llm_fallback": getattr(agent, "llm_fallback_enabled", False),
-            "led_state": led_state,
+            "led_state": agent.led_state_name,
             "uptime_sec": uptime_sec,
             "pid": os.getpid(),
         }
@@ -314,11 +382,11 @@ class ControlServer:
         """Adjust or query audio volume."""
         agent = self.agent
         if value is None:
-            pct = int(round(agent.audio.volume * 100))
-            return {"status": "ok", "volume_pct": pct, "volume_float": round(agent.audio.volume, 2)}
+            pct = int(round(agent.volume * 100))
+            return {"status": "ok", "volume_pct": pct, "volume_float": round(agent.volume, 2)}
 
         val_str = str(value).strip()
-        current_vol = agent.audio.volume
+        current_vol = agent.volume
 
         if val_str.startswith("+"):
             try:
@@ -343,11 +411,11 @@ class ControlServer:
             except ValueError:
                 return {"status": "error", "message": f"Invalid volume value '{val_str}'. Use 0-100 or +10/-10."}
 
-        agent.audio.volume = round(new_vol, 2)
-        pct = int(round(agent.audio.volume * 100))
+        applied = agent.set_volume(new_vol)
+        pct = int(round(applied * 100))
         return {
             "status": "ok",
             "message": f"Volume set to {pct}%.",
             "volume_pct": pct,
-            "volume_float": agent.audio.volume,
+            "volume_float": applied,
         }

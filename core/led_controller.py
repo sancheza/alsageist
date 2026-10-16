@@ -11,7 +11,7 @@ import os
 import sys
 import threading
 import time
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 
 class LEDState(enum.Enum):
@@ -89,6 +89,92 @@ class BaseLEDController(ABC):
         """Wire callbacks to underlying hardware if available (overridden by subclasses)."""
 
 
+class ButtonGestureTracker:
+    """Turns raw press and release edges into short-press, hold, and long-hold callbacks.
+
+    Callbacks and hold durations are read from the owning controller when each
+    gesture starts, so they can be changed after the hardware is wired.
+    """
+
+    def __init__(self, controller: "BaseLEDController") -> None:
+        """Create a tracker bound to a controller.
+
+        Args:
+            controller: Controller whose button_callback, button_hold_callback,
+                button_long_hold_callback, hold_time_sec and long_hold_time_sec are used.
+        """
+        self._controller = controller
+        self._lock = threading.Lock()
+        self._hold_timer: Optional[threading.Timer] = None
+        self._long_hold_timer: Optional[threading.Timer] = None
+        self._hold_fired = False
+        self._long_hold_fired = False
+
+    def pressed(self, *_args) -> None:
+        """Handle a button press edge: start the hold and long-hold timers."""
+        with self._lock:
+            self._hold_fired = False
+            self._long_hold_fired = False
+            self._cancel_timers()
+            self._hold_timer = self._start_timer(self._controller.hold_time_sec, self._on_hold)
+            self._long_hold_timer = self._start_timer(self._controller.long_hold_time_sec, self._on_long_hold)
+
+    def released(self, *_args) -> None:
+        """Handle a button release edge: fire the short-press callback if no hold fired."""
+        with self._lock:
+            self._cancel_timers()
+            fire_short = not self._hold_fired and not self._long_hold_fired
+            self._hold_fired = False
+            self._long_hold_fired = False
+
+        if fire_short:
+            self._invoke(self._controller.button_callback, "press")
+
+    def cancel(self) -> None:
+        """Cancel pending timers without firing any callback."""
+        with self._lock:
+            self._cancel_timers()
+
+    def _cancel_timers(self) -> None:
+        """Cancel and clear both timers. Caller holds self._lock."""
+        for timer in (self._hold_timer, self._long_hold_timer):
+            if timer is not None:
+                timer.cancel()
+        self._hold_timer = None
+        self._long_hold_timer = None
+
+    @staticmethod
+    def _start_timer(delay_sec: float, action: Callable[[], None]) -> threading.Timer:
+        """Start a daemon timer that runs action after delay_sec."""
+        timer = threading.Timer(delay_sec, action)
+        timer.daemon = True
+        timer.start()
+        return timer
+
+    def _on_hold(self) -> None:
+        """Timer action: the button has been held for hold_time_sec."""
+        with self._lock:
+            if not self._long_hold_fired:
+                self._hold_fired = True
+        self._invoke(self._controller.button_hold_callback, "hold")
+
+    def _on_long_hold(self) -> None:
+        """Timer action: the button has been held for long_hold_time_sec."""
+        with self._lock:
+            self._long_hold_fired = True
+        self._invoke(self._controller.button_long_hold_callback, "long hold")
+
+    @staticmethod
+    def _invoke(callback: Optional[Callable[[], None]], label: str) -> None:
+        """Run a callback, reporting errors instead of raising into a timer thread."""
+        if callback is None:
+            return
+        try:
+            callback()
+        except Exception as exc:
+            sys.stderr.write(f"Button {label} callback error: {exc}\n")
+
+
 class ConsoleLEDController(BaseLEDController):
     """Simulated terminal LED controller with visual status indicators for macOS."""
 
@@ -96,7 +182,6 @@ class ConsoleLEDController(BaseLEDController):
         super().__init__()
         self.verbose = verbose
         self._running = False
-        self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
         self.flash_count: int = 0
 
@@ -192,11 +277,9 @@ class RaspberryPiLEDController(BaseLEDController):
         self._rpi_pwm = None
         self._running = False
         self._flashing = False
-        self._held_fired = False
-        self._long_held_fired = False
-        self._press_lock = threading.Lock()
-        self._press_timer: Optional[threading.Timer] = None
-        self._long_press_timer: Optional[threading.Timer] = None
+        self._flash_request: Optional[Tuple[int, float, float]] = None
+        self._flash_lock = threading.Lock()
+        self._buttons = ButtonGestureTracker(self)
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
@@ -246,72 +329,14 @@ class RaspberryPiLEDController(BaseLEDController):
             self._wire_rpigpio_button()
 
     def _wire_gpiozero_button(self) -> None:
-        """Configure gpiozero Button callbacks for press, 5s hold, and 10s shutdown."""
+        """Route gpiozero press and release events to the gesture tracker."""
         if self._gpio_btn is None:
             return
-
-        def _on_pressed():
-            with self._press_lock:
-                self._held_fired = False
-                self._long_held_fired = False
-                if self._press_timer is not None:
-                    self._press_timer.cancel()
-                if self._long_press_timer is not None:
-                    self._long_press_timer.cancel()
-
-                def _on_hold_timeout():
-                    with self._press_lock:
-                        if not self._long_held_fired:
-                            self._held_fired = True
-                    if self.button_hold_callback:
-                        try:
-                            self.button_hold_callback()
-                        except Exception as exc:
-                            sys.stderr.write(f"Button hold callback error: {exc}\n")
-
-                def _on_long_hold_timeout():
-                    with self._press_lock:
-                        self._long_held_fired = True
-                    if self.button_long_hold_callback:
-                        try:
-                            self.button_long_hold_callback()
-                        except Exception as exc:
-                            sys.stderr.write(f"Button long hold callback error: {exc}\n")
-
-                self._press_timer = threading.Timer(self.hold_time_sec, _on_hold_timeout)
-                self._press_timer.daemon = True
-                self._press_timer.start()
-
-                self._long_press_timer = threading.Timer(self.long_hold_time_sec, _on_long_hold_timeout)
-                self._long_press_timer.daemon = True
-                self._long_press_timer.start()
-
-        def _on_released():
-            fire_short = False
-            with self._press_lock:
-                if self._press_timer is not None:
-                    self._press_timer.cancel()
-                    self._press_timer = None
-                if self._long_press_timer is not None:
-                    self._long_press_timer.cancel()
-                    self._long_press_timer = None
-
-                if not self._held_fired and not self._long_held_fired:
-                    fire_short = True
-                self._held_fired = False
-                self._long_held_fired = False
-
-            if fire_short and self.button_callback:
-                try:
-                    self.button_callback()
-                except Exception as exc:
-                    sys.stderr.write(f"Button press callback error: {exc}\n")
-
-        self._gpio_btn.when_pressed = _on_pressed
-        self._gpio_btn.when_released = _on_released
+        self._gpio_btn.when_pressed = self._buttons.pressed
+        self._gpio_btn.when_released = self._buttons.released
 
     def _wire_rpigpio_button(self) -> None:
-        """Configure RPi.GPIO edge detection for press, 5s hold, and 10s shutdown."""
+        """Route RPi.GPIO edge events to the gesture tracker."""
         try:
             import RPi.GPIO as GPIO  # pylint: disable=import-error
             try:
@@ -320,58 +345,10 @@ class RaspberryPiLEDController(BaseLEDController):
                 pass
 
             def _handle_edge(channel):
-                is_pressed = (GPIO.input(self.button_pin) == GPIO.LOW)
-                with self._press_lock:
-                    if is_pressed:
-                        self._held_fired = False
-                        self._long_held_fired = False
-                        if self._press_timer is not None:
-                            self._press_timer.cancel()
-                        if self._long_press_timer is not None:
-                            self._long_press_timer.cancel()
-
-                        def _on_hold_timeout():
-                            with self._press_lock:
-                                if not self._long_held_fired:
-                                    self._held_fired = True
-                            if self.button_hold_callback:
-                                try:
-                                    self.button_hold_callback()
-                                except Exception as exc:
-                                    sys.stderr.write(f"Button hold callback error: {exc}\n")
-
-                        def _on_long_hold_timeout():
-                            with self._press_lock:
-                                self._long_held_fired = True
-                            if self.button_long_hold_callback:
-                                try:
-                                    self.button_long_hold_callback()
-                                except Exception as exc:
-                                    sys.stderr.write(f"Button long hold callback error: {exc}\n")
-
-                        self._press_timer = threading.Timer(self.hold_time_sec, _on_hold_timeout)
-                        self._press_timer.daemon = True
-                        self._press_timer.start()
-
-                        self._long_press_timer = threading.Timer(self.long_hold_time_sec, _on_long_hold_timeout)
-                        self._long_press_timer.daemon = True
-                        self._long_press_timer.start()
-                    else:
-                        if self._press_timer is not None:
-                            self._press_timer.cancel()
-                            self._press_timer = None
-                        if self._long_press_timer is not None:
-                            self._long_press_timer.cancel()
-                            self._long_press_timer = None
-
-                        fire_short = not self._held_fired and not self._long_held_fired
-                        self._held_fired = False
-                        self._long_held_fired = False
-                        if fire_short and self.button_callback:
-                            try:
-                                self.button_callback()
-                            except Exception as exc:
-                                sys.stderr.write(f"Button press callback error: {exc}\n")
+                if GPIO.input(self.button_pin) == GPIO.LOW:
+                    self._buttons.pressed()
+                else:
+                    self._buttons.released()
 
             GPIO.add_event_detect(self.button_pin, GPIO.BOTH, callback=_handle_edge, bouncetime=50)
         except Exception:
@@ -388,14 +365,7 @@ class RaspberryPiLEDController(BaseLEDController):
     def stop(self) -> None:
         """Stop PWM and clean up GPIO."""
         self._running = False
-        with self._press_lock:
-            if self._press_timer is not None:
-                self._press_timer.cancel()
-                self._press_timer = None
-            if self._long_press_timer is not None:
-                self._long_press_timer.cancel()
-                self._long_press_timer = None
-                self._press_timer = None
+        self._buttons.cancel()
         if self._backend == "gpiozero":
             if self._gpio_led:
                 self._gpio_led.close()
@@ -415,7 +385,28 @@ class RaspberryPiLEDController(BaseLEDController):
         self.current_state = state
 
     def flash(self, count: int = 3, on_time: float = 0.09, off_time: float = 0.08) -> None:
-        """Flash the LED rapidly a specified number of times to acknowledge speech input."""
+        """Request a rapid flash sequence to acknowledge speech input.
+
+        Returns immediately; the PWM thread, the only writer of the LED duty
+        cycle, performs the pulses.
+        """
+        with self._flash_lock:
+            self._flash_request = (count, on_time, off_time)
+        if self.current_state != LEDState.OFF:
+            self.current_state = LEDState.THINKING
+
+    def _run_pending_flash(self) -> bool:
+        """Perform a requested flash sequence on the PWM thread.
+
+        Returns:
+            True if a sequence ran.
+        """
+        with self._flash_lock:
+            request, self._flash_request = self._flash_request, None
+        if request is None:
+            return False
+
+        count, on_time, off_time = request
         self._flashing = True
         try:
             for _ in range(count):
@@ -424,16 +415,14 @@ class RaspberryPiLEDController(BaseLEDController):
                 self._set_duty_cycle(0.0)
                 time.sleep(off_time)
         finally:
-            if self.current_state != LEDState.OFF:
-                self.current_state = LEDState.THINKING
             self._flashing = False
+        return True
 
     def _pwm_worker(self) -> None:
         """Background thread modulating PWM duty cycle based on current state."""
         step = 0.0
         while self._running:
-            if self._flashing:
-                time.sleep(0.01)
+            if self._run_pending_flash():
                 continue
             if self.current_state == LEDState.IDLE:
                 # 0.5 Hz smooth sinusoidal breathing

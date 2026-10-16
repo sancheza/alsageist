@@ -27,6 +27,7 @@ Usage:
     # Switch operational mode:
     ./scripts/alsageist_ctl.py mode offline
     ./scripts/alsageist_ctl.py mode online
+    ./scripts/alsageist_ctl.py mode auto
 
     # Hot-swap personality profile:
     ./scripts/alsageist_ctl.py personality snowman
@@ -46,27 +47,37 @@ import socket
 import sys
 from typing import Any, Dict, Optional, Tuple
 
-VERSION = "1.0.0"
-DEFAULT_SOCKET = os.environ.get("ALSAGEIST_SOCKET", "/tmp/alsageist.sock")
+VERSION = "1.1.0"
+DEFAULT_TIMEOUT_SEC = 3.0
+# Commands that wait for speech or a voice model to load need longer than a status query
+COMMAND_TIMEOUTS_SEC = {"say": 60.0, "personality": 120.0}
 
 
 def send_command(
     cmd: str,
     value: Any = None,
-    socket_path: str = DEFAULT_SOCKET,
-    timeout: float = 3.0,
+    socket_path: Optional[str] = None,
+    timeout: Optional[float] = None,
 ) -> Tuple[bool, Dict[str, Any]]:
     """Send command to AlsaGeist Unix domain socket and parse response.
 
     Args:
         cmd: Action command name.
         value: Optional command argument.
-        socket_path: Path to the UNIX domain socket file.
-        timeout: Socket communication timeout in seconds.
+        socket_path: Path to the UNIX domain socket file (default: $ALSAGEIST_SOCKET or
+            the per-user path /tmp/alsageist-<uid>/alsageist.sock).
+        timeout: Socket communication timeout in seconds (default: 3 s, longer for
+            commands that wait for speech or a voice model).
 
     Returns:
         Tuple of (success_boolean, response_dict).
     """
+    if timeout is None:
+        timeout = COMMAND_TIMEOUTS_SEC.get(cmd, DEFAULT_TIMEOUT_SEC)
+    if socket_path is None:
+        from core import control_server
+        socket_path = control_server.default_socket_path()
+
     if not os.path.exists(socket_path):
         return False, {
             "status": "error",
@@ -153,7 +164,7 @@ def format_status(data: Dict[str, Any]) -> str:
         f"  Voice Model:       {voice} (Local ONNX)",
         f"  Audio Output Vol:  {vol_pct}% ({vol_float})",
         f"  Microphone State:  {mic_display}",
-        f"  Network Mode:      {mode} (Cloud STT / LLM: {llm_fallback})",
+        f"  Network Mode:      {mode}{' (forced)' if data.get('mode_forced') else ' (auto)'} (Cloud STT / LLM: {llm_fallback})",
         f"  Dialogue Engine:   {engine}",
         f"  Hardware LED:      {led_state}",
         f"  Process PID:       {pid} (Uptime: {uptime_str})",
@@ -175,7 +186,8 @@ AlsaGeist Real-Time Management & Control Utility
 ================================================================================
 PURPOSE:
   Control an actively running AlsaGeist daemon in real time without restarting.
-  Sends instantaneous commands over a local Unix domain socket (/tmp/alsageist.sock).
+  Sends instantaneous commands over a local Unix domain socket that only the daemon's
+  user can open (default: /tmp/alsageist-<uid>/alsageist.sock, or $ALSAGEIST_SOCKET).
 """,
         epilog="""\
 COMMON USAGE EXAMPLES:
@@ -201,6 +213,7 @@ COMMON USAGE EXAMPLES:
   5. Switch operational network mode:
      ./scripts/alsageist_ctl.py mode offline   # 100% local Vosk STT (no cloud)
      ./scripts/alsageist_ctl.py mode online    # Restore cloud STT & LLM fallback
+     ./scripts/alsageist_ctl.py mode auto      # Detect connectivity automatically again
 
   6. Hot-swap active personality on the fly:
      ./scripts/alsageist_ctl.py personality snowman
@@ -241,8 +254,14 @@ COMMON USAGE EXAMPLES:
     parser.add_argument(
         "--socket",
         dest="socket_path",
-        default=DEFAULT_SOCKET,
-        help=f"Path to AlsaGeist UNIX domain socket (default: {DEFAULT_SOCKET}).",
+        default=None,
+        help="Path to AlsaGeist UNIX domain socket (default: $ALSAGEIST_SOCKET or /tmp/alsageist-<uid>/alsageist.sock).",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="Seconds to wait for the daemon's reply (default: 3, 60 for say, 120 for personality).",
     )
     parser.add_argument(
         "--json",
@@ -273,11 +292,16 @@ def main() -> int:
     cmd = args.command
     val = args.value
 
+    socket_path = args.socket_path
+    if socket_path is None:
+        from core import control_server
+        socket_path = control_server.default_socket_path()
+
     if args.dry_run:
-        print(f"[DRY RUN] Would send command '{cmd}' with value '{val}' to {args.socket_path}.")
+        print(f"[DRY RUN] Would send command '{cmd}' with value '{val}' to {socket_path}.")
         return 0
 
-    ok, resp = send_command(cmd, val, socket_path=args.socket_path)
+    ok, resp = send_command(cmd, val, socket_path=socket_path, timeout=args.timeout)
 
     if args.json:
         print(json.dumps(resp, indent=2))

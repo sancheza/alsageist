@@ -1,6 +1,7 @@
 """Unit tests for Piper TTS Service."""
 
 import os
+from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 from services.tts_service import PiperTTSService
@@ -53,3 +54,142 @@ def test_piper_tts_phonetic_normalization():
 
     assert isinstance(audio_data, np.ndarray)
     assert len(audio_data) > 0
+
+
+def test_piper_tts_accepts_bare_voice_id():
+    """Verify a bare voice ID resolves to the model under models/piper."""
+    if not os.path.exists("models/piper/en_GB-alan-medium.onnx"):
+        pytest.skip("Piper model not downloaded.")
+
+    tts = PiperTTSService(model_path="en_GB-alan-medium")
+    assert tts.model_path.endswith(os.path.join("models", "piper", "en_GB-alan-medium.onnx"))
+
+
+class _FakeVoiceTTS(PiperTTSService):
+    """PiperTTSService whose synthesis returns a deterministic clip without a Piper model."""
+
+    synth_calls = 0
+
+    def _synthesize_chunk(self, chunk_text):
+        type(self).synth_calls += 1
+        return np.full(1000, 0.1, dtype=np.float32)
+
+
+@pytest.fixture
+def make_tts(tmp_path):
+    """Build fake-voice TTS services that share a temp cache directory."""
+    model = tmp_path / "voice-a.onnx"
+    model.write_text("model")
+    other = tmp_path / "voice-b.onnx"
+    other.write_text("model")
+    _FakeVoiceTTS.synth_calls = 0
+
+    def _make(model_name="voice-a.onnx", **kwargs):
+        kwargs.setdefault("cache_dir", str(tmp_path / "cache"))
+        return _FakeVoiceTTS(model_path=str(tmp_path / model_name), **kwargs)
+
+    return _make
+
+
+def test_cache_key_includes_voice_and_settings(make_tts):
+    """Different voice models or settings never share a cache file."""
+    base = make_tts()._get_cache_path("hello")
+    assert make_tts("voice-b.onnx")._get_cache_path("hello") != base
+    assert make_tts(length_scale=1.5)._get_cache_path("hello") != base
+    assert make_tts(noise_scale=0.3)._get_cache_path("hello") != base
+    assert make_tts()._get_cache_path("hello") == base
+
+
+def test_voice_change_does_not_reuse_other_voice_audio(make_tts):
+    """A second voice synthesizes its own audio instead of reading the first voice's cache."""
+    make_tts().synthesize("hello")
+    make_tts("voice-b.onnx").synthesize("hello")
+    assert _FakeVoiceTTS.synth_calls == 2
+
+
+def test_disk_cache_hit_skips_synthesis(make_tts):
+    """A second service instance reads the saved clip from disk."""
+    make_tts().synthesize("hello")
+    audio, rate = make_tts().synthesize("hello")
+    assert _FakeVoiceTTS.synth_calls == 1
+    assert len(audio) == 1000 and rate == 22050
+
+
+def test_memory_cache_evicts_least_recently_used(make_tts):
+    """The RAM cache keeps only max_memory_entries phrases, dropping the least recently used."""
+    tts = make_tts(max_memory_entries=2)
+    tts.synthesize("one")
+    tts.synthesize("two")
+    tts.synthesize("one")  # refresh "one"
+    tts.synthesize("three")
+    assert list(tts._cache) == ["one", "three"]
+
+
+def test_disk_cache_prunes_oldest_files(make_tts, tmp_path):
+    """The disk cache deletes the least recently used files beyond its size limit."""
+    clip_bytes = 1000 * 4 + 128  # float32 samples plus .npy header
+    tts = make_tts(max_disk_cache_mb=(clip_bytes * 2.5) / (1024 * 1024))
+    paths = []
+    for index, phrase in enumerate(["one", "two", "three"]):
+        tts.synthesize(phrase)
+        path = tts._get_cache_path(phrase)
+        os.utime(path, (1000 + index, 1000 + index))  # deterministic age order
+        paths.append(path)
+        tts._prune_disk_cache()
+
+    remaining = [p for p in paths if os.path.exists(p)]
+    assert paths[0] not in remaining
+    assert paths[2] in remaining
+
+
+def test_corrupt_disk_cache_file_is_resynthesized(make_tts):
+    """A truncated cache file is ignored and the phrase is synthesized again."""
+    tts = make_tts()
+    path = tts._get_cache_path("hello")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(b"not a numpy file")
+
+    audio, _ = tts.synthesize("hello")
+    assert len(audio) == 1000
+    assert _FakeVoiceTTS.synth_calls == 1
+
+
+def _subprocess_tts(tmp_path):
+    """Return a service whose in-process voice failed to load, so it uses the piper command."""
+    model = tmp_path / "voice.onnx"
+    model.write_text("model")
+    tts = PiperTTSService(model_path=str(model), cache_dir=str(tmp_path / "cache"))
+    tts._voice = None
+    tts._load_error = ImportError("No module named 'piper'")
+    return tts
+
+
+def test_piper_load_failure_is_reported(tmp_path, capsys):
+    """A voice that cannot load in-process says why before falling back to the command."""
+    model = tmp_path / "voice.onnx"
+    model.write_text("model")
+    with patch.dict("sys.modules", {"piper": None}):  # makes `import piper` fail
+        PiperTTSService(model_path=str(model), cache_dir=str(tmp_path / "cache"))
+    out = capsys.readouterr().out
+    assert "could not load" in out and "falling back to the 'piper' command" in out
+
+
+def test_piper_missing_command_error_names_both_failures(tmp_path):
+    """With no in-process voice and no piper command the error explains both."""
+    tts = _subprocess_tts(tmp_path)
+    with patch("services.tts_service.subprocess.Popen", side_effect=FileNotFoundError("piper")):
+        with pytest.raises(RuntimeError) as exc:
+            tts._synthesize_chunk("hello")
+    assert "No module named 'piper'" in str(exc.value)
+    assert "'piper' command could not be run" in str(exc.value)
+
+
+def test_piper_command_failure_includes_stderr(tmp_path):
+    """A failing piper command reports its exit code and error output."""
+    tts = _subprocess_tts(tmp_path)
+    process = MagicMock(returncode=2)
+    process.communicate.return_value = (b"", b"Error: invalid model config")
+    with patch("services.tts_service.subprocess.Popen", return_value=process):
+        with pytest.raises(RuntimeError, match=r"exit code 2\): Error: invalid model config"):
+            tts._synthesize_chunk("hello")

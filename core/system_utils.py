@@ -189,10 +189,11 @@ def load_env_file(path: str = ".env") -> None:
 
 
 def check_internet_connectivity(timeout: float = 2.5) -> bool:
-    """Check if external internet connectivity is available via DNS socket probes.
+    """Check if external internet connectivity is available via TCP socket probes.
 
-    Attempts TCP connections to Google (8.8.8.8) and Cloudflare (1.1.1.1) DNS servers
-    on port 53.
+    Tries Cloudflare (1.1.1.1) and Google (8.8.8.8) on port 443, which the cloud
+    services use and which networks rarely block, then on port 53. No DNS lookup is
+    needed because the probes use IP addresses.
 
     Args:
         timeout: Socket connection timeout in seconds (default: 2.5).
@@ -200,16 +201,19 @@ def check_internet_connectivity(timeout: float = 2.5) -> bool:
     Returns:
         bool: True if external host connects successfully, False otherwise.
     """
-    test_hosts = [("8.8.8.8", 53), ("1.1.1.1", 53)]
+    test_hosts = [("1.1.1.1", 443), ("8.8.8.8", 443), ("1.1.1.1", 53), ("8.8.8.8", 53)]
     for host, port in test_hosts:
+        sock = None
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(timeout)
             sock.connect((host, port))
-            sock.close()
             return True
-        except Exception:
+        except OSError:
             continue
+        finally:
+            if sock is not None:
+                sock.close()
     return False
 
 
@@ -220,8 +224,9 @@ def resolve_piper_model_path(
 ) -> str:
     """Resolve the file path to a Piper ONNX neural voice model.
 
-    Evaluates explicit model paths, voice names (e.g. 'en_GB-alan-medium' or 'alan'),
-    and default locations in `models/piper/`.
+    Evaluates explicit model paths and voice names (e.g. 'en_GB-alan-medium'). A voice
+    name resolves to `models/piper/<name>.onnx` whether or not the file exists; the default
+    model is used only when neither a path nor a voice name is given.
 
     Args:
         model_path: Explicit path from CLI flags or environment variables.
@@ -234,7 +239,11 @@ def resolve_piper_model_path(
     if repo_root is None:
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    # 1. Explicit model path from argument or environment
+    # 1. Explicit model path from argument or environment; a bare voice ID is treated as voice_name
+    if model_path and not model_path.endswith(".onnx") and os.sep not in model_path:
+        voice_name = voice_name or model_path
+        model_path = None
+
     if model_path:
         if os.path.isabs(model_path) and os.path.exists(model_path):
             return model_path
@@ -256,11 +265,10 @@ def resolve_piper_model_path(
                 return candidate_in_piper
             return candidate
         else:
-            # Short name or identifier without .onnx extension
-            candidate = os.path.join(repo_root, "models", "piper", f"{voice_name}.onnx")
-            if os.path.exists(candidate):
-                return candidate
+            # Short name or identifier without .onnx extension; a voice that is not installed
+            # resolves to its expected path so the caller reports the missing file
+            return os.path.join(repo_root, "models", "piper", f"{voice_name}.onnx")
 
-    # 3. Default fallback model
+    # 3. Default model when no model path or voice name is given
     return os.path.join(repo_root, "models", "piper", "en_GB-alan-medium.onnx")
 

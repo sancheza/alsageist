@@ -10,8 +10,10 @@ import json
 import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
-import urllib.error
-import urllib.request
+
+from core import cloud_api
+
+INTENT_API_TIMEOUT_SEC = 6.0
 
 
 @dataclass
@@ -90,6 +92,33 @@ class PersonalityProfile:
         if isinstance(self.docstring, list):
             return "\n".join(self.docstring)
         return self.docstring
+
+    def build_system_prompt(self) -> str:
+        """Build the LLM system prompt that keeps replies in this persona's character.
+
+        Returns:
+            System prompt string naming the persona and the spoken-dialogue rules.
+        """
+        return (
+            f"You are {self.display_name}. {self.description}\n"
+            "Rules you must strictly obey:\n"
+            "1. Keep every response under 2 sentences maximum.\n"
+            "2. Be witty, dry, and stay in character.\n"
+            "3. Never output emojis, markdown formatting, asterisks, or sound effect tags.\n"
+            "4. Return plain spoken dialogue only."
+        )
+
+    def announcement(self, key: str, default: str) -> str:
+        """Return a spoken system announcement, falling back to a default.
+
+        Args:
+            key: Announcement key (for example 'online_mode' or 'powering_off').
+            default: Text used when the profile does not define the key.
+
+        Returns:
+            Announcement text.
+        """
+        return self.system_announcements.get(key) or default
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize personality profile to JSON-compatible dictionary."""
@@ -453,27 +482,12 @@ class IntentParser:
         }
 
         for model in models:
-            url = (
-                f"https://generativelanguage.googleapis.com/v1beta/models/"
-                f"{model}:generateContent"
-            )
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={
-                    "Content-Type": "application/json",
-                    "x-goog-api-key": str(self.gemini_api_key),
-                },
-                method="POST",
-            )
             try:
-                with urllib.request.urlopen(req, timeout=6.0) as resp:
-                    result = json.loads(resp.read().decode("utf-8"))
-                candidates = result.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    if parts:
-                        return parts[0].get("text", "").strip()
+                parts = cloud_api.gemini_generate_parts(
+                    self.gemini_api_key, model, payload, timeout=INTENT_API_TIMEOUT_SEC
+                )
+                if parts:
+                    return parts[0].get("text", "").strip()
             except Exception:
                 continue
         return ""
@@ -489,24 +503,10 @@ class IntentParser:
             "response_format": {"type": "json_object"},
             "temperature": 0.2,
         }
-        req = urllib.request.Request(
-            "https://api.groq.com/openai/v1/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {self.groq_api_key}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
         try:
-            with urllib.request.urlopen(req, timeout=6.0) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-            choices = result.get("choices", [])
-            if choices:
-                return choices[0].get("message", {}).get("content", "").strip()
+            return cloud_api.groq_chat(self.groq_api_key, payload, timeout=INTENT_API_TIMEOUT_SEC)
         except Exception:
-            pass
-        return ""
+            return ""
 
     @staticmethod
     def _derive_snake_name(text: str) -> str:
@@ -607,6 +607,48 @@ def find_personality_file(
     primary_dir = dirs[0]
     os.makedirs(primary_dir, exist_ok=True)
     return os.path.abspath(os.path.join(primary_dir, base_name))
+
+
+def load_personality(name_or_path: str) -> PersonalityProfile:
+    """Find and load a personality profile by name or path.
+
+    Args:
+        name_or_path: Personality name (for example 'grimjaw') or JSON file path.
+
+    Returns:
+        The loaded profile.
+
+    Raises:
+        FileNotFoundError: If no profile file exists for the name or path.
+    """
+    profile_path = find_personality_file(name_or_path)
+    if not os.path.isfile(profile_path):
+        raise FileNotFoundError(
+            f"Personality profile not found: '{name_or_path}' (searched at: {profile_path})"
+        )
+    return PersonalityProfile.load_from_file(profile_path)
+
+
+def resolve_voice_settings(
+    profile: Optional[PersonalityProfile],
+    tempo: Optional[float] = None,
+    noise: Optional[float] = None,
+) -> Tuple[float, float]:
+    """Resolve Piper tempo and noise, preferring explicit values over the profile.
+
+    Args:
+        profile: Personality profile supplying voice_settings, or None.
+        tempo: Explicit tempo (phoneme length scale), or None to use the profile.
+        noise: Explicit noise scale, or None to use the profile.
+
+    Returns:
+        Tuple of (tempo, noise), defaulting to (1.15, 0.85).
+    """
+    settings = (profile.voice_settings if profile else None) or {}
+    return (
+        tempo if tempo is not None else settings.get("tempo", 1.15),
+        noise if noise is not None else settings.get("noise", 0.85),
+    )
 
 
 def create_custom_intent(

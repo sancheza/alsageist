@@ -1,6 +1,7 @@
 """Unit tests for services.basic_info_service."""
 
 import datetime
+import time
 from unittest.mock import MagicMock, patch
 import pytest
 
@@ -121,3 +122,61 @@ def test_custom_profile_time_and_weather_responses():
     # Weather fallback
     with patch.object(service, "get_weather_data", return_value=None):
         assert service.get_weather_response() == "Custom fallback!"
+
+
+def test_weather_fresh_cache_skips_network():
+    """A fresh cache entry is returned without any request."""
+    service = BasicInfoService()
+    service._weather_cache = {"temp_f": "60", "temp_c": "16", "desc": "Clear"}
+    service._weather_cache_time = time.time()
+    with patch("services.basic_info_service.http_client.get_json") as get_json:
+        assert service.get_weather_data()["temp_f"] == "60"
+    get_json.assert_not_called()
+
+
+def test_weather_stale_cache_served_while_refreshing():
+    """A stale entry is returned immediately and refreshed on a background thread."""
+    service = BasicInfoService(cache_ttl_sec=1.0)
+    service._weather_cache = {"temp_f": "60", "temp_c": "16", "desc": "Clear"}
+    service._weather_cache_time = time.time() - 100
+    payload = {"current_condition": [{"temp_F": "70", "temp_C": "21", "weatherDesc": [{"value": "Sunny"}]}]}
+    with patch("services.basic_info_service.http_client.get_json", return_value=payload):
+        assert service.get_weather_data()["temp_f"] == "60"
+        service._fetch_thread.join(timeout=2)
+    assert service._weather_cache["temp_f"] == "70"
+
+
+def test_weather_offline_never_touches_network():
+    """allow_network=False answers from cache or falls back, without a request."""
+    service = BasicInfoService()
+    with patch("services.basic_info_service.http_client.get_json") as get_json:
+        assert service.get_weather_data(allow_network=False) is None
+        assert "internal barometer" in service.get_weather_response(allow_network=False).lower()
+    get_json.assert_not_called()
+
+
+def test_weather_fetch_failure_returns_none():
+    """A network error yields None instead of raising."""
+    service = BasicInfoService()
+    with patch("services.basic_info_service.http_client.get_json", side_effect=OSError("down")):
+        assert service.get_weather_data() is None
+
+
+def test_prefetch_weather_runs_one_fetch_at_a_time():
+    """A second prefetch while one is running does not start another thread."""
+    import threading
+    service = BasicInfoService()
+    release = threading.Event()
+
+    def slow_fetch(*args, **kwargs):
+        release.wait(timeout=2)
+        raise OSError("down")
+
+    with patch("services.basic_info_service.http_client.get_json", side_effect=slow_fetch) as get_json:
+        service.prefetch_weather()
+        first = service._fetch_thread
+        service.prefetch_weather()
+        assert service._fetch_thread is first
+        release.set()
+        first.join(timeout=2)
+    assert get_json.call_count == 1

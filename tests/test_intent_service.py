@@ -8,15 +8,15 @@ tests/fixtures/grimjaw_test_utterances.json.
 import json
 import os
 import pytest
-from services.intent_service import GrimjawIntentEngine
+from services.intent_service import PersonaIntentEngine
 
 FIXTURE_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "grimjaw_test_utterances.json")
 
 
 @pytest.fixture
 def engine():
-    """Fixture providing an initialized GrimjawIntentEngine instance."""
-    return GrimjawIntentEngine()
+    """Fixture providing an initialized PersonaIntentEngine instance."""
+    return PersonaIntentEngine()
 
 
 @pytest.fixture
@@ -124,3 +124,26 @@ def test_random_content_intent(engine, utterances):
         assert intent == "random_content", f"Failed for '{q}': got intent '{intent}'"
         assert len(resp) > 5
         assert resp in engine._random_content_pool, f"Response '{resp}' not in random content pool"
+
+
+def test_pick_unique_evicts_oldest_phrase_first(engine):
+    """When the recent list is full the oldest phrase is dropped, never the one just chosen."""
+    engine._recently_used.clear()
+    engine._max_recent = 3
+    choices = [f"line {i}" for i in range(20)]
+
+    picked = []
+    for _ in range(6):
+        picked.append(engine._pick_unique(choices))
+
+    assert list(engine._recently_used) == picked[-3:]
+    assert len(set(picked)) == 6  # no repeat while unused lines remain
+
+
+def test_pick_unique_resets_when_every_choice_was_used(engine):
+    """With every choice used recently the engine starts over instead of failing."""
+    engine._recently_used.clear()
+    choices = ["a", "b"]
+    first_round = {engine._pick_unique(choices), engine._pick_unique(choices)}
+    assert first_round == {"a", "b"}
+    assert engine._pick_unique(choices) in choices

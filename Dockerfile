@@ -28,21 +28,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Upgrade build tools and install Python dependencies
-COPY pyproject.toml ./
-RUN pip install --upgrade pip setuptools wheel && \
-    pip install sounddevice numpy piper-tts onnxruntime gpiozero rpi-lgpio vosk
-
 # Copy source code and entrypoint
+COPY pyproject.toml README.md main.py ./
 COPY core/ ./core/
 COPY services/ ./services/
 COPY scripts/ ./scripts/
-COPY main.py ./
 COPY data/personalities/ ./data.defaults/personalities/
 COPY docker/entrypoint.sh /entrypoint.sh
 
+# Install AlsaGeist and its dependencies (including Raspberry Pi GPIO libraries) in editable mode
 RUN chmod +x /entrypoint.sh && \
-    pip install -e .
+    pip install --upgrade pip setuptools wheel && \
+    pip install -e ".[rpi]"
 
 # Create volume mount targets
 RUN mkdir -p /app/data /app/models /app/logs

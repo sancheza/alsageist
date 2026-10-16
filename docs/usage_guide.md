@@ -128,7 +128,7 @@ journalctl -u alsageist.service -f
 
 ## 3. Real-Time Remote Management (`alsageist_ctl.py`)
 
-The control client communicates with a running AlsaGeist instance (native or Docker) over the local Unix domain socket at `/tmp/alsageist.sock`.
+The control client communicates with a running AlsaGeist instance (native or Docker) over a local Unix domain socket at `/tmp/alsageist-<uid>/alsageist.sock` (directory mode 0700, socket mode 0600). Only the user running the daemon can connect. For Docker, prefix each command with `docker exec alsageist`.
 
 ### 3.1 Monitoring Live Health & Dashboard
 
@@ -250,6 +250,15 @@ python3 scripts/alsageist_ctl.py mode offline
 python3 scripts/alsageist_ctl.py mode online
 ```
 
+3. Return to automatic detection (connectivity is probed every 15 minutes):
+
+```bash
+python3 scripts/alsageist_ctl.py mode auto
+```
+
+> [!NOTE]
+> A forced `online` or `offline` mode stays in effect until `mode auto` is sent or the service restarts. `status` shows `(forced)` or `(auto)` next to the network mode.
+
 ---
 
 ### 3.5 Broadcasting Custom Spoken Announcements
@@ -364,6 +373,17 @@ VOLUME=0.5
 MIC_GAIN=1.5
 VAD_THRESHOLD=0.0035
 ```
+
+### 5.4 Interaction Logs & Privacy
+
+| Setting | Default | Effect |
+| :--- | :--- | :--- |
+| `LOG_MAX_MB` | `5` | Size at which `logs/interactions.jsonl` and `logs/conversations.log` rotate |
+| `LOG_BACKUPS` | `3` | Rotated copies kept per file (`.1` is the newest) |
+| `LOG_TRANSCRIPTS` | `true` | `false` stores `[not stored]` instead of visitor speech and replies; timings, intents and audio levels are still logged |
+
+* Log files are readable only by the user running AlsaGeist (mode 0600).
+* In online mode each utterance is sent to the configured cloud service (Groq or Google) for transcription, and unrecognized questions go to the LLM. In offline mode audio stays on the device.
 
 ---
 

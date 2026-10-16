@@ -4,12 +4,19 @@ Synthesizes character speech directly into memory as raw PCM numpy arrays
 without writing temporary audio files to disk.
 """
 
+from collections import OrderedDict
 import hashlib
 import os
 import re
 import subprocess
 from typing import Optional, Tuple
 import numpy as np
+
+from core import system_utils
+
+
+DEFAULT_MEMORY_CACHE_ENTRIES = 128
+DEFAULT_DISK_CACHE_MB = 1024.0
 
 
 class PiperTTSService:
@@ -23,28 +30,27 @@ class PiperTTSService:
         noise_scale: float = 0.85,
         pause_duration_sec: float = 0.55,
         cache_dir: Optional[str] = None,
+        max_memory_entries: int = DEFAULT_MEMORY_CACHE_ENTRIES,
+        max_disk_cache_mb: Optional[float] = None,
     ) -> None:
         """Initialize the Piper TTS service.
 
         Args:
-            model_path: Path to the ONNX model file.
+            model_path: Path to the ONNX model file, or a voice ID such as 'en_GB-alan-medium'.
             sample_rate: Model output sample rate in Hz (default: 22050).
             length_scale: Phoneme length / tempo scale (higher = slower).
             noise_scale: Noise level for character inflection.
             pause_duration_sec: Duration in seconds of silence inserted at ellipsis (...) breaks.
+            cache_dir: Directory for the persistent audio cache (default: $ALSAGEIST_CACHE_DIR or models/cache).
+            max_memory_entries: Most recently used phrases kept in RAM.
+            max_disk_cache_mb: Disk cache size limit in MB; least recently used files are deleted
+                beyond it (default: $ALSAGEIST_CACHE_MAX_MB or 1024).
         """
-        self.model_path = model_path
+        self.model_path = system_utils.resolve_piper_model_path(model_path=model_path)
         self.sample_rate = sample_rate
         self.length_scale = length_scale
         self.noise_scale = noise_scale
         self.pause_duration_sec = pause_duration_sec
-
-        if not os.path.isabs(self.model_path) and not os.path.exists(self.model_path):
-            repo_candidate = os.path.normpath(
-                os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", self.model_path)
-            )
-            if os.path.exists(repo_candidate):
-                self.model_path = repo_candidate
 
         if not os.path.exists(self.model_path):
             raise FileNotFoundError(
@@ -53,14 +59,20 @@ class PiperTTSService:
             )
 
         self._voice = None
+        self._load_error: Optional[Exception] = None
         self._syn_config = None
-        self._cache: dict = {}
+        self._cache: "OrderedDict[str, np.ndarray]" = OrderedDict()
+        self.max_memory_entries = max(1, int(max_memory_entries))
+        if max_disk_cache_mb is None:
+            max_disk_cache_mb = float(os.environ.get("ALSAGEIST_CACHE_MAX_MB", DEFAULT_DISK_CACHE_MB))
+        self.max_disk_cache_bytes = int(max_disk_cache_mb * 1024 * 1024)
         default_cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "models", "cache")
         self.cache_dir = cache_dir or os.environ.get("ALSAGEIST_CACHE_DIR", default_cache)
         try:
             os.makedirs(self.cache_dir, exist_ok=True)
-        except Exception:
+        except OSError:
             pass
+        self._prune_disk_cache()
 
         try:
             import piper
@@ -69,8 +81,13 @@ class PiperTTSService:
                 length_scale=self.length_scale,
                 noise_scale=self.noise_scale,
             )
-        except Exception:
+        except Exception as exc:
             self._voice = None
+            self._load_error = exc
+            print(
+                f"Warning: Piper could not load '{self.model_path}' in-process ({exc}); "
+                "falling back to the 'piper' command."
+            )
 
     def _synthesize_chunk(self, chunk_text: str) -> np.ndarray:
         """Synthesize a single text chunk into raw PCM numpy array.
@@ -102,17 +119,24 @@ class PiperTTSService:
             "--noise-scale", str(self.noise_scale),
         ]
 
-        process = subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except OSError as exc:
+            raise RuntimeError(
+                f"Piper synthesis unavailable: in-process load failed ({self._load_error}) "
+                f"and the 'piper' command could not be run ({exc})."
+            ) from exc
 
-        raw_pcm, _ = process.communicate(input=normalized_text.encode("utf-8"))
+        raw_pcm, stderr = process.communicate(input=normalized_text.encode("utf-8"))
 
         if process.returncode != 0 or not raw_pcm:
-            raise RuntimeError(f"Piper synthesis failed (exit code {process.returncode})")
+            detail = stderr.decode("utf-8", errors="replace").strip()[-300:]
+            raise RuntimeError(f"Piper synthesis failed (exit code {process.returncode}): {detail}")
 
         int16_samples = np.frombuffer(raw_pcm, dtype=np.int16)
         return int16_samples.astype(np.float32) / 32768.0
@@ -120,14 +144,46 @@ class PiperTTSService:
     def _get_cache_path(self, text: str) -> str:
         """Return the filesystem path for cached audio array.
 
+        The key covers the text, voice model, tempo and noise, so changing any of
+        them never serves audio synthesized with the old settings.
+
         Args:
             text: Dialogue text.
 
         Returns:
             Absolute path to .npy cache file.
         """
-        cache_key = hashlib.md5(f"{text}_{self.length_scale}_{self.noise_scale}".encode("utf-8")).hexdigest()
-        return os.path.join(self.cache_dir, f"{cache_key}.npy")
+        voice = os.path.basename(self.model_path)
+        key = f"{voice}|{self.length_scale}|{self.noise_scale}|{text}"
+        return os.path.join(self.cache_dir, f"{hashlib.sha256(key.encode('utf-8')).hexdigest()}.npy")
+
+    def _remember(self, text: str, audio: np.ndarray) -> None:
+        """Store audio in the RAM cache, evicting the least recently used phrase when full."""
+        self._cache[text] = audio
+        self._cache.move_to_end(text)
+        while len(self._cache) > self.max_memory_entries:
+            self._cache.popitem(last=False)
+
+    def _prune_disk_cache(self) -> None:
+        """Delete least recently used cache files until the cache fits its size limit."""
+        try:
+            entries = []
+            for entry in os.scandir(self.cache_dir):
+                if entry.name.endswith(".npy") and entry.is_file():
+                    stat = entry.stat()
+                    entries.append((stat.st_mtime, stat.st_size, entry.path))
+        except OSError:
+            return
+
+        total = sum(size for _, size, _ in entries)
+        for _, size, path in sorted(entries):
+            if total <= self.max_disk_cache_bytes:
+                break
+            try:
+                os.unlink(path)
+                total -= size
+            except OSError:
+                pass
 
     def synthesize(self, text: str) -> Tuple[np.ndarray, int]:
         """Synthesize text into in-memory audio array, inserting pauses at ellipsis breaks.
@@ -146,6 +202,7 @@ class PiperTTSService:
 
         # 1. Check in-memory RAM cache
         if text in self._cache:
+            self._cache.move_to_end(text)
             return self._cache[text], self.sample_rate
 
         # 2. Check persistent disk cache
@@ -153,9 +210,10 @@ class PiperTTSService:
         if os.path.isfile(cache_path):
             try:
                 audio = np.load(cache_path)
-                self._cache[text] = audio
+                os.utime(cache_path)  # mark as recently used
+                self._remember(text, audio)
                 return audio, self.sample_rate
-            except Exception:
+            except (OSError, ValueError, EOFError):
                 pass
 
         # Split on explicit pauses (ellipsis '...' or multiple newlines)
@@ -176,10 +234,13 @@ class PiperTTSService:
             audio = np.concatenate(audio_parts)
 
         # Store in RAM and disk cache
-        self._cache[text] = audio
+        self._remember(text, audio)
         try:
-            np.save(cache_path, audio)
-        except Exception:
-            pass
+            tmp_path = f"{cache_path[:-4]}.tmp.npy"
+            np.save(tmp_path, audio)
+            os.replace(tmp_path, cache_path)
+        except OSError:
+            return audio, self.sample_rate
+        self._prune_disk_cache()
 
         return audio, self.sample_rate

@@ -26,11 +26,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="version",
         version=f"%(prog)s {VERSION}",
     )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Enable detailed diagnostic logging.",
-    )
     env_llm_fallback = os.environ.get("LLM_FALLBACK", "false").strip().lower() in ("true", "1", "yes")
     parser.add_argument(
         "--llm-fallback",

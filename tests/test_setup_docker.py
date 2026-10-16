@@ -65,3 +65,20 @@ def test_setup_docker_usb_profile_dry_run():
     assert result.returncode == 0
     assert "Profile: USB" in result.stdout
     assert "Dry-run complete. System was not modified." in result.stdout
+
+
+def test_setup_docker_uses_verified_model_downloader():
+    """Models come from download_model.py (pinned SHA-256), and no installer is piped into a shell."""
+    result = subprocess.run(
+        [SCRIPT_PATH, "--dry-run", "--non-interactive", "--user", "pi"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "Downloading and verifying voice and speech recognition models" in result.stdout
+    assert "en_GB-alan-medium.onnx" in result.stdout
+
+    with open(SCRIPT_PATH, encoding="utf-8") as handle:
+        source = handle.read()
+    assert "| sh" not in source and "| run_root sh" not in source
+    assert "curl -fSL" not in source

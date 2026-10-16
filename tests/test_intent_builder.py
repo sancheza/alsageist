@@ -381,3 +381,49 @@ def test_add_intent_cli_help(capsys):
 
 
 
+
+
+def test_build_system_prompt_names_persona():
+    """The LLM system prompt names the persona and carries the dialogue rules."""
+    profile = PersonalityProfile(personality="demo", display_name="Demo Bot", description="A test persona.")
+    prompt = profile.build_system_prompt()
+    assert prompt.startswith("You are Demo Bot. A test persona.")
+    assert "under 2 sentences" in prompt
+
+
+def test_announcement_falls_back_to_default():
+    """announcement() returns the profile text or the supplied default."""
+    profile = PersonalityProfile(
+        personality="demo",
+        display_name="Demo Bot",
+        description="",
+        system_announcements={"powering_off": "Goodnight."},
+    )
+    assert profile.announcement("powering_off", "Powering off.") == "Goodnight."
+    assert profile.announcement("online_mode", "NOW IN ONLINE MODE") == "NOW IN ONLINE MODE"
+
+
+def test_load_personality_by_name_and_missing():
+    """load_personality loads a shipped profile and raises for an unknown one."""
+    from core.intent_builder import load_personality
+
+    assert load_personality("grimjaw").personality == "grimjaw"
+    with pytest.raises(FileNotFoundError, match="nonexistent_persona_xyz"):
+        load_personality("nonexistent_persona_xyz")
+
+
+def test_resolve_voice_settings_precedence():
+    """Explicit values beat profile settings, which beat the built-in defaults."""
+    from core.intent_builder import resolve_voice_settings
+
+    profile = PersonalityProfile(
+        personality="demo",
+        display_name="Demo",
+        description="",
+        voice_settings={"tempo": 1.3, "noise": 0.6},
+    )
+    assert resolve_voice_settings(profile) == (1.3, 0.6)
+    assert resolve_voice_settings(profile, tempo=1.0) == (1.0, 0.6)
+    assert resolve_voice_settings(profile, noise=0.1) == (1.3, 0.1)
+    assert resolve_voice_settings(None) == (1.15, 0.85)
+    assert resolve_voice_settings(PersonalityProfile("d", "D", "")) == (1.15, 0.85)

@@ -5,14 +5,11 @@ spoken responses with caching and fallback.
 """
 
 import datetime
-import json
-import os
 import threading
 import time
-import urllib.error
-import urllib.request
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
+from core import http_client
 from core.intent_builder import PersonalityProfile
 
 
@@ -35,6 +32,7 @@ class BasicInfoService:
         self._weather_cache: Optional[Dict[str, str]] = None
         self._weather_cache_time: float = 0.0
         self._lock = threading.Lock()
+        self._fetch_thread: Optional[threading.Thread] = None
 
     def get_time_response(self, now: Optional[datetime.datetime] = None) -> str:
         """Generate a spoken response indicating the current local time.
@@ -78,54 +76,80 @@ class BasicInfoService:
             return template.format(time=time_str)
         return f"It is precisely {time_str}. The night is young, but watch your fingers around my candy bowl!"
 
-    def get_weather_data(self) -> Optional[Dict[str, str]]:
-        """Fetch current weather data via wttr.in with in-memory caching.
+    def get_weather_data(self, allow_network: bool = True) -> Optional[Dict[str, str]]:
+        """Return current weather from the cache, fetching from wttr.in when needed.
+
+        A fresh cache entry is returned directly. A stale entry is returned at once
+        while a background refresh runs. Only when nothing is cached does the call
+        wait for the network.
+
+        Args:
+            allow_network: If False, never contact the network; return cached data or None.
 
         Returns:
             Dictionary with 'temp_f', 'temp_c', and 'desc' keys, or None if unavailable.
         """
         with self._lock:
-            now = time.time()
-            if self._weather_cache is not None and (now - self._weather_cache_time) < self._cache_ttl_sec:
-                return self._weather_cache
+            cached = self._weather_cache
+            age = time.time() - self._weather_cache_time
+        if cached is not None and age < self._cache_ttl_sec:
+            return cached
+        if not allow_network:
+            return cached
+        if cached is not None:
+            self.prefetch_weather()
+            return cached
+        return self._fetch_weather()
 
-        # Query wttr.in with a short timeout
-        url = "https://wttr.in/?format=j1"
-        req = urllib.request.Request(
-            url,
-            headers={"User-Agent": "curl/7.88.1"},
-        )
+    def prefetch_weather(self) -> None:
+        """Refresh the weather cache on a background thread, if no refresh is already running."""
+        with self._lock:
+            if self._fetch_thread is not None and self._fetch_thread.is_alive():
+                return
+            self._fetch_thread = threading.Thread(
+                target=self._fetch_weather, daemon=True, name="AlsaGeist-WeatherFetch"
+            )
+            self._fetch_thread.start()
+
+    def _fetch_weather(self) -> Optional[Dict[str, str]]:
+        """Fetch weather from wttr.in (short timeout) and update the cache."""
         try:
-            with urllib.request.urlopen(req, timeout=3.5) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                current = data.get("current_condition", [{}])[0]
-                temp_f = str(current.get("temp_F", "")).strip()
-                temp_c = str(current.get("temp_C", "")).strip()
-                weather_descs = current.get("weatherDesc", [{}])
-                desc = str(weather_descs[0].get("value", "")).strip() if weather_descs else ""
+            data = http_client.get_json(
+                "https://wttr.in/?format=j1",
+                headers={"User-Agent": "curl/7.88.1"},
+                timeout=3.5,
+            )
+            current = data.get("current_condition", [{}])[0]
+            temp_f = str(current.get("temp_F", "")).strip()
+            temp_c = str(current.get("temp_C", "")).strip()
+            weather_descs = current.get("weatherDesc", [{}])
+            desc = str(weather_descs[0].get("value", "")).strip() if weather_descs else ""
 
-                if temp_f:
-                    result = {
-                        "temp_f": temp_f,
-                        "temp_c": temp_c,
-                        "desc": desc,
-                    }
-                    with self._lock:
-                        self._weather_cache = result
-                        self._weather_cache_time = time.time()
-                    return result
+            if temp_f:
+                result = {
+                    "temp_f": temp_f,
+                    "temp_c": temp_c,
+                    "desc": desc,
+                }
+                with self._lock:
+                    self._weather_cache = result
+                    self._weather_cache_time = time.time()
+                return result
         except Exception:
             pass
 
         return None
 
-    def get_weather_response(self) -> str:
+    def get_weather_response(self, allow_network: bool = True) -> str:
         """Generate a spoken response describing the current temperature and weather.
+
+        Args:
+            allow_network: If False, answer from cached data only (for offline mode).
 
         Returns:
             A spoken response with current weather or offline fallback.
         """
-        weather = self.get_weather_data()
+        weather = self.get_weather_data(allow_network=allow_network)
         weather_resp = self._profile.weather_responses if self._profile else {}
         if weather and weather.get("temp_f"):
             temp_f = weather["temp_f"]

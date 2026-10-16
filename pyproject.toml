@@ -15,6 +15,14 @@ dependencies = [
     "piper-tts>=1.2.0",
     "onnxruntime>=1.14.0",
     "vosk>=0.3.45",
+]
+
+[project.optional-dependencies]
+rpi = [
+    "gpiozero",
+    "rpi-lgpio",
+]
+dev = [
     "pytest>=7.0.0",
 ]
 

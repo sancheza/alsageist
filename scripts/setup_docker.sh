@@ -166,9 +166,12 @@ if command -v docker > /dev/null 2>&1; then
 else
     echo "  Docker not found. Installing Docker Engine..."
     if [[ "$DRY_RUN" == true ]]; then
-        echo "  [DRY RUN] Would run: curl -fsSL https://get.docker.com | sh"
+        echo "  [DRY RUN] Would download https://get.docker.com to a temporary file and run it with sh"
     else
-        curl -fsSL https://get.docker.com | run_root sh
+        DOCKER_INSTALLER="$(mktemp)"
+        curl -fsSL https://get.docker.com -o "$DOCKER_INSTALLER"
+        run_root sh "$DOCKER_INSTALLER"
+        rm -f "$DOCKER_INSTALLER"
     fi
 fi
 
@@ -217,43 +220,13 @@ if [[ ! -f "$GRIMJAW_PROFILE" && -f "${TARGET_DIR}/data/personalities/grimjaw.js
     echo "  Found bundled grimjaw profile."
 fi
 
-# Download Piper model weights for Grimjaw if missing
-ALAN_ONNX="${PIPER_DIR}/en_GB-alan-medium.onnx"
-ALAN_JSON="${PIPER_DIR}/en_GB-alan-medium.onnx.json"
-BASE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/medium"
-
-if [[ ! -f "$ALAN_ONNX" || ! -f "$ALAN_JSON" ]]; then
-    echo "  Downloading Grimjaw neural voice model (en_GB-alan-medium)..."
-    if [[ "$DRY_RUN" == true ]]; then
-        echo "  [DRY RUN] Would download ${BASE_URL}/en_GB-alan-medium.onnx -> ${ALAN_ONNX}"
-        echo "  [DRY RUN] Would download ${BASE_URL}/en_GB-alan-medium.onnx.json -> ${ALAN_JSON}"
-    else
-        curl -fSL "${BASE_URL}/en_GB-alan-medium.onnx" -o "$ALAN_ONNX"
-        curl -fSL "${BASE_URL}/en_GB-alan-medium.onnx.json" -o "$ALAN_JSON"
-        echo "  Voice model downloaded successfully."
-    fi
-else
-    echo "  Voice model already present: ${ALAN_ONNX}"
+# Download the Piper voice and Vosk offline STT models; download_model.py verifies pinned SHA-256 digests
+DOWNLOAD_ARGS=(--all --models-dir "${MODELS_DIR}")
+if [[ "$DRY_RUN" == true ]]; then
+    DOWNLOAD_ARGS+=(--dry-run)
 fi
-
-# Download Vosk offline STT model if missing
-VOSK_DIR="${MODELS_DIR}/vosk-model-small-en-us-0.15"
-VOSK_URL="https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
-
-if [[ ! -d "$VOSK_DIR" ]]; then
-    echo "  Downloading Vosk offline speech recognition model..."
-    if [[ "$DRY_RUN" == true ]]; then
-        echo "  [DRY RUN] Would download ${VOSK_URL} -> ${MODELS_DIR}/vosk.zip and extract to ${MODELS_DIR}"
-    else
-        VOSK_ZIP="${MODELS_DIR}/vosk.zip"
-        curl -fSL "$VOSK_URL" -o "$VOSK_ZIP"
-        unzip -q -o "$VOSK_ZIP" -d "$MODELS_DIR"
-        rm -f "$VOSK_ZIP"
-        echo "  Vosk offline STT model installed successfully."
-    fi
-else
-    echo "  Vosk offline STT model already present: ${VOSK_DIR}"
-fi
+echo "  Downloading and verifying voice and speech recognition models..."
+python3 "${SCRIPT_DIR}/download_model.py" "${DOWNLOAD_ARGS[@]}"
 
 # 4. Environment Configuration (.env)
 echo ""
@@ -304,7 +277,6 @@ GEMINI_API_KEY=${GEMINI_KEY}
 VOLUME=0.5
 MIC_GAIN=1.5
 VAD_THRESHOLD=0.0035
-ALSAGEIST_SOCKET=/tmp/alsageist.sock
 EOF
         chmod 600 "$ENV_FILE"
         echo "  Configured ${ENV_FILE} (mode 600)."

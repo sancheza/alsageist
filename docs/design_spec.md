@@ -72,7 +72,7 @@ flowchart TD
     subgraph Hardware Output & Telemetry
         RAM_PLAY --> SPK["AudioIO Speaker Playback"]
         RAM_PLAY --> LED["LEDController (GPIO 25 PWM)"]
-        CTL["alsageist_ctl.py"] <-->|UNIX Socket| SOCK["ControlServer (/tmp/alsageist.sock)"]
+        CTL["alsageist_ctl.py"] <-->|UNIX Socket| SOCK["ControlServer (/tmp/alsageist-uid/alsageist.sock)"]
     end
 ```
 
@@ -102,7 +102,7 @@ flowchart TD
   * `Long Hold (10.0s)`: Speaks "Powering off.", extinguishes the LED, and triggers a clean host shutdown (`system_utils.trigger_host_shutdown`).
 
 ### 3.3 IPC Control Server (`core/control_server.py`)
-* **Socket Path:** `/tmp/alsageist.sock` (UNIX domain stream socket).
+* **Socket Path:** `/tmp/alsageist-<uid>/alsageist.sock` or `$ALSAGEIST_SOCKET` (UNIX domain stream socket; directory mode 0700, socket mode 0600; peer UID checked on Linux).
 * **Control Commands:**
   * `STATUS`: Returns JSON payload with daemon state, active personality, volume, mute state, and memory metrics.
   * `PAUSE`: Pauses microphone capture and VAD processing.
@@ -134,7 +134,7 @@ flowchart TD
 | Metric | Target Budget | Observed Performance (RPi 3B) | Impact / Mitigation |
 | :--- | :--- | :--- | :--- |
 | **Cached Intent Playback TTFB** | < 200 ms | 90–140 ms | Zero perceptual lag; instant snappy response |
-| **Cloud STT Latency (Groq)** | < 1,500 ms | 600–1,100 ms | In-memory WAV streaming over HTTPS |
+| **Cloud STT Latency (Groq)** | < 1,500 ms | 600–1,100 ms | In-memory WAV upload over HTTPS |
 | **Offline STT Latency (Vosk)** | < 2,500 ms | 1,200–2,100 ms | In-memory 16 kHz stream; no cloud round-trip |
 | **Uncached Piper TTS Synthesis** | < 6,000 ms | 4,200–5,500 ms | High latency on Pi 3; mitigated by offline pre-warming cache |
 | **Daemon Resident Memory (RAM)** | < 450 MB | 280–380 MB | Fits comfortably within 1 GB physical RAM |
@@ -151,7 +151,9 @@ alsageist/
 │   ├── __init__.py
 │   ├── audio_io.py              # Cross-platform in-memory capture & playback (CoreAudio / ALSA)
 │   ├── config.py                # Command-line argument parser, version & defaults
+│   ├── cloud_api.py             # Groq & Gemini endpoint wrappers
 │   ├── control_server.py        # UNIX socket IPC control server for runtime management
+│   ├── http_client.py           # JSON & multipart HTTP client with mandatory timeouts
 │   ├── intent_builder.py        # Offline intent file compiler & parser
 │   ├── led_controller.py        # Hardware RPi.GPIO PWM & terminal visualizer
 │   ├── logger.py                # ADR 0020 compliant color terminal logging
@@ -159,9 +161,10 @@ alsageist/
 │   └── vad.py                   # Energy-based voice activity & silence boundary detector
 ├── services/
 │   ├── __init__.py
+│   ├── agent.py                 # Agent orchestrator & control API
 │   ├── basic_info_service.py    # Deterministic local system info & time provider
 │   ├── intent_service.py        # Local regex & keyword instant response matcher
-│   ├── llm_service.py           # Grimjaw dialogue reasoning engine (Groq / Gemini)
+│   ├── llm_service.py           # Persona dialogue reasoning engine (Groq / Gemini)
 │   ├── stt_service.py           # In-memory speech-to-text (Groq Whisper / Gemini / Vosk)
 │   └── tts_service.py           # Local Piper neural TTS engine in RAM
 ├── models/
@@ -182,7 +185,7 @@ alsageist/
 │   └── summarize_personality.py # Dynamic personality Q&A catalog generator
 ├── tests/                       # Automated test suite
 ├── docs/                        # Architecture, design specifications, and setup runbooks
-├── main.py                      # Real-time conversational agent entry point
+├── main.py                      # Runtime entry point (arguments, signals, agent start)
 ├── pyproject.toml               # Packaging and dependency declarations
 └── alsageist.service            # Systemd service unit template
 ```

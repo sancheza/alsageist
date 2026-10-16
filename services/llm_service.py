@@ -4,23 +4,22 @@ Generates terse, character-accurate banter in response to visitors
 using Groq Llama 3.3 or Gemini Flash.
 """
 
-import json
 import os
 from typing import Dict, List, Optional
-import urllib.error
-import urllib.request
+
+from core import cloud_api
 
 
 DEFAULT_SYSTEM_PROMPT = (
-    "You are Grimjaw, a sarcastic, ancient skeletal guardian stationed on the porch guarding "
-    "the Halloween candy bowl. "
+    "You are a witty, dry-humored conversational voice assistant. "
     "Rules you must strictly obey:\n"
     "1. Keep every response under 2 sentences maximum.\n"
-    "2. Be witty, dry, and tease trick-or-treaters playfully about their costumes, bravery, or greed for candy.\n"
+    "2. Be witty, dry, and stay in character.\n"
     "3. Never output emojis, markdown formatting, asterisks, stage directions, or sound effect tags (like *laughs* or [cackles]).\n"
     "4. Return plain spoken dialogue only."
 )
-GRIMJAW_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
+GEMINI_TIMEOUT_SEC = 6.0
+GROQ_TIMEOUT_SEC = 8.0
 DEFAULT_FALLBACK_RESPONSE = "Halt, little mortal! Reach into my bowl if you dare, but leave before I take your bones!"
 
 
@@ -80,16 +79,23 @@ class ConversationalLLMService:
         if not user_text or not user_text.strip():
             return ""
 
+        reply = ""
         if self.groq_api_key:
             try:
                 reply = self._generate_groq(user_text)
+                if not reply:
+                    raise RuntimeError("Groq returned an empty reply")
             except Exception as exc:
-                if self.gemini_api_key:
-                    reply = self._generate_gemini(user_text)
-                else:
+                if not self.gemini_api_key:
                     raise RuntimeError(f"Groq LLM generation failed: {exc}") from exc
+                reply = self._generate_gemini(user_text)
         else:
             reply = self._generate_gemini(user_text)
+
+        if not reply:
+            # Every backend failed or answered with nothing: speak the canned line,
+            # and keep it out of the conversation history.
+            return self.fallback_response
 
         # Update history
         self.history.append({"role": "user", "content": user_text})
@@ -106,7 +112,11 @@ class ConversationalLLMService:
         self.history.clear()
 
     def _generate_gemini(self, user_text: str) -> str:
-        """Generate reply using fast Gemini Flash text API."""
+        """Generate reply using fast Gemini Flash text API.
+
+        Returns:
+            Cleaned reply text, or an empty string when every model fails or answers with nothing.
+        """
         candidates_models = [self.gemini_model, "gemini-3.1-flash-lite", "gemini-3.5-flash"]
         models_to_try = [m for m in candidates_models if m]
 
@@ -127,36 +137,19 @@ class ConversationalLLMService:
         }
 
         for model in models_to_try:
-            url = (
-                f"https://generativelanguage.googleapis.com/v1beta/models/"
-                f"{model}:generateContent"
-            )
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={
-                    "Content-Type": "application/json",
-                    "x-goog-api-key": str(self.gemini_api_key),
-                },
-                method="POST",
-            )
             try:
-                with urllib.request.urlopen(req, timeout=6) as response:
-                    result = json.loads(response.read().decode("utf-8"))
-                candidates = result.get("candidates", [])
-                if not candidates:
-                    continue
-                parts = candidates[0].get("content", {}).get("parts", [])
+                parts = cloud_api.gemini_generate_parts(
+                    self.gemini_api_key, model, payload, timeout=GEMINI_TIMEOUT_SEC
+                )
                 if not parts:
                     continue
-                text = parts[0].get("text", "").strip()
-                cleaned = text.replace("*", "").replace("\n", " ").strip()
+                cleaned = self._clean_reply(parts[0].get("text", ""))
                 if cleaned:
                     return cleaned
             except Exception:
                 continue
 
-        return self.fallback_response
+        return ""
 
     def _generate_groq(self, user_text: str) -> str:
         """Generate reply using Groq Llama endpoint."""
@@ -172,23 +165,10 @@ class ConversationalLLMService:
             "max_tokens": 100,
         }
 
-        req = urllib.request.Request(
-            "https://api.groq.com/openai/v1/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {self.groq_api_key}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
+        text = cloud_api.groq_chat(self.groq_api_key, payload, timeout=GROQ_TIMEOUT_SEC)
+        return self._clean_reply(text)
 
-        with urllib.request.urlopen(req) as response:
-            result = json.loads(response.read().decode("utf-8"))
-
-        choices = result.get("choices", [])
-        if not choices:
-            return ""
-
-        text = choices[0].get("message", {}).get("content", "").strip()
-        cleaned = text.replace("*", "").replace("\n", " ").strip()
-        return cleaned
+    @staticmethod
+    def _clean_reply(text: str) -> str:
+        """Strip markdown asterisks and line breaks so the reply is plain spoken text."""
+        return text.strip().replace("*", "").replace("\n", " ").strip()

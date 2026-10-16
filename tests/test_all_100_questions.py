@@ -3,7 +3,7 @@
 import json
 import os
 import pytest
-from services.intent_service import GrimjawIntentEngine
+from services.intent_service import PersonaIntentEngine
 
 FIXTURE_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "grimjaw_test_utterances.json")
 
@@ -18,7 +18,7 @@ def child_questions():
 
 def test_all_100_questions_and_statements(child_questions):
     """Verify that every child question/statement resolves to an intent and not a fallback."""
-    engine = GrimjawIntentEngine()
+    engine = PersonaIntentEngine()
     fallbacks = set(engine._fallbacks)
 
     unmatched = []

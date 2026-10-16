@@ -101,3 +101,47 @@ def test_audio_io_volume_clamping_and_scaling(monkeypatch):
     audio_normal = AudioIO(sample_rate=16000, channels=1, volume=0.8)
     assert audio_normal.volume == 0.8
 
+
+
+def test_audio_io_remembers_working_output_rate(monkeypatch):
+    """After 22050 Hz is rejected once, later clips go straight to 44100 Hz."""
+    audio = AudioIO(sample_rate=16000, channels=1, volume=1.0)
+    played_rates = []
+
+    def fake_play(data, samplerate, device, blocking):
+        if samplerate == 22050:
+            raise RuntimeError("Invalid sample rate")
+        played_rates.append(samplerate)
+
+    monkeypatch.setattr("core.audio_io.sd.play", fake_play)
+    monkeypatch.setattr("core.audio_io.sd.wait", lambda: None)
+    clip = np.zeros(2205, dtype=np.float32)
+
+    audio.play_audio(clip, sample_rate=22050)
+    audio.play_audio(clip, sample_rate=22050)
+
+    assert played_rates == [44100, 44100]
+    assert audio._output_rate_fallbacks == {22050: 44100}
+
+
+def test_audio_io_non_22050_rate_error_propagates(monkeypatch):
+    """A rejected rate other than 22050 Hz raises instead of resampling."""
+    audio = AudioIO(sample_rate=16000, channels=1)
+    monkeypatch.setattr(
+        "core.audio_io.sd.play",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("bad device")),
+    )
+    with pytest.raises(RuntimeError):
+        audio.play_audio(np.zeros(160, dtype=np.float32), sample_rate=16000)
+
+
+def test_audio_io_drain_input_queue():
+    """drain_input_queue discards every buffered frame."""
+    audio = AudioIO(sample_rate=16000, channels=1)
+    audio._is_capturing = True
+    frame = np.ones((480, 1), dtype=np.float32)
+    for _ in range(5):
+        audio._input_callback(frame, 480, {}, 0)
+
+    audio.drain_input_queue()
+    assert audio.read_frame(timeout=0.01) is None

@@ -94,3 +94,60 @@ def test_resolve_piper_model_path(tmp_path):
     path = resolve_piper_model_path(model_path=str(custom_model), repo_root=str(tmp_path))
     assert path == str(custom_model)
 
+
+
+def test_resolve_piper_model_path_bare_voice_id_as_model_path(tmp_path):
+    """Verify a bare voice ID passed as model_path resolves under models/piper."""
+    models_dir = tmp_path / "models" / "piper"
+    models_dir.mkdir(parents=True)
+    voice = models_dir / "custom-voice.onnx"
+    voice.write_text("model_bytes")
+
+    path = resolve_piper_model_path(model_path="custom-voice", repo_root=str(tmp_path))
+    assert path == str(voice)
+
+
+def test_check_internet_connectivity_closes_sockets():
+    """Every probe socket is closed, including after a failed connect."""
+    with patch("socket.socket") as mock_sock_cls:
+        mock_sock = MagicMock()
+        mock_sock.connect.side_effect = OSError("refused")
+        mock_sock_cls.return_value = mock_sock
+        assert check_internet_connectivity(timeout=1.0) is False
+        assert mock_sock.close.call_count == 4
+
+
+def test_check_internet_connectivity_prefers_https_port_and_falls_back():
+    """A network that blocks port 53 but allows 443 is still reported online."""
+    attempts = []
+
+    def connect(address):
+        attempts.append(address)
+        if address[1] == 53:
+            raise OSError("port 53 blocked")
+
+    with patch("socket.socket") as mock_sock_cls:
+        mock_sock_cls.return_value.connect.side_effect = connect
+        assert check_internet_connectivity(timeout=1.0) is True
+    assert attempts == [("1.1.1.1", 443)]
+
+    attempts.clear()
+
+    def only_dns(address):
+        attempts.append(address)
+        if address[1] == 443:
+            raise OSError("443 blocked")
+
+    with patch("socket.socket") as mock_sock_cls:
+        mock_sock_cls.return_value.connect.side_effect = only_dns
+        assert check_internet_connectivity(timeout=1.0) is True
+    assert attempts[-1] == ("1.1.1.1", 53)
+
+
+def test_resolve_piper_model_path_missing_voice_is_not_replaced_by_default(tmp_path):
+    """A named voice that is not installed resolves to its own path, never to the default voice."""
+    path = resolve_piper_model_path(voice_name="en_US-lessac-medium", repo_root=str(tmp_path))
+    assert path == str(tmp_path / "models" / "piper" / "en_US-lessac-medium.onnx")
+
+    path = resolve_piper_model_path(model_path="typo-voice", repo_root=str(tmp_path))
+    assert path == str(tmp_path / "models" / "piper" / "typo-voice.onnx")

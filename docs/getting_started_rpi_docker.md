@@ -14,7 +14,9 @@ AlsaGeist runs as an isolated, containerized application with direct hardware ac
 | **Models & Cache** | `/app/models` | `./models` | Piper ONNX voice weights and zero-latency audio `.npy` files |
 | **Telemetry** | `/app/logs` | `./logs` | Turn interaction logs (`interactions.jsonl`, `conversations.log`) |
 | **Configuration** | `/app/.env` | `./.env` | Audio calibration and optional cloud STT/LLM API keys |
-| **Control Socket** | `/tmp` | `/tmp` | IPC socket for real-time host control via `alsageist_ctl.py` |
+
+> [!WARNING]
+> The container runs as root with `privileged: true`, host networking, and the host system D-Bus socket mounted. These settings give it GPIO access and the ability to power off the host. Run it only on a dedicated device.
 
 ---
 
@@ -193,10 +195,12 @@ All character configurations in `data/`, cached speech in `models/cache/`, and t
 
 ### Objective: Inspect status or hot-swap personalities from the host command line.
 
-The container shares the host IPC socket at `/tmp/alsageist.sock`. Run `alsageist_ctl.py` directly on the host:
+The control socket is private to the container user (`/tmp/alsageist-0/alsageist.sock`, mode 0600). Run `alsageist_ctl.py` inside the container:
+
+**Starting Host & Directory:** Raspberry Pi, any directory
 
 ```bash
-python3 scripts/alsageist_ctl.py status
+docker exec alsageist python3 scripts/alsageist_ctl.py status
 ```
 
 Expected output:
@@ -211,7 +215,7 @@ Expected output:
 
 To initiate an orderly host shutdown from the CLI:
 ```bash
-python3 scripts/alsageist_ctl.py shutdown
+docker exec alsageist python3 scripts/alsageist_ctl.py shutdown
 ```
 
 ---
