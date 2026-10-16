@@ -7,7 +7,7 @@ and visitors, loaded dynamically from external personality JSON profiles.
 import os
 import random
 import re
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 from core.intent_builder import PersonalityProfile, find_personality_file
 
@@ -15,11 +15,11 @@ from core.intent_builder import PersonalityProfile, find_personality_file
 class PersonaIntentEngine:
     """Configurable intent and banter engine driven by external personality JSON profiles."""
 
-    def __init__(self, personality_name_or_path: str = "grimjaw") -> None:
+    def __init__(self, personality_name_or_path: Union[str, PersonalityProfile] = "grimjaw") -> None:
         """Initialize the intent engine with conversational patterns and responses.
 
         Args:
-            personality_name_or_path: Name or file path of the personality JSON profile.
+            personality_name_or_path: Name, file path, or PersonalityProfile object.
 
         Raises:
             FileNotFoundError: If the requested personality profile JSON file cannot be found.
@@ -28,16 +28,18 @@ class PersonaIntentEngine:
         self._max_recent: int = 25
         self._turn_count: int = 0
         self._asked_costume: bool = False
-        self._personality_name = personality_name_or_path
-        self.profile: Optional[PersonalityProfile] = None
 
-        profile_path = find_personality_file(personality_name_or_path)
-        if not os.path.isfile(profile_path):
-            raise FileNotFoundError(
-                f"Personality profile not found: '{personality_name_or_path}' (searched at: {profile_path})"
-            )
-
-        self.profile = PersonalityProfile.load_from_file(profile_path)
+        if isinstance(personality_name_or_path, PersonalityProfile):
+            self.profile = personality_name_or_path
+            self._personality_name = personality_name_or_path.personality
+        else:
+            self._personality_name = personality_name_or_path
+            profile_path = find_personality_file(personality_name_or_path)
+            if not os.path.isfile(profile_path):
+                raise FileNotFoundError(
+                    f"Personality profile not found: '{personality_name_or_path}' (searched at: {profile_path})"
+                )
+            self.profile = PersonalityProfile.load_from_file(profile_path)
         self._costume_prompts = list(self.profile.costume_prompts)
         self._fallbacks = list(self.profile.fallbacks)
         self._escalation_lines = list(self.profile.escalation_lines)
