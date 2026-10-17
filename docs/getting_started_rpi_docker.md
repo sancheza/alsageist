@@ -138,7 +138,7 @@ docker compose logs -f
 Expected output:
 ```text
 ======================================================================
- 💀 ALSA-GEIST CRYPT SKELETON IS ACTIVE & LISTENING
+ ALSA-GEIST CRYPT SKELETON IS ACTIVE & LISTENING
  Engine: INTENT | Voice: Piper Alan (Local ONNX)
  Interaction Logging: Active -> logs/interactions.jsonl
  Speak into your microphone to start a conversation.

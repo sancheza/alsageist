@@ -41,7 +41,7 @@ AlsaGeist transforms a prop skull, skeleton, or animatronic figure into a real-t
 
 ## 3. Hardware Configuration Profiles
 
-### Profile A: Primary Target — Raspberry Pi 3 + Google AIY Voice Kit V1 (2017)
+### Profile A: Primary Target, Raspberry Pi 3 + Google AIY Voice Kit V1 (2017)
 
 The original 2017 Google AIY Voice Kit V1 provides a complete audio and physical control system in a single HAT:
 
@@ -61,7 +61,7 @@ Raspberry Pi 3B Header
         └── Button Harness   ──> Arcade Push Button (GPIO 23) + LED (GPIO 25)
 ```
 
-### Profile B: Alternative Modern Hardware — Raspberry Pi 4 or 5 + USB Audio
+### Profile B: Alternative Modern Hardware, Raspberry Pi 4 or 5 + USB Audio
 
 For installations using modern Raspberry Pi boards without the legacy AIY Voice HAT:
 

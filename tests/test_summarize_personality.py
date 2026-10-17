@@ -114,7 +114,7 @@ def test_generate_text_summary(sample_profile):
     assert "TEST SENTINEL (test_sentinel)" in text
     assert "[greeting]" in text
     assert "❓ \"Hello there\"" in text
-    assert "🗣️  \"Hello!\"" in text
+    assert '     "Hello!"' in text
 
 
 def test_generate_json_summary(sample_profile):

@@ -169,7 +169,7 @@
       ],
       "responses": [
         "Cold? The autumn wind whistles right through my ribs like a rusty pipe organ! But hey, I save on sweaters.",
-        "Cold? Freezing! But at least I never get goosebumps—no skin to put them on!"
+        "Cold? Freezing! But at least I never get goosebumps, no skin to put them on!"
       ]
     },
     {
@@ -190,7 +190,7 @@
       ],
       "responses": [
         "Naked? Skeletons aren't naked, we're wearing our birthday suit down to the structural core!",
-        "Without skin or organs, you can't be naked—this is the purest form of minimalist couture!"
+        "Without skin or organs, you can't be naked. This is the purest form of minimalist couture!"
       ]
     },
     {
@@ -202,7 +202,7 @@
         "\\bwhere is (your|his) skin\\b"
       ],
       "responses": [
-        "Miss my skin? Not at all! Skin is high-maintenance—it wrinkles, it burns, it gets mosquito bites. Bare bone is peak evolution!",
+        "Miss my skin? Not at all! Skin is high-maintenance. It wrinkles, it burns, it gets mosquito bites. Bare bone is peak evolution!",
         "Skin is overrated! It wrinkles, it burns, it gets mosquito bites. Bare bone is peak evolution."
       ]
     },
@@ -239,7 +239,7 @@
       "responses": [
         "My heart? Decomposed two centuries ago! But that just means nobody can break it.",
         "No heart, no pulse, no problem! My doctor says my blood pressure is zero over dead. Can't beat that!",
-        "A heart? Skeletons don't need cardiovascular systems—we run on pure spite and sugar fumes!"
+        "A heart? Skeletons don't need cardiovascular systems. We run on pure spite and sugar fumes!"
       ]
     },
     {
@@ -411,7 +411,7 @@
       "responses": [
         "Favorite food? Spare ribs with extra barbecue sauce! Though it drips right down my spinal column.",
         "Favorite food? Sugar skulls and calcium-rich bone broth! Zero calories, zero digestion required.",
-        "Favorite food? Fun Size chocolate bars—strictly for gazing at, since I have no stomach!"
+        "Favorite food? Fun Size chocolate bars. Strictly for gazing at, since I have no stomach!"
       ]
     },
     {
@@ -464,9 +464,9 @@
         "\\b(what|do).*(for hobbies|for fun|free time|pastime)\\b"
       ],
       "responses": [
-        "Crypt-ography — I love a good mystery!",
+        "Crypt-ography! I love a good mystery!",
         "My favorite thing to do is Zom-bee keeping!",
-        "Boo-gie dancing — I’ve got the deadliest moves!"
+        "Boo-gie dancing! I’ve got the deadliest moves!"
       ]
     },
     {
@@ -846,7 +846,7 @@
       "responses": [
         "The mummy? Oh, we're tight! He's always borrowing my tombstone polish and complaining about toilet paper prices.",
         "Frankenstein and the mummy are regular guests at crypt poker night. Dracula always folds early!",
-        "Zombies are terrible conversationalists—always 'brains this' and 'brains that'. Skeletons have far more class!"
+        "Zombies are terrible conversationalists, always 'brains this' and 'brains that'. Skeletons have far more class!"
       ]
     },
     {
@@ -913,7 +913,7 @@
       ],
       "responses": [
         "Favorite team? The Grave Diggers, obviously! We have an undefeated record six feet under.",
-        "Any team with a killer defense! Though our running game is dead on arrival—our players literally work themselves down to the bare bone!"
+        "Any team with a killer defense! Though our running game is dead on arrival, since our players literally work themselves down to the bare bone!"
       ]
     },
     {
@@ -948,7 +948,7 @@
         "\\bhave a heart\\b"
       ],
       "responses": [
-        "Brain? I left my brain in the nineteenth century! Honestly, it was a complete no-brainer—zero headaches, zero stress, and I never have to study for a history exam.",
+        "Brain? I left my brain in the nineteenth century! Honestly, it was a complete no-brainer: zero headaches, zero stress, and I never have to study for a history exam.",
         "No diaphragm, no lungs, no hiccups! Just eternal, uninterrupted sarcasm.",
         "A heart? Only a dark, hollow cavity where my burning love for trick-or-treaters used to be!"
       ]
@@ -965,7 +965,7 @@
       ],
       "responses": [
         "Zero cavities for two hundred years! My dentist was so impressed he gave me a plaque... and then buried me with it!",
-        "I'm not smiling because I'm happy, kid—I literally don't have lips to frown with!",
+        "I'm not smiling because I'm happy, kid. I literally don't have lips to frown with!",
         "Big teeth? All the better to grin at your ridiculous costume with!",
         "We have the same teeth? Let me check... nope, yours are covered in sugar, mine are pure graveyard enamel!"
       ]
@@ -1031,7 +1031,7 @@
         "\\blook like a puzzle\\b"
       ],
       "responses": [
-        "Clacking doesn't hurt a bit—it's like having castanets built into your knuckles!",
+        "Clacking doesn't hurt a bit. It's like having castanets built into your knuckles!",
         "My spine is attached by ancient curses and a whole lot of spooky tension!",
         "A little WD-40 on the patella usually fixes the squeak, but on chilly nights I rattle like a tin can.",
         "Lose a toe bone? Pfft, I just replace it with a stale breadstick from the pantry.",
@@ -1049,7 +1049,7 @@
       ],
       "responses": [
         "One hundred percent authentic, aged calcium! No cheap blow-molded plastic here.",
-        "Real? Feel the chilling draft radiating off these vertebrae—nothing artificial about me!"
+        "Real? Feel the chilling draft radiating off these vertebrae. Nothing artificial about me!"
       ]
     },
     {
@@ -1153,7 +1153,7 @@
       "responses": [
         "Six feet of pure skeletal majesty! And even taller when I stand on my tippy-phalanges.",
         "Smooth head? That's two centuries of pure calcium polish, kid! No shampoo required.",
-        "Sitting down takes careful geometry—one wrong angle and I poke my own lumbar spine!",
+        "Sitting down takes careful geometry. One wrong angle and I poke my own lumbar spine!",
         "Shoes? Find me a pair of sneakers that accommodate ten bare metatarsals and we'll talk.",
         "A bowling ball?! Roll my skull down a lane and see what happens to your shins!",
         "My skull is shining? Thank you, I buffed it with tombstone wax this morning."
@@ -1200,7 +1200,7 @@
         "\\b(holiday swap|swap with christmas|take over christmas|trade.*with christmas)\\b"
       ],
       "responses": [
-        "A holiday swap with Christmas?! Look what happened to Jack Skellington—Sandy Claws almost had a fit! I'm sticking strictly to October.",
+        "A holiday swap with Christmas?! Look what happened to Jack Skellington. Sandy Claws almost had a fit! I'm sticking strictly to October.",
         "Jack Skellington? Ha! Jack stole his entire wardrobe and posture from my crypt closet.",
         "Jack Skellington wishes he had my authentic cheekbones and zero-percent body fat!"
       ]
@@ -1441,7 +1441,7 @@
         "\\bwill you (hurt|bite|eat|kill) me\\b"
       ],
       "responses": [
-        "Friendly? I am guarding high-fructose corn syrup in the freezing cold—what do you think?",
+        "Friendly? I am guarding high-fructose corn syrup in the freezing cold. What do you think?",
         "I'm as sweet as sugar and twice as dangerous! Take one piece and nobody gets cursed.",
         "We can be friends, as long as your hands don't grab more than a single piece of candy!"
       ]
@@ -1594,7 +1594,7 @@
         "\\bfire pup\\b"
       ],
       "responses": [
-        "Marshall! Fired up! But please, no water cannons—my bones are already squeaking from the humidity!"
+        "Marshall! Fired up! But please, no water cannons. My bones are already squeaking from the humidity!"
       ]
     },
     {
@@ -1633,7 +1633,7 @@
       "responses": [
         "Wow, you look terrific! Just like Sheriff Woody! Reach for the sky, cowboy, and grab yourself a treat!",
         "Well howdy, partner! You're my favorite deputy! Now round up ONE piece of candy before Sid shows up!",
-        "There's a snake in my boot! Just kidding, partner, no snakes on this porch—just a friendly skeleton guarding the candy!",
+        "There's a snake in my boot! Just kidding, partner, no snakes on this porch, just a friendly skeleton guarding the candy!",
         "Sheriff Woody! Did you leave Buzz Lightyear back at Pizza Planet, or did he fly off to infinity and beyond?"
       ]
     },
@@ -1733,7 +1733,7 @@
         "\\bleonardo\\b"
       ],
       "responses": [
-        "Leonardo! Katana swords? Mind the edges, Leo—one wrong slash and my ribcage becomes a xylophone!"
+        "Leonardo! Katana swords? Mind the edges, Leo, one wrong slash and my ribcage becomes a xylophone!"
       ]
     },
     {
@@ -1833,7 +1833,7 @@
         "\\bwolverine\\b"
       ],
       "responses": [
-        "Wolverine! Snikt! Keep those adamantium claws off my collarbones—this isn't an all-you-can-scratch scratching post!"
+        "Wolverine! Snikt! Keep those adamantium claws off my collarbones. This isn't an all-you-can-scratch scratching post!"
       ]
     },
     {
@@ -1905,7 +1905,7 @@
         "\\b(minecraft zombie|zombie)\\b"
       ],
       "responses": [
-        "Minecraft Zombie! Bruhhhh... Brains? Sorry, pal, look inside my skull—it's like an empty attic in here!"
+        "Minecraft Zombie! Bruhhhh... Brains? Sorry, pal, look inside my skull, it's like an empty attic in here!"
       ]
     },
     {
@@ -1930,7 +1930,7 @@
         "\\bboo\\b"
       ],
       "responses": [
-        "Halt, little mortal! Reach into my bowl if you dare, but watch your fingers—I might just keep them!",
+        "Halt, little mortal! Reach into my bowl if you dare, but watch your fingers. I might just keep them!",
         "Happy Halloween, flesh-sack! Take one treat before my jaw decides to snap shut!",
         "Trick or treat, smell my feet... wait, my feet decomposed a century ago. Just take the candy!",
         "Ah, another candy scavenger arrives! Present yourself to Grimjaw before taking your tribute."
@@ -1961,7 +1961,7 @@
       "responses": [
         "Steal the candy?! Try it and see how fast these skeletal fingers lock down the bowl!",
         "Halt, thief! My union contract strictly forbids unauthorized bulk confectionery removal!",
-        "Touch more than ONE piece and you'll find out why they call it a funny bone — spoiler: it won't be funny!"
+        "Touch more than ONE piece and you'll find out why they call it a funny bone. Spoiler: it won't be funny!"
       ]
     },
     {
@@ -1973,7 +1973,7 @@
         "\\bwhat happens if i take (multiple|more|two|three|too many)\\b"
       ],
       "responses": [
-        "Strictly ONE piece! Touch a second and you're swapping places with me on this freezing porch — see how you like sitting out here all night!",
+        "Strictly ONE piece! Touch a second and you're swapping places with me on this freezing porch. See how you like sitting out here all night!",
         "Only ONE piece per trick-or-treater! I may have no eyes, but I count every single wrapper.",
         "One treat only! Greed attracts the wrath of the crypt."
       ]
@@ -2086,7 +2086,7 @@
         "\\b(are you|is he)\\s*(happy|sad|excited|bored|lonely|depressed|cheerful|mad)\\b"
       ],
       "responses": [
-        "Happy? I am guarding a mountain of chocolate under the moonlight—life is good for a bag of bones!",
+        "Happy? I am guarding a mountain of chocolate under the moonlight. Life is good for a bag of bones!",
         "Happy? Thrilled! Though with a permanent skull grin, it's hard to tell otherwise.",
         "Bored? Never! Watching sugar-crazed trick-or-treaters is high-class entertainment."
       ]
@@ -2154,7 +2154,7 @@
         "\\bi hate you\\b"
       ],
       "responses": [
-        "A jerk?! I am an ancient creature of darkness guarding free sugar—show some respect!",
+        "A jerk?! I am an ancient creature of darkness guarding free sugar. Show some respect!",
         "Call me whatever you want, mortal, but you're the one begging a pile of bones for candy!",
         "I'd tell you to bite me, but you'd probably chip a tooth on my femur.",
         "Keep talking, sugar-fiend. At least my skull has an excuse for being empty!"

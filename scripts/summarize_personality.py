@@ -299,7 +299,7 @@ def generate_text_summary(
             for q in sample_qs:
                 lines.append(f"     ❓ \"{q}\"")
             for r in intent.responses:
-                lines.append(f"     🗣️  \"{r}\"")
+                lines.append(f"     \"{r}\"")
             lines.append("")
 
     return "\n".join(lines).strip() + "\n"

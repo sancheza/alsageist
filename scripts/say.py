@@ -7,19 +7,72 @@ and plays it directly through the hardware audio output.
 Usage:
     ./scripts/say.py "Happy Halloween, mortals!"
     ./scripts/say.py "Halt, who goes there?" --volume 0.25
+    ./scripts/say.py "Halt, who goes there?" --debug
     ./scripts/say.py --help
 """
 
+import time
+
+_PROCESS_START = time.perf_counter()  # taken before the heavy imports below so they can be timed
+
 import argparse
+from contextlib import contextmanager
+import importlib
 import os
 import sys
+from typing import Iterator, List, Tuple
 
 from core.audio_io import AudioIO
 from core.intent_builder import load_personality, resolve_voice_settings
 from core.system_utils import load_env_file, resolve_piper_model_path
 from services.tts_service import PiperTTSService
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
+
+
+class PhaseTimer:
+    """Records how long each phase of a run takes and prints a timing table."""
+
+    def __init__(self) -> None:
+        """Start the total clock at process start."""
+        self._phases: List[Tuple[str, float, str]] = []
+
+    @contextmanager
+    def phase(self, name: str, note: str = "") -> Iterator[None]:
+        """Time the enclosed block.
+
+        Args:
+            name: Phase label shown in the table.
+            note: Optional detail shown after the duration.
+
+        Yields:
+            None.
+        """
+        start = time.perf_counter()
+        try:
+            yield
+        finally:
+            self._phases.append((name, time.perf_counter() - start, note))
+
+    def add(self, name: str, seconds: float, note: str = "") -> None:
+        """Record a phase that was measured elsewhere."""
+        self._phases.append((name, seconds, note))
+
+    def render(self) -> str:
+        """Return the timing table, with each phase's share of the total.
+
+        Returns:
+            Multi-line table text.
+        """
+        total = sum(seconds for _, seconds, _ in self._phases)
+        width = max([len(name) for name, _, _ in self._phases] + [len("total")])
+        lines = ["Timing (--debug):"]
+        for name, seconds, note in self._phases:
+            share = (seconds / total * 100.0) if total > 0 else 0.0
+            suffix = f"  {note}" if note else ""
+            lines.append(f"  {name:<{width}}  {seconds:7.2f} s  {share:5.1f}%{suffix}")
+        lines.append(f"  {'total':<{width}}  {total:7.2f} s")
+        return "\n".join(lines)
 
 
 def parse_args() -> argparse.Namespace:
@@ -65,6 +118,11 @@ def parse_args() -> argparse.Namespace:
         help="Path to Piper ONNX model file (default: $MODEL_PATH or resolved from personality profile).",
     )
     parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print how long each phase took (imports, model load, synthesis, playback).",
+    )
+    parser.add_argument(
         "-v",
         "--version",
         action="version",
@@ -79,6 +137,9 @@ def main() -> int:
     Returns:
         Exit code (0 on success, non-zero on failure).
     """
+    timer = PhaseTimer()
+    timer.add("python imports", time.perf_counter() - _PROCESS_START, "numpy, sounddevice, project modules")
+
     load_env_file()
     args = parse_args()
     if not args.text.strip():
@@ -87,34 +148,50 @@ def main() -> int:
 
     try:
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        try:
-            profile = load_personality(args.personality)
-        except Exception as exc:
-            print(f"Warning: Could not load personality '{args.personality}': {exc}", file=sys.stderr)
-            profile = None
+        with timer.phase("load personality"):
+            try:
+                profile = load_personality(args.personality)
+            except Exception as exc:
+                print(f"Warning: Could not load personality '{args.personality}': {exc}", file=sys.stderr)
+                profile = None
 
         display_name = profile.display_name if profile else "Grimjaw"
         voice_id = profile.voice if profile else None
-        model_path = resolve_piper_model_path(
-            model_path=args.model_path or os.environ.get("MODEL_PATH"),
-            voice_name=voice_id,
-            repo_root=repo_root,
-        )
+        with timer.phase("resolve voice"):
+            model_path = resolve_piper_model_path(
+                model_path=args.model_path or os.environ.get("MODEL_PATH"),
+                voice_name=voice_id,
+                repo_root=repo_root,
+            )
+            tempo, noise = resolve_voice_settings(profile, args.tempo)
+            vol = args.volume if args.volume is not None else float(os.environ.get("VOLUME", "0.5"))
 
-        tempo, noise = resolve_voice_settings(profile, args.tempo)
+        if args.debug:
+            # Import Piper separately so its cost is not hidden inside "load voice model"
+            with timer.phase("import piper/onnxruntime"):
+                try:
+                    importlib.import_module("piper")
+                except ImportError:
+                    pass
 
-        vol = args.volume if args.volume is not None else float(os.environ.get("VOLUME", "0.5"))
+        with timer.phase("load voice model", os.path.basename(model_path)):
+            tts = PiperTTSService(model_path=model_path, length_scale=tempo, noise_scale=noise)
+        with timer.phase("init audio"):
+            audio = AudioIO(volume=vol)
 
-        tts = PiperTTSService(model_path=model_path, length_scale=tempo, noise_scale=noise)
-        audio = AudioIO(volume=vol)
-
-        print(f"💀 {display_name} speaking (volume={vol}): \"{args.text}\"")
-        samples, sr = tts.synthesize(args.text)
-        audio.play_audio(samples, sample_rate=sr, blocking=True)
+        print(f"{display_name} speaking (volume={vol}): \"{args.text}\"")
+        cached = os.path.isfile(tts._get_cache_path(args.text))  # pylint: disable=protected-access
+        with timer.phase("synthesize", "disk cache hit" if cached else "synthesized (cache miss)"):
+            samples, sr = tts.synthesize(args.text)
+        with timer.phase("playback", f"{len(samples) / sr:.2f} s of audio"):
+            audio.play_audio(samples, sample_rate=sr, blocking=True)
         return 0
     except Exception as exc:
         print(f"Failed to speak audio: {exc}", file=sys.stderr)
         return 1
+    finally:
+        if args.debug:
+            print(timer.render())
 
 
 if __name__ == "__main__":

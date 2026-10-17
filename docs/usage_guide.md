@@ -45,7 +45,7 @@ source venv/bin/activate
 Expected output:
 ```text
 ======================================================================
- 💀 ALSA-GEIST [GRIMJAW THE SKELETON] IS ACTIVE & LISTENING
+ ALSA-GEIST [GRIMJAW THE SKELETON] IS ACTIVE & LISTENING
  Engine: INTENT | Voice: Alan (Local ONNX)
  Interaction Logging: Active -> logs/interactions.jsonl
  Speak into your microphone to start a conversation.
@@ -559,6 +559,38 @@ python3 scripts/say.py "Halt! Who dares disturb the crypt?"
 Specify custom volume:
 ```bash
 python3 scripts/say.py "Testing volume." --volume 0.5
+```
+
+Show how long each phase took:
+```bash
+python3 scripts/say.py "Testing speed." --debug
+```
+
+Expected output (Raspberry Pi 3):
+```text
+Grimjaw the Crypt Skeleton speaking (volume=0.4): "Testing speed."
+Timing (--debug):
+  python imports               1.48 s    3.9%  numpy, sounddevice, project modules
+  load personality             0.66 s    1.7%
+  resolve voice                0.00 s    0.0%
+  import piper/onnxruntime     0.44 s    1.1%
+  load voice model            35.48 s   92.8%  en_GB-alan-medium.onnx
+  init audio                   0.00 s    0.0%
+  synthesize                   0.00 s    0.0%  disk cache hit
+  playback                     0.15 s    0.4%  0.72 s of audio
+  total                       38.22 s
+```
+
+| Phase | What it covers |
+| :--- | :--- |
+| `python imports` | Loading numpy, sounddevice, and the project modules |
+| `load voice model` | Creating the ONNX Runtime session for the Piper voice. A new `say.py` process pays this on every run; the running service pays it once at startup |
+| `synthesize` | Text to audio, or `disk cache hit` when the phrase is already in `models/cache` |
+| `playback` | Time to play the clip, including its length |
+
+To speak without loading a second copy of the voice, send the phrase to the running service:
+```bash
+python3 scripts/alsageist_ctl.py say "Testing speed."
 ```
 
 ---

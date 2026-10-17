@@ -94,8 +94,8 @@ Successfully installed Vosk model to /home/pi/alsageist/models/vosk-model-small-
 Each file is checked against a pinned SHA-256 digest before it is installed; a mismatch stops the download with a non-zero exit status.
 
 Alternatively, download individual components:
-* `python3 scripts/download_model.py --voice alan` — Downloads Piper neural TTS voice only.
-* `python3 scripts/download_model.py --vosk` — Downloads Vosk offline STT model only.
+* `python3 scripts/download_model.py --voice alan`: Downloads Piper neural TTS voice only.
+* `python3 scripts/download_model.py --vosk`: Downloads Vosk offline STT model only.
 
 ---
 
@@ -145,7 +145,7 @@ Run the main application:
 Expected output:
 ```text
 ======================================================================
- 💀 ALSA-GEIST CRYPT SKELETON IS ACTIVE & LISTENING
+ ALSA-GEIST CRYPT SKELETON IS ACTIVE & LISTENING
  Engine: INTENT | Voice: Piper Alan (Local ONNX)
  Interaction Logging: Active -> logs/interactions.jsonl
  Speak into your microphone to start a conversation.

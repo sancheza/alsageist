@@ -207,8 +207,8 @@ class ConsoleLEDController(BaseLEDController):
             symbols = {
                 LEDState.IDLE: "🟢 [LED: IDLE (Breathing ~ ~ ~)]",
                 LEDState.LISTENING: "🟡 [LED: LISTENING (Solid 100%)]",
-                LEDState.THINKING: "💓 [LED: THINKING (Heartbeat Double-Pulse 💓💓)]",
-                LEDState.SPEAKING: "🟣 [LED: SPEAKING (Audio Flicker ⚡)]",
+                LEDState.THINKING: "💓 [LED: THINKING (Heartbeat Double-Pulse)]",
+                LEDState.SPEAKING: "🟣 [LED: SPEAKING (Audio Flicker)]",
                 LEDState.ERROR: "🔴 [LED: ERROR (Fast Blink !)]",
                 LEDState.OFF: "⚪ [LED: OFF]",
             }
@@ -225,7 +225,7 @@ class ConsoleLEDController(BaseLEDController):
             if not self.verbose:
                 return
 
-            sys.stdout.write(f"\r⚡ [LED: ACKNOWLEDGED (Flashed {count}x rapidly)]\n")
+            sys.stdout.write(f"\r[LED: ACKNOWLEDGED (Flashed {count}x rapidly)]\n")
             sys.stdout.flush()
 
     def trigger_button_press(self) -> None:

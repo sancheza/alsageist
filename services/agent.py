@@ -479,7 +479,7 @@ class AlsaGeistAgent:
             msg = self._announcement("online_mode", "NOW IN ONLINE MODE")
         else:
             msg = self._announcement("offline_mode", "NOW IN OFFLINE MODE")
-        print(f"\n💀 {self.persona_name} (network): \"{msg}\"")
+        print(f"\n{self.persona_name} (network): \"{msg}\"")
         self.speak(msg, blocking=True, cooldown_sec=0.0)
 
     # ------------------------------------------------------------------
@@ -569,7 +569,7 @@ class AlsaGeistAgent:
             voice_desc = f"{os.path.basename(self.args.model_path)} (Local ONNX)"
 
         print("\n" + "=" * 70)
-        print(f" 🎙️  ALSA-GEIST [{profile_title}] IS ACTIVE & LISTENING")
+        print(f" ALSA-GEIST [{profile_title}] IS ACTIVE & LISTENING")
         print(f" Engine: {self.args.engine.upper()} | Voice: {voice_desc}")
         print(f" Interaction Logging: Active -> {self.logger.jsonl_path}")
         print(" Speak into your microphone to start a conversation.")
@@ -711,7 +711,7 @@ class AlsaGeistAgent:
                 and self.is_online
             ):
                 try:
-                    print(f"💀 {self.persona_name}: Indeterminate prompt — fetching custom LLM response...")
+                    print(f"{self.persona_name}: Indeterminate prompt, fetching custom LLM response...")
                     custom_reply = self.llm_fallback_service.generate_response(user_text)
                     if custom_reply and custom_reply.strip():
                         reply = custom_reply.strip()
@@ -727,7 +727,7 @@ class AlsaGeistAgent:
         t_start = time.time()
         audio_dur = len(utterance_pcm) / self.audio.sample_rate
         audio_rms = self.vad.calculate_rms(utterance_pcm)
-        print(f"\n🎤 [USER SPEAKS] Processing utterance in RAM ({audio_dur:.2f}s, RMS: {audio_rms:.4f})...")
+        print(f"\n[USER SPEAKS] Processing utterance in RAM ({audio_dur:.2f}s, RMS: {audio_rms:.4f})...")
 
         # Visual acknowledgement: Flash button LED 3 times rapidly immediately upon hearing speech
         self.led.flash(count=3)
@@ -775,7 +775,7 @@ class AlsaGeistAgent:
             )
             return
 
-        print(f"👤 User: \"{user_text}\"  ({stt_ms}ms)")
+        print(f"User: \"{user_text}\"  ({stt_ms}ms)")
 
         # 2. Dialogue Reasoning
         try:
@@ -788,7 +788,7 @@ class AlsaGeistAgent:
 
         t_llm = time.time()
         llm_ms = int((t_llm - t_stt) * 1000)
-        print(f"💀 {self.persona_name} ({matched_intent}): \"{reply}\"  ({llm_ms}ms)")
+        print(f"{self.persona_name} ({matched_intent}): \"{reply}\"  ({llm_ms}ms)")
 
         # 3. Local Piper TTS Synthesis in RAM
         try:
@@ -802,7 +802,7 @@ class AlsaGeistAgent:
         t_tts = time.time()
         tts_ms = int((t_tts - t_llm) * 1000)
         total_latency_ms = int((t_tts - t_start) * 1000)
-        print(f"⚡ [Total TTFB Latency: {total_latency_ms}ms] Playing response...")
+        print(f"[Total TTFB Latency: {total_latency_ms}ms] Playing response...")
 
         # 4. Log Interaction Record
         self.logger.log_interaction(
@@ -827,7 +827,7 @@ class AlsaGeistAgent:
         else:
             greeting_text = f"I am {self.persona_name}. System online and ready."
 
-        print(f"\n💀 {self.persona_name} (startup): \"{greeting_text}\"")
+        print(f"\n{self.persona_name} (startup): \"{greeting_text}\"")
         self.speak(greeting_text, blocking=True, cooldown_sec=0.0)
 
     def stop(self) -> None:

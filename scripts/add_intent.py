@@ -234,7 +234,7 @@ def handle_check(personality_name: str, phrase: str) -> int:
         return 1
 
     profile = PersonalityProfile.load_from_file(profile_path)
-    print(f"\n🔍 Checking phrase against personality: '{profile.display_name}' ({profile.personality})...")
+    print(f"\nChecking phrase against personality: '{profile.display_name}' ({profile.personality})...")
     print(f"   Query: \"{phrase}\"")
 
     collision = profile.check_query(phrase)
@@ -245,7 +245,7 @@ def handle_check(personality_name: str, phrase: str) -> int:
         print(f"   Matched Regex: {pattern}")
         print("   Current Responses:")
         for r in intent.responses:
-            print(f"     🗣️  \"{r}\"")
+            print(f"     \"{r}\"")
         print()
         return 0
     else:
@@ -262,7 +262,7 @@ def handle_search(personality_name: str, keyword: str) -> int:
 
     profile = PersonalityProfile.load_from_file(profile_path)
     results = profile.search_intents(keyword)
-    print(f"\n🔎 Search results for '{keyword}' in '{profile.personality}' ({len(results)} found):")
+    print(f"\nSearch results for '{keyword}' in '{profile.personality}' ({len(results)} found):")
     for idx, intent in enumerate(results, start=1):
         sample_resp = intent.responses[0] if intent.responses else "No responses"
         print(f"  {idx}. [{intent.name}] (Patterns: {len(intent.patterns)})")
@@ -279,7 +279,7 @@ def handle_list(personality_name: str) -> int:
         return 1
 
     profile = PersonalityProfile.load_from_file(profile_path)
-    print(f"\n📋 Registered Intents in '{profile.display_name}' ({profile.personality}): {len(profile.intents)} total")
+    print(f"\nRegistered Intents in '{profile.display_name}' ({profile.personality}): {len(profile.intents)} total")
     print("-" * 70)
     for idx, intent in enumerate(profile.intents, start=1):
         sample = intent.responses[0] if intent.responses else ""
@@ -300,7 +300,7 @@ def run_interactive_wizard(default_personality: str) -> dict:
         Dictionary of parameters for intent creation, or empty dict if cancelled.
     """
     print("\n" + "=" * 60)
-    print(" 🛠️  CUSTOM INTENT BUILDER WIZARD")
+    print(" CUSTOM INTENT BUILDER WIZARD")
     print("=" * 60)
 
     p_input = input(f"Target Personality [{default_personality}]: ").strip()
@@ -324,12 +324,12 @@ def run_interactive_wizard(default_personality: str) -> dict:
         if collision:
             existing_intent, pattern = collision
             print("\n" + "!" * 60)
-            print(f"⚠️  QUERY COLLISION DETECTED:")
+            print("QUERY COLLISION DETECTED:")
             print(f"   This phrase already matches existing intent: '{existing_intent.name}'")
             print(f"   Matched regex: {pattern}")
             print(f"   Current response(s):")
             for r in existing_intent.responses:
-                print(f"     🗣️  \"{r}\"")
+                print(f"     \"{r}\"")
             print("!" * 60)
             print("\nHow would you like to handle this?")
             print(f"  [1] Append new response(s) to '{existing_intent.name}' (Recommended for adding variety)")
@@ -456,26 +456,26 @@ def main() -> int:
             print(f"  • {pat}")
         print("\nCurrent Responses:")
         for resp in intent.responses:
-            print(f"  🗣️  \"{resp}\"")
+            print(f"  \"{resp}\"")
 
         if dry_run:
             print(f"\n[DRY RUN] Would save to '{target_path}' (no changes made).")
         else:
-            print(f"\n💾 Saved to personality file: '{target_path}'")
+            print(f"\nSaved to personality file: '{target_path}'")
             print(f"Total intents in profile '{profile.personality}': {len(profile.intents)}")
             if prewarm and responses:
-                print("⚡ Pre-warming audio cache complete.")
+                print("Pre-warming audio cache complete.")
         print("-" * 60 + "\n")
         return 0
 
     except IntentCollisionError as col_err:
         print("\n" + "!" * 65, file=sys.stderr)
-        print(f"⚠️  INTENT COLLISION DETECTED for query: \"{query}\"", file=sys.stderr)
+        print(f"INTENT COLLISION DETECTED for query: \"{query}\"", file=sys.stderr)
         print(f"   Matches existing intent: '{col_err.existing_intent.name}'", file=sys.stderr)
         print(f"   Via pattern: {col_err.matched_pattern}", file=sys.stderr)
         print("   Existing responses:", file=sys.stderr)
         for r in col_err.existing_intent.responses:
-            print(f"     🗣️  \"{r}\"", file=sys.stderr)
+            print(f"     \"{r}\"", file=sys.stderr)
         print("!" * 65, file=sys.stderr)
         print("\nTo resolve this collision, re-run with one of these flags:", file=sys.stderr)
         print(f"  --append     Append your new response(s) to '{col_err.existing_intent.name}'", file=sys.stderr)
