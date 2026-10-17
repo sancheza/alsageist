@@ -22,7 +22,7 @@ import time
 from typing import List
 
 from core.intent_builder import resolve_voice_settings
-from core.system_utils import resolve_piper_model_path
+from core.system_utils import load_env_file, resolve_piper_model_path
 from services.intent_service import PersonaIntentEngine
 from services.tts_service import PiperTTSService
 
@@ -50,6 +50,18 @@ def parse_args() -> argparse.Namespace:
         "--model-path",
         default=None,
         help="Path to Piper ONNX model file. If omitted, resolved from personality voice configuration.",
+    )
+    parser.add_argument(
+        "--tempo",
+        type=float,
+        default=float(os.environ["TEMPO"]) if "TEMPO" in os.environ else None,
+        help="Piper phoneme length scale / tempo (default: from personality profile or $TEMPO).",
+    )
+    parser.add_argument(
+        "--noise",
+        type=float,
+        default=float(os.environ["NOISE"]) if "NOISE" in os.environ else None,
+        help="Piper generator noise level (default: from personality profile or $NOISE).",
     )
     parser.add_argument(
         "--limit",
@@ -89,14 +101,13 @@ def collect_phrases_to_prewarm(engine: PersonaIntentEngine, warm_all: bool, limi
     if profile and getattr(profile, "startup_greeting", None):
         phrases.append(profile.startup_greeting)
     elif profile and getattr(profile, "display_name", None):
-        phrases.append(f"I am {profile.display_name}. System online.")
+        phrases.append(f"I am {profile.display_name}. System online and ready.")
 
     # 2. System lifecycle & mode announcements
     announcements = dict(getattr(profile, "system_announcements", {})) if profile else {}
     phrases.append(announcements.get("offline_mode", "NOW IN OFFLINE MODE"))
     phrases.append(announcements.get("online_mode", "NOW IN ONLINE MODE"))
     phrases.append(announcements.get("powering_off", "Powering off."))
-    phrases.append(announcements.get("powering_down", "Powering down."))
 
     # 2b. Spoken low-power lines
     phrases.extend(getattr(profile, "low_power_lines", []) if profile else [])
@@ -143,6 +154,7 @@ def collect_phrases_to_prewarm(engine: PersonaIntentEngine, warm_all: bool, limi
 
 def main() -> int:
     """Main execution function."""
+    load_env_file()
     args = parse_args()
 
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -158,7 +170,7 @@ def main() -> int:
         voice_name=voice_name,
         repo_root=repo_root,
     )
-    tempo, noise = resolve_voice_settings(profile)
+    tempo, noise = resolve_voice_settings(profile, tempo=args.tempo, noise=args.noise)
 
     unique_phrases = collect_phrases_to_prewarm(engine, warm_all=args.all, limit=args.limit)
 

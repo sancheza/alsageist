@@ -18,12 +18,36 @@ USER_AGENT = f"alsageist/{VERSION}"
 
 # (filename, content type, raw bytes)
 FileField = Tuple[str, str, bytes]
+SENSITIVE_HEADERS = {"authorization", "x-goog-api-key"}
+
+
+def _build_request(
+    url: str,
+    headers: Optional[Mapping[str, str]] = None,
+    data: Optional[bytes] = None,
+    method: str = "GET",
+) -> urllib.request.Request:
+    """Build a urllib Request, placing sensitive auth tokens in unredirected headers."""
+    reg_headers: Dict[str, str] = {}
+    unredirected: Dict[str, str] = {}
+
+    for k, v in dict(headers or {}).items():
+        if k.lower() in SENSITIVE_HEADERS:
+            unredirected[k] = v
+        else:
+            reg_headers[k] = v
+
+    if not any(k.lower() == "user-agent" for k in reg_headers):
+        unredirected["User-Agent"] = USER_AGENT
+
+    req = urllib.request.Request(url, data=data, headers=reg_headers, method=method)
+    for k, v in unredirected.items():
+        req.add_unredirected_header(k, v)
+    return req
 
 
 def _send(request: urllib.request.Request, timeout: float) -> Any:
     """Send a prepared request and decode the JSON response body."""
-    if not request.has_header("User-agent"):
-        request.add_unredirected_header("User-Agent", USER_AGENT)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             body = response.read().decode("utf-8")
@@ -63,7 +87,7 @@ def get_json(
     Returns:
         Decoded JSON response body.
     """
-    request = urllib.request.Request(url, headers=dict(headers or {}), method="GET")
+    request = _build_request(url, headers=headers, method="GET")
     return _send(request, timeout)
 
 
@@ -85,7 +109,7 @@ def post_json(
         Decoded JSON response body.
     """
     all_headers = {"Content-Type": "application/json", **dict(headers or {})}
-    request = urllib.request.Request(
+    request = _build_request(
         url,
         data=json.dumps(payload).encode("utf-8"),
         headers=all_headers,
@@ -131,5 +155,5 @@ def post_multipart(
         "Content-Type": f"multipart/form-data; boundary={boundary}",
         **dict(headers or {}),
     }
-    request = urllib.request.Request(url, data=bytes(body), headers=all_headers, method="POST")
+    request = _build_request(url, data=bytes(body), headers=all_headers, method="POST")
     return _send(request, timeout)

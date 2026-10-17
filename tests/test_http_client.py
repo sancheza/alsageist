@@ -114,3 +114,19 @@ def test_caller_user_agent_is_kept(server_url):
     """A User-Agent passed by the caller is not replaced."""
     http_client.get_json(f"{server_url}/x", headers={"User-Agent": "curl/7.88.1"})
     assert _Handler.last["headers"]["User-Agent"] == "curl/7.88.1"
+
+
+def test_sensitive_headers_marked_unredirected():
+    """Sensitive authentication headers are set as unredirected headers to avoid cross-host leakage."""
+    req = http_client._build_request(
+        "http://example.com/api",
+        headers={"Authorization": "Bearer secret", "x-goog-api-key": "xyz", "Custom": "ok"},
+    )
+    # req.headers holds headers that urllib forwards across redirects. Sensitive ones must NOT be there.
+    assert "Authorization" not in req.headers
+    assert "X-goog-api-key" not in req.headers and "x-goog-api-key" not in req.headers
+    # Custom non-sensitive header should be in req.headers
+    assert "Custom" in req.headers
+    # Sensitive tokens are safely in unredirected_hdrs
+    assert "Authorization" in req.unredirected_hdrs
+    assert "x-goog-api-key" in req.unredirected_hdrs or "X-goog-api-key" in req.unredirected_hdrs

@@ -5,7 +5,7 @@ using Groq Llama 3.3 or Gemini Flash.
 """
 
 import os
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from core import cloud_api
 
@@ -124,6 +124,21 @@ class ConversationalLLMService:
     def reset_history(self) -> None:
         """Clear conversation history for the next visitor."""
         self.history.clear()
+
+    def reset_conversation(self) -> None:
+        """Reset conversation history for the next visitor (implements DialogueEngine)."""
+        self.reset_history()
+
+    def classify_and_respond(self, user_text: str) -> Tuple[str, str]:
+        """Generate response and return with intent tag (implements DialogueEngine).
+
+        Args:
+            user_text: Transcribed input string from the user.
+
+        Returns:
+            Tuple of (response_text, "llm_generated").
+        """
+        return self.generate_response(user_text), "llm_generated"
 
     def _generate_gemini(self, user_text: str) -> str:
         """Generate reply using fast Gemini Flash text API.

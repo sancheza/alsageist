@@ -6,6 +6,7 @@ without writing temporary audio files to disk.
 
 from collections import OrderedDict
 import hashlib
+import json
 import os
 import re
 import subprocess
@@ -19,6 +20,13 @@ from core import system_utils
 
 DEFAULT_MEMORY_CACHE_ENTRIES = 128
 DEFAULT_DISK_CACHE_MB = 1024.0
+
+PRONUNCIATION_RULES = [
+    (re.compile(r"\bKrueger\b", re.IGNORECASE), "Kruger"),
+    (re.compile(r"\bTannh[aä]user\b", re.IGNORECASE), "Tahnhoyzer"),
+    (re.compile(r"\bMwa+ha+ha+!*\b", re.IGNORECASE), "Ha ha ha ha ha!"),
+    (re.compile(r"\bHasta\b", re.IGNORECASE), "Ahsta"),
+]
 
 
 class PiperTTSService:
@@ -54,7 +62,18 @@ class PiperTTSService:
                 the default so its first uncached reply is not delayed.
         """
         self.model_path = system_utils.resolve_piper_model_path(model_path=model_path)
-        self.sample_rate = sample_rate
+        if sample_rate is None or sample_rate == 22050:
+            config_path = f"{self.model_path}.json"
+            if os.path.isfile(config_path):
+                try:
+                    with open(config_path, "r", encoding="utf-8") as f:
+                        cfg_data = json.load(f)
+                    detected_rate = cfg_data.get("audio", {}).get("sample_rate")
+                    if isinstance(detected_rate, int) and detected_rate > 0:
+                        sample_rate = detected_rate
+                except (OSError, ValueError):
+                    pass
+        self.sample_rate = sample_rate or 22050
         self.length_scale = length_scale
         self.noise_scale = noise_scale
         self.pause_duration_sec = pause_duration_sec
@@ -131,10 +150,9 @@ class PiperTTSService:
             1D float32 numpy audio array.
         """
         # Apply phonetic pronunciation corrections for Piper TTS
-        normalized_text = re.sub(r"\bKrueger\b", "Kruger", chunk_text, flags=re.IGNORECASE)
-        normalized_text = re.sub(r"\bTannh[aä]user\b", "Tahnhoyzer", normalized_text, flags=re.IGNORECASE)
-        normalized_text = re.sub(r"\bMwa+ha+ha+!*\b", "Ha ha ha ha ha!", normalized_text, flags=re.IGNORECASE)
-        normalized_text = re.sub(r"\bHasta\b", "Ahsta", normalized_text, flags=re.IGNORECASE)
+        normalized_text = chunk_text
+        for pattern, replacement in PRONUNCIATION_RULES:
+            normalized_text = pattern.sub(replacement, normalized_text)
 
         self._ensure_voice()
         if self._voice is not None:

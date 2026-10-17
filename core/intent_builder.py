@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass, field
 import json
 import os
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core import cloud_api
 
@@ -611,7 +611,6 @@ def find_personality_file(
 
     # Return primary candidate even if not created yet (for new personality creation)
     primary_dir = dirs[0]
-    os.makedirs(primary_dir, exist_ok=True)
     return os.path.abspath(os.path.join(primary_dir, base_name))
 
 
@@ -667,6 +666,7 @@ def create_custom_intent(
     use_llm: bool = True,
     check_collision: bool = True,
     collision_action: str = "raise",
+    prewarm_fn: Optional[Callable[[List[str], PersonalityProfile], None]] = None,
 ) -> Tuple[CustomIntent, PersonalityProfile]:
     """Universal function to create, parse, and attach a custom intent to a personality.
 
@@ -682,6 +682,7 @@ def create_custom_intent(
         use_llm: Whether to attempt LLM-assisted pattern and response expansion.
         check_collision: Whether to check if query already matches an existing intent.
         collision_action: Action when collision occurs: 'raise', 'append', 'overwrite', or 'force'.
+        prewarm_fn: Optional callback `(responses, profile) -> None` to synthesize phrases into cache.
 
     Returns:
         Tuple of (CustomIntent, PersonalityProfile).
@@ -701,6 +702,25 @@ def create_custom_intent(
             description=f"Custom voice assistant personality for {personality_name_or_path}.",
         )
 
+    def _execute_prewarm(phrases: List[str], target_profile: PersonalityProfile) -> None:
+        if not prewarm or not phrases:
+            return
+        if prewarm_fn is not None:
+            prewarm_fn(phrases, target_profile)
+            return
+        # Fallback when prewarm_fn is omitted
+        try:
+            import importlib
+            tts_module = importlib.import_module("services.tts_service")
+            from core.system_utils import resolve_piper_model_path
+            tempo, noise = resolve_voice_settings(target_profile)
+            v_path = resolve_piper_model_path(voice_name=target_profile.voice if target_profile else None)
+            tts = tts_module.PiperTTSService(model_path=v_path, length_scale=tempo, noise_scale=noise)
+            for resp in phrases:
+                tts.synthesize(resp)
+        except Exception as tts_err:
+            print(f"Warning: Pre-warm audio synthesis skipped: {tts_err}")
+
     # 1. Collision check against existing intent patterns
     if check_collision:
         collision = profile.check_query(query_or_text)
@@ -713,17 +733,7 @@ def create_custom_intent(
                     profile.append_responses(existing_intent.name, responses)
                 if not dry_run:
                     profile.save_to_file(profile_path)
-                    if prewarm and responses:
-                        try:
-                            from core.system_utils import resolve_piper_model_path
-                            from services.tts_service import PiperTTSService
-                            tempo, noise = resolve_voice_settings(profile)
-                            v_path = resolve_piper_model_path(voice_name=profile.voice if profile else None)
-                            tts = PiperTTSService(model_path=v_path, length_scale=tempo, noise_scale=noise)
-                            for resp in responses:
-                                tts.synthesize(resp)
-                        except Exception as tts_err:
-                            print(f"Warning: Pre-warm audio synthesis skipped: {tts_err}")
+                    _execute_prewarm(responses or [], profile)
                 return existing_intent, profile
             elif collision_action == "overwrite":
                 name = existing_intent.name  # Overwrite with matching name
@@ -740,17 +750,6 @@ def create_custom_intent(
     if not dry_run:
         profile.add_intent(intent, overwrite=True, prepend=True)
         profile.save_to_file(profile_path)
-
-        if prewarm and intent.responses:
-            try:
-                from core.system_utils import resolve_piper_model_path
-                from services.tts_service import PiperTTSService
-                tempo, noise = resolve_voice_settings(profile)
-                v_path = resolve_piper_model_path(voice_name=profile.voice if profile else None)
-                tts = PiperTTSService(model_path=v_path, length_scale=tempo, noise_scale=noise)
-                for resp in intent.responses:
-                    tts.synthesize(resp)
-            except Exception as tts_err:
-                print(f"Warning: Pre-warm audio synthesis skipped: {tts_err}")
+        _execute_prewarm(intent.responses, profile)
 
     return intent, profile

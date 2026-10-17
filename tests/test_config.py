@@ -19,9 +19,20 @@ def test_config_defaults(monkeypatch):
     assert args.llm_fallback is False
     assert args.volume == 0.5
     assert args.mic_gain == 1.5
-    assert args.threshold == 0.0025
+    assert args.threshold == 0.0035
     assert args.led_pin == 25
     assert args.button_pin == 23
+
+
+def test_config_invalid_env_falls_back_to_defaults(monkeypatch):
+    """Verify invalid environment variables fall back cleanly to defaults without crashing."""
+    monkeypatch.setenv("VAD_THRESHOLD", "not_a_float")
+    monkeypatch.setenv("VOLUME", "invalid")
+    monkeypatch.setenv("LED_PIN", "abc")
+    args = parse_args([])
+    assert args.threshold == 0.0035
+    assert args.volume == 0.5
+    assert args.led_pin == 25
 
 
 def test_config_explicit_flags():

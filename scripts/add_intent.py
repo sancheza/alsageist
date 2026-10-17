@@ -431,6 +431,17 @@ def main() -> int:
 
     print(f"\nProcessing intent for personality: '{personality}'...")
 
+    def _cli_prewarm(phrases, target_profile):
+        from core.system_utils import resolve_piper_model_path
+        from core.intent_builder import resolve_voice_settings
+        from services.tts_service import PiperTTSService
+
+        tempo, noise = resolve_voice_settings(target_profile)
+        v_path = resolve_piper_model_path(voice_name=target_profile.voice if target_profile else None)
+        tts = PiperTTSService(model_path=v_path, length_scale=tempo, noise_scale=noise)
+        for resp in phrases:
+            tts.synthesize(resp)
+
     try:
         intent, profile = create_custom_intent(
             query_or_text=query,
@@ -442,6 +453,7 @@ def main() -> int:
             use_llm=use_llm,
             check_collision=True,
             collision_action=collision_action,
+            prewarm_fn=_cli_prewarm,
         )
 
         target_path = find_personality_file(personality)

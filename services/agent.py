@@ -255,7 +255,6 @@ class AlsaGeistAgent:
         model_path, tempo, noise = self._tts_settings(profile)
         return PiperTTSService(
             model_path=model_path,
-            sample_rate=22050,
             length_scale=tempo,
             noise_scale=noise,
         )
@@ -410,7 +409,7 @@ class AlsaGeistAgent:
         elif hasattr(self.dialogue_engine, "reset_history"):
             self.dialogue_engine.reset_history()
         if getattr(self, "llm_fallback_service", None) is not None:
-            self.llm_fallback_service.reset_history()
+            self.llm_fallback_service.reset_conversation()
 
     def switch_personality(self, name_or_path: str) -> PersonalityProfile:
         """Replace the active persona: profile, dialogue engine, LLM prompt, voice and info service.
@@ -595,7 +594,16 @@ class AlsaGeistAgent:
         self.reset_dialogue()
         self.vad.reset()
 
-        self.speak(f"Volume {pct} percent.", blocking=True, cooldown_sec=0.0)
+        vol_msg = f"Volume {pct} percent."
+        profile = self.active_profile
+        if profile and getattr(profile, "system_announcements", None):
+            tmpl = profile.system_announcements.get("volume_template")
+            if tmpl:
+                try:
+                    vol_msg = tmpl.format(percent=pct)
+                except Exception:
+                    pass
+        self.speak(vol_msg, blocking=True, cooldown_sec=0.0)
 
     def _on_button_hold(self) -> None:
         """Handle 5-second arcade button hold: toggle mute/disabled state."""
