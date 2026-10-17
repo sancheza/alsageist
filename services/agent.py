@@ -95,8 +95,14 @@ class AlsaGeistAgent:
         )
 
         self.control_server = ControlServer(agent=self)
-        low_power_enabled = os.environ.get("LOW_POWER_ANNOUNCE", "true").strip().lower() not in ("false", "0", "no", "off")
-        self.power_monitor = PowerMonitor.from_env(announce=self._announce_low_power if low_power_enabled else None)
+        off_values = ("false", "0", "no", "off")
+        monitor_enabled = os.environ.get("LOW_POWER_MONITOR", "true").strip().lower() not in off_values
+        announce_enabled = os.environ.get("LOW_POWER_ANNOUNCE", "true").strip().lower() not in off_values
+        self.power_monitor: Optional[PowerMonitor] = (
+            PowerMonitor.from_env(announce=self._announce_low_power if announce_enabled else None)
+            if monitor_enabled
+            else None
+        )
 
     # ------------------------------------------------------------------
     # Construction helpers

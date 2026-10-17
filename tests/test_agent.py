@@ -713,6 +713,42 @@ def _construct_agent(tmp_path, monkeypatch, **env):
     return agent, from_env
 
 
+def test_power_monitor_is_created_by_default(tmp_path, monkeypatch):
+    """Without LOW_POWER_MONITOR the agent runs a power monitor."""
+    monkeypatch.delenv("LOW_POWER_MONITOR", raising=False)
+    agent, from_env = _construct_agent(tmp_path, monkeypatch)
+    assert agent.power_monitor is from_env.return_value
+
+
+def test_power_monitor_can_be_turned_off_completely(tmp_path, monkeypatch):
+    """LOW_POWER_MONITOR=false creates no monitor at all, so nothing is polled, logged, or spoken."""
+    for value in ("false", "0", "no", "off", "FALSE"):
+        agent, from_env = _construct_agent(tmp_path, monkeypatch, LOW_POWER_MONITOR=value)
+        from_env.assert_not_called()
+        assert agent.power_monitor is None, value
+
+
+def test_agent_runs_and_stops_without_a_power_monitor():
+    """With the monitor off, start() and stop() work and nothing tries to start or stop one."""
+    agent = make_bare_agent()
+    agent.power_monitor = None
+    agent.logger.jsonl_path = "unused"
+    agent.last_net_check_time = time.time()
+    agent.net_check_interval = 3600.0
+    agent._net_check_thread = None
+    agent._net_check_result = None
+    agent.audio.read_frame.return_value = None
+
+    runner = threading.Thread(target=agent.start, daemon=True)
+    runner.start()
+    time.sleep(0.3)
+    agent.running = False
+    runner.join(timeout=3)
+
+    assert not runner.is_alive()
+    agent.audio.stop_capture.assert_called_once()
+
+
 def test_low_power_announcement_is_on_by_default(tmp_path, monkeypatch):
     """Without LOW_POWER_ANNOUNCE the monitor is given the agent's announce method."""
     monkeypatch.delenv("LOW_POWER_ANNOUNCE", raising=False)

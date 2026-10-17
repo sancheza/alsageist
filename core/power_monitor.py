@@ -39,6 +39,7 @@ FLAGS_SINCE_BOOT = {
     19: "soft temperature limit has occurred",
 }
 THERMAL_ZONE = "/sys/class/thermal/thermal_zone0/temp"
+HWMON_GLOB = "/sys/class/hwmon/hwmon*"
 
 
 @dataclass(frozen=True)
@@ -87,18 +88,41 @@ def _read_vcgencmd() -> Optional[int]:
         return None
 
 
-def _read_hwmon_undervoltage() -> Optional[int]:
-    """Return bit 0 set when the kernel reports under-voltage, or None if unavailable."""
-    for hwmon in glob.glob("/sys/class/hwmon/hwmon*"):
+_alarm_path: Optional[str] = None  # remembered after the first successful lookup
+
+
+def _find_hwmon_alarm_path() -> Optional[str]:
+    """Locate the rpi_volt under-voltage alarm file, or None if this machine has none."""
+    for hwmon in glob.glob(HWMON_GLOB):
         try:
             with open(os.path.join(hwmon, "name"), "r", encoding="utf-8") as handle:
                 if handle.read().strip() != "rpi_volt":
                     continue
-            with open(os.path.join(hwmon, "in0_lcrit_alarm"), "r", encoding="utf-8") as handle:
-                return 1 if handle.read().strip() == "1" else 0
         except OSError:
             continue
+        path = os.path.join(hwmon, "in0_lcrit_alarm")
+        if os.path.exists(path):
+            return path
     return None
+
+
+def _read_hwmon_undervoltage() -> Optional[int]:
+    """Return 1 when the kernel reports under-voltage, 0 when not, or None if unavailable.
+
+    The alarm file is found once and then read directly, so repeated polling is a single
+    small file read. If the file disappears the lookup is repeated on the next call.
+    """
+    global _alarm_path  # pylint: disable=global-statement
+    if _alarm_path is None:
+        _alarm_path = _find_hwmon_alarm_path()
+        if _alarm_path is None:
+            return None
+    try:
+        with open(_alarm_path, "r", encoding="utf-8") as handle:
+            return 1 if handle.read().strip() == "1" else 0
+    except OSError:
+        _alarm_path = None
+        return None
 
 
 def read_undervoltage_alarm() -> Optional[bool]:

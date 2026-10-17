@@ -465,3 +465,62 @@ def test_two_separate_dips_are_two_reports():
     monitor.check()
 
     assert len([m for m in messages if m.startswith("Warning: CPU throttling")]) == 2
+
+
+# ---- the alarm file is found once and then read directly ----
+
+def _fake_hwmon(tmp_path, devices):
+    """Create fake hwmon directories: {dirname: (name, alarm_value_or_None)}."""
+    for dirname, (name, alarm) in devices.items():
+        directory = tmp_path / dirname
+        directory.mkdir()
+        (directory / "name").write_text(name + "\n")
+        if alarm is not None:
+            (directory / "in0_lcrit_alarm").write_text(f"{alarm}\n")
+    return str(tmp_path / "hwmon*")
+
+
+def test_alarm_is_found_among_other_hwmon_devices_and_read(tmp_path, monkeypatch):
+    """Only the rpi_volt device counts, and its alarm value is returned."""
+    monkeypatch.setattr(power_monitor, "HWMON_GLOB", _fake_hwmon(tmp_path, {
+        "hwmon0": ("cpu_thermal", None),
+        "hwmon1": ("rpi_volt", 1),
+    }))
+    monkeypatch.setattr(power_monitor, "_alarm_path", None)
+
+    assert power_monitor._read_hwmon_undervoltage() == 1
+    (tmp_path / "hwmon1" / "in0_lcrit_alarm").write_text("0\n")
+    assert power_monitor._read_hwmon_undervoltage() == 0
+
+
+def test_alarm_path_is_looked_up_once_not_on_every_poll(tmp_path, monkeypatch):
+    """After the first read, polling does not scan the hwmon directories again."""
+    monkeypatch.setattr(power_monitor, "HWMON_GLOB", _fake_hwmon(tmp_path, {"hwmon0": ("rpi_volt", 0)}))
+    monkeypatch.setattr(power_monitor, "_alarm_path", None)
+
+    with patch("core.power_monitor.glob.glob", wraps=power_monitor.glob.glob) as scan:
+        for _ in range(50):
+            assert power_monitor._read_hwmon_undervoltage() == 0
+    assert scan.call_count == 1
+
+
+def test_missing_alarm_device_returns_none_and_is_retried(tmp_path, monkeypatch):
+    """A machine without rpi_volt reports None; the lookup is repeated if the device appears later."""
+    monkeypatch.setattr(power_monitor, "HWMON_GLOB", _fake_hwmon(tmp_path, {"hwmon0": ("cpu_thermal", None)}))
+    monkeypatch.setattr(power_monitor, "_alarm_path", None)
+    assert power_monitor._read_hwmon_undervoltage() is None
+
+    _fake_hwmon(tmp_path, {"hwmon1": ("rpi_volt", 1)})
+    assert power_monitor._read_hwmon_undervoltage() == 1
+
+
+def test_vanished_alarm_file_is_rediscovered(tmp_path, monkeypatch):
+    """If the cached file disappears the read returns None once, then finds the device again."""
+    monkeypatch.setattr(power_monitor, "HWMON_GLOB", _fake_hwmon(tmp_path, {"hwmon0": ("rpi_volt", 1)}))
+    monkeypatch.setattr(power_monitor, "_alarm_path", None)
+    assert power_monitor._read_hwmon_undervoltage() == 1
+
+    (tmp_path / "hwmon0" / "in0_lcrit_alarm").unlink()
+    assert power_monitor._read_hwmon_undervoltage() is None       # cache dropped
+    (tmp_path / "hwmon0" / "in0_lcrit_alarm").write_text("1\n")
+    assert power_monitor._read_hwmon_undervoltage() == 1          # found again
