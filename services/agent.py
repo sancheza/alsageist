@@ -201,7 +201,13 @@ class AlsaGeistAgent:
             Tuple of (dialogue engine, LLM fallback service or None).
         """
         if self.args.engine != "intent":
-            return self._build_llm(profile), None
+            try:
+                return self._build_llm(profile), None
+            except ValueError as exc:
+                raise SystemExit(
+                    f"\n[Dialogue Engine Configuration Error] {exc}\n"
+                    "Please configure GROQ_API_KEY or GEMINI_API_KEY in your .env file to use --engine llm.\n"
+                ) from exc
 
         engine = PersonaIntentEngine(personality_name_or_path=profile or personality)
         fallback = None
@@ -251,13 +257,13 @@ class AlsaGeistAgent:
         Returns:
             Tuple of (model_path, tempo, noise).
         """
-        tempo, noise = resolve_voice_settings(profile, self.args.tempo, self.args.noise)
-        model_path = system_utils.resolve_piper_model_path(
+        return system_utils.resolve_agent_voice_config(
+            profile=profile,
             model_path=self.args.model_path or os.environ.get("MODEL_PATH"),
-            voice_name=profile.voice if profile else None,
+            tempo=self.args.tempo,
+            noise=self.args.noise,
             repo_root=REPO_ROOT,
         )
-        return model_path, tempo, noise
 
     def _build_tts(self, profile: Optional[PersonalityProfile]) -> PiperTTSService:
         """Create the Piper TTS service for a persona's voice and voice settings.
@@ -671,6 +677,16 @@ class AlsaGeistAgent:
         self.led.set_state(LEDState.IDLE)
         if hasattr(self, "control_server"):
             self.control_server.start()
+        net_thread = getattr(self, "_net_check_thread", None)
+        mode_forced = getattr(self, "_mode_forced", None)
+        if mode_forced is None and net_thread is not None and net_thread.is_alive():
+            net_thread.join(timeout=1.0)
+        net_lock = getattr(self, "_net_lock", None)
+        if net_lock is not None:
+            with net_lock:
+                if mode_forced is None and getattr(self, "_net_check_result", None) is not None:
+                    self.is_online = self._net_check_result
+                    self._net_check_result = None
         if self.is_online:
             self.basic_info.prefetch_weather()
         self._note_activity()

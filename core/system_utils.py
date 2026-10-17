@@ -12,7 +12,7 @@ import socket
 import subprocess
 import sys
 import time
-from typing import Optional
+from typing import Any, Optional, Tuple
 
 
 def is_running_in_docker() -> bool:
@@ -194,12 +194,14 @@ def load_env_file(path: str = ".env") -> None:
                 key, val = line.split("=", 1)
                 key = key.strip()
                 val = val.strip()
-                if val.startswith('"') and '"' in val[1:]:
-                    end_idx = val[1:].find('"') + 1
-                    val = val[1:end_idx]
-                elif val.startswith("'") and "'" in val[1:]:
-                    end_idx = val[1:].find("'") + 1
-                    val = val[1:end_idx]
+                if val.startswith('"'):
+                    closing = val.rfind('"')
+                    if closing > 0:
+                        val = val[1:closing]
+                elif val.startswith("'"):
+                    closing = val.rfind("'")
+                    if closing > 0:
+                        val = val[1:closing]
                 else:
                     if "#" in val:
                         val = val.split("#", 1)[0].strip()
@@ -258,7 +260,13 @@ def resolve_piper_model_path(
         Resolved absolute or normalized model file path.
     """
     if repo_root is None:
-        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        explicit_root = os.environ.get("ALSAGEIST_ROOT") or os.environ.get("REPO_ROOT")
+        if explicit_root and os.path.isdir(explicit_root):
+            repo_root = explicit_root
+        elif os.path.isdir(os.path.join(os.getcwd(), "models")):
+            repo_root = os.getcwd()
+        else:
+            repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     # 1. Explicit model path from argument or environment; a bare voice ID is treated as voice_name
     if model_path and not model_path.endswith(".onnx") and os.sep not in model_path:
@@ -292,4 +300,37 @@ def resolve_piper_model_path(
 
     # 3. Default model when no model path or voice name is given
     return os.path.join(repo_root, "models", "piper", "en_GB-alan-medium.onnx")
+
+
+def resolve_agent_voice_config(
+    profile: Optional[Any] = None,
+    model_path: Optional[str] = None,
+    tempo: Optional[float] = None,
+    noise: Optional[float] = None,
+    repo_root: Optional[str] = None,
+) -> Tuple[str, float, float]:
+    """Resolve the voice model path, tempo, and noise for a persona in one place.
+
+    CLI arguments take precedence over environment variables, which take
+    precedence over profile settings, falling back to system defaults.
+
+    Args:
+        profile: Optional PersonalityProfile supplying voice and voice_settings.
+        model_path: Explicit model path CLI flag or environment override.
+        tempo: Explicit tempo CLI flag or environment override.
+        noise: Explicit noise CLI flag or environment override.
+        repo_root: Root directory of repository.
+
+    Returns:
+        Tuple of (model_path, tempo, noise).
+    """
+    from core.intent_builder import resolve_voice_settings
+    tempo_val, noise_val = resolve_voice_settings(profile, tempo=tempo, noise=noise)
+    resolved_path = resolve_piper_model_path(
+        model_path=model_path or os.environ.get("MODEL_PATH"),
+        voice_name=getattr(profile, "voice", None) if profile else None,
+        repo_root=repo_root,
+    )
+    return resolved_path, tempo_val, noise_val
+
 

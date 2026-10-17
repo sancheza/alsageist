@@ -459,14 +459,14 @@ def test_gesture_tracker_hold_suppresses_press():
     assert events == ["hold"]
 
 
-def test_gesture_tracker_long_hold_after_hold():
-    """Holding past long_hold_time fires hold then long_hold, and no press."""
+def test_gesture_tracker_long_hold_suppresses_hold():
+    """Holding past long_hold_time fires long_hold on timeout and suppresses hold on release."""
     import time
     tracker, events = _tracker_events()
     tracker.pressed()
     time.sleep(0.8)
     tracker.released()
-    assert events == ["hold", "long_hold"]
+    assert events == ["long_hold"]
 
 
 def test_gesture_tracker_reads_updated_callbacks():

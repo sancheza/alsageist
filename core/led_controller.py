@@ -108,32 +108,40 @@ class ButtonGestureTracker:
         self._lock = threading.Lock()
         self._hold_timer: Optional[threading.Timer] = None
         self._long_hold_timer: Optional[threading.Timer] = None
-        self._hold_fired = False
+        self._press_time: float = 0.0
         self._long_hold_fired = False
 
     def pressed(self, *_args) -> None:
-        """Handle a button press edge: start the hold and long-hold timers."""
+        """Handle a button press edge: record press time and start long-hold shutdown timer."""
         with self._lock:
-            self._hold_fired = False
+            self._press_time = time.monotonic()
             self._long_hold_fired = False
             self._cancel_timers()
-            self._hold_timer = self._start_timer(self._controller.hold_time_sec, self._on_hold)
             self._long_hold_timer = self._start_timer(self._controller.long_hold_time_sec, self._on_long_hold)
 
     def released(self, *_args) -> None:
-        """Handle a button release edge: fire the short-press callback if no hold fired."""
+        """Handle a button release edge: trigger short-press or hold callback based on duration."""
         with self._lock:
+            elapsed = time.monotonic() - self._press_time if self._press_time > 0.0 else 0.0
+            self._press_time = 0.0
             self._cancel_timers()
-            fire_short = not self._hold_fired and not self._long_hold_fired
-            self._hold_fired = False
+            long_fired = self._long_hold_fired
             self._long_hold_fired = False
 
-        if fire_short:
+        if long_fired:
+            # Shutdown already initiated at long_hold_time_sec; do nothing on release
+            return
+
+        if elapsed >= self._controller.hold_time_sec:
+            self._invoke(self._controller.button_hold_callback, "hold")
+        else:
             self._invoke(self._controller.button_callback, "press")
 
     def cancel(self) -> None:
         """Cancel pending timers without firing any callback."""
         with self._lock:
+            self._press_time = 0.0
+            self._long_hold_fired = False
             self._cancel_timers()
 
     def _cancel_timers(self) -> None:
@@ -152,15 +160,8 @@ class ButtonGestureTracker:
         timer.start()
         return timer
 
-    def _on_hold(self) -> None:
-        """Timer action: the button has been held for hold_time_sec."""
-        with self._lock:
-            if not self._long_hold_fired:
-                self._hold_fired = True
-        self._invoke(self._controller.button_hold_callback, "hold")
-
     def _on_long_hold(self) -> None:
-        """Timer action: the button has been held for long_hold_time_sec."""
+        """Timer action: the button has been held continuously for long_hold_time_sec."""
         with self._lock:
             self._long_hold_fired = True
         self._invoke(self._controller.button_long_hold_callback, "long hold")

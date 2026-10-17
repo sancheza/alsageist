@@ -23,4 +23,4 @@ services:
       - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
     devices:
       - /dev/snd:/dev/snd
-      - /dev/gpiochip0:/dev/gpiochip0
+      - "${GPIO_DEVICE:-/dev/gpiochip0}:/dev/gpiochip0"

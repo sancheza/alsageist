@@ -92,10 +92,10 @@ class SpeechToTextService:
         if peak > 0.0005:
             # Normalize toward 0.85 peak for clarity, with a gain cap so quiet room noise is not
             # amplified to full scale (which makes the recognizer hallucinate words)
-            samples = samples * min(0.85 / peak, MAX_NORMALIZE_GAIN)
+            samples *= min(0.85 / peak, MAX_NORMALIZE_GAIN)
 
-        clipped = np.clip(samples, -1.0, 1.0)
-        int16_samples = (clipped * 32767.0).astype(np.int16)
+        np.clip(samples, -1.0, 1.0, out=samples)
+        int16_samples = (samples * 32767.0).astype(np.int16)
 
         wav_io = io.BytesIO()
         with wave.open(wav_io, "wb") as wf:

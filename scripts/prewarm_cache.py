@@ -25,9 +25,8 @@ from core.env_utils import env_float
 from core.intent_builder import (
     DEFAULT_ANNOUNCEMENTS,
     DEFAULT_GREETING_TEMPLATE,
-    resolve_voice_settings,
 )
-from core.system_utils import load_env_file, resolve_piper_model_path
+from core.system_utils import load_env_file, resolve_agent_voice_config
 from services.intent_service import PersonaIntentEngine
 from services.tts_service import PiperTTSService
 
@@ -167,14 +166,13 @@ def main() -> int:
     engine = PersonaIntentEngine(personality_name_or_path=args.personality)
     profile = getattr(engine, "profile", None)
 
-    # Resolve Piper model path from arguments or personality voice configuration
-    voice_name = getattr(profile, "voice", "en_GB-alan-medium") if profile else "en_GB-alan-medium"
-    model_path = resolve_piper_model_path(
+    model_path, tempo, noise = resolve_agent_voice_config(
+        profile=profile,
         model_path=args.model_path,
-        voice_name=voice_name,
+        tempo=args.tempo,
+        noise=args.noise,
         repo_root=repo_root,
     )
-    tempo, noise = resolve_voice_settings(profile, tempo=args.tempo, noise=args.noise)
 
     unique_phrases = collect_phrases_to_prewarm(engine, warm_all=args.all, limit=args.limit)
 

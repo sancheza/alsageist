@@ -444,8 +444,14 @@ class ControlServer:
         else:
             try:
                 num = float(val_str)
-                # If given as percentage (e.g. 75), normalize to 0.75
-                new_vol = num / 100.0 if num > 1.0 else num
+                # If given as percentage (e.g. 75, or 1 for 1%), normalize to 0.75 or 0.01
+                # Values <= 1.0 that include a decimal point (e.g. "0.9", "1.0") or float types are treated as ratios
+                if ("." in val_str and num <= 1.0) or (isinstance(value, float) and 0.0 <= value <= 1.0):
+                    new_vol = num
+                elif num > 1.0 or (num == 1.0 and "." not in val_str):
+                    new_vol = num / 100.0
+                else:
+                    new_vol = num
                 new_vol = min(1.0, max(0.0, new_vol))
             except ValueError:
                 return {"status": "error", "message": f"Invalid volume value '{val_str}'. Use 0-100 or +10/-10."}

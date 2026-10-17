@@ -91,6 +91,11 @@ class PiperTTSService:
                 "Please download the ONNX model and config."
             )
 
+        try:
+            self._model_size = os.path.getsize(self.model_path)
+        except OSError:
+            self._model_size = 0
+
         self._voice = None
         self._load_error: Optional[Exception] = None
         self._syn_config = None
@@ -220,10 +225,8 @@ class PiperTTSService:
             Absolute path to .npy cache file.
         """
         voice = os.path.basename(self.model_path)
-        try:
-            voice = f"{voice}:{os.path.getsize(self.model_path)}"
-        except OSError:
-            pass
+        if getattr(self, "_model_size", 0):
+            voice = f"{voice}:{self._model_size}"
         key = f"{voice}|{self.length_scale}|{self.noise_scale}|{_RULES_FINGERPRINT}|{text}"
         return os.path.join(self.cache_dir, f"{hashlib.sha256(key.encode('utf-8')).hexdigest()}.npy")
 

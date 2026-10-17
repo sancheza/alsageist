@@ -76,7 +76,7 @@ class VoiceActivityDetector:
             normalized = frame.astype(np.float32)
 
         mean_square = np.mean(normalized ** 2)
-        if np.isnan(mean_square) or mean_square <= 0.0:
+        if not np.isfinite(mean_square) or mean_square <= 0.0:
             return 0.0
         return float(math.sqrt(mean_square))
 

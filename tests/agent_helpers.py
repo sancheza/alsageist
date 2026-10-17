@@ -60,6 +60,7 @@ def make_bare_agent(**overrides) -> AlsaGeistAgent:
     agent._user_muted = False
     agent._net_lock = threading.Lock()
     agent._net_check_result = None
+    agent._net_check_thread = None
     agent._last_activity_time = time.time()
     agent._idle_reset_done = False
     agent._mode_forced = None

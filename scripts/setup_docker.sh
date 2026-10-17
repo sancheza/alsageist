@@ -288,9 +288,9 @@ EOF
     fi
 fi
 
-# Host group IDs for docker-compose.yml (device files are opened by numeric group ID)
+# Host group IDs and GPIO device for docker-compose.yml
 if [[ "$DRY_RUN" == true ]]; then
-    echo "  [DRY RUN] Would record AUDIO_GID and GPIO_GID from the host in ${ENV_FILE}"
+    echo "  [DRY RUN] Would record AUDIO_GID, GPIO_GID, and GPIO_DEVICE from the host in ${ENV_FILE}"
 else
     for pair in "AUDIO_GID:audio" "GPIO_GID:gpio"; do
         var="${pair%%:*}"
@@ -301,6 +301,17 @@ else
             echo "  Recorded ${var}=${gid} in ${ENV_FILE}."
         fi
     done
+
+    # Detect GPIO device: Pi 5 routes header lines to gpiochip4; Pi 3/4 uses gpiochip0
+    if [[ -e "/dev/gpiochip4" ]] && grep -qi "Raspberry Pi 5" /proc/device-tree/model 2>/dev/null; then
+        GPIO_CHIP="/dev/gpiochip4"
+    else
+        GPIO_CHIP="/dev/gpiochip0"
+    fi
+    if ! grep -q "^GPIO_DEVICE=" "$ENV_FILE" 2>/dev/null; then
+        echo "GPIO_DEVICE=${GPIO_CHIP}" >> "$ENV_FILE"
+        echo "  Recorded GPIO_DEVICE=${GPIO_CHIP} in ${ENV_FILE}."
+    fi
 fi
 
 # Optional Dialogue Speech Cache Pre-Warming
