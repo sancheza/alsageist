@@ -21,6 +21,7 @@ def _monitor(statuses, warn_interval=900.0):
         reader=lambda: queue.pop(0) if queue else None,
         warn_interval_sec=warn_interval,
         clock=lambda: clock["now"],
+        alarm_reader=None,
     )
     return monitor, messages, clock
 
@@ -143,7 +144,7 @@ def test_soft_temperature_limit_advises_cooling():
 def test_start_does_nothing_on_machines_without_throttle_info():
     """With no readable flags the monitor neither logs nor starts a thread."""
     messages = []
-    monitor = PowerMonitor(log=messages.append, reader=lambda: None)
+    monitor = PowerMonitor(log=messages.append, reader=lambda: None, alarm_reader=None)
     assert monitor.start() is False
     assert monitor._thread is None
     assert messages == []
@@ -171,7 +172,7 @@ def test_background_thread_checks_periodically_and_stops():
         return PowerStatus(0)
 
     messages = []
-    monitor = PowerMonitor(log=messages.append, reader=reader, check_interval_sec=0.02)
+    monitor = PowerMonitor(log=messages.append, reader=reader, check_interval_sec=0.02, alarm_reader=None)
     assert monitor.start() is True
     assert seen.wait(timeout=3)
     monitor.stop()
@@ -245,6 +246,7 @@ def _announcing_monitor(statuses, announce, interval=3600.0):
         clock=lambda: clock["now"],
         announce=announce,
         announce_interval_sec=interval,
+        alarm_reader=None,
     )
     return monitor, messages, clock
 
@@ -323,3 +325,143 @@ def test_from_env_reads_announce_interval(monkeypatch):
 
     monkeypatch.delenv("LOW_POWER_ANNOUNCE_SEC")
     assert PowerMonitor.from_env().announce_interval_sec == 3600.0
+
+
+# ---- catching dips that last only a few seconds ----
+
+def test_read_undervoltage_alarm_wraps_the_kernel_reading():
+    """The alarm reader returns True, False, or None when the machine has no such alarm."""
+    for raw, expected in ((1, True), (0, False), (None, None)):
+        with patch("core.power_monitor._read_hwmon_undervoltage", return_value=raw):
+            assert power_monitor.read_undervoltage_alarm() is expected
+
+
+def _alarm_monitor(alarm_values):
+    """Monitor whose firmware reading is always healthy; only the polled alarm sees the dip."""
+    messages, announced = [], []
+    clock = {"now": 0.0}
+    values = iter(alarm_values)
+    monitor = PowerMonitor(
+        log=messages.append,
+        reader=lambda: PowerStatus(0),
+        check_interval_sec=60.0,
+        clock=lambda: clock["now"],
+        alarm_reader=lambda: next(values, False),
+        announce=lambda status: announced.append(status.raw) or True,
+    )
+    return monitor, messages, announced, clock
+
+
+def test_a_short_dip_between_checks_is_reported_at_the_next_check():
+    """The polled alarm remembers a dip; the full check at the next interval reports and announces it."""
+    monitor, messages, announced, clock = _alarm_monitor([False, True, False])
+
+    for t in (2, 4, 6):                # three alarm polls; the second one sees the dip
+        clock["now"] = t
+        monitor._poll_alarm(t)
+    clock["now"] = 60
+    monitor.check()                    # the firmware flag is clear by now, but the dip was 56 s ago
+
+    assert len(messages) == 1 and "under-voltage detected" in messages[0]
+    assert announced == [1]
+
+
+def test_an_old_dip_is_not_reported():
+    """A dip older than 1.5 check intervals does not make the supply look bad."""
+    monitor, messages, announced, clock = _alarm_monitor([True])
+    monitor._poll_alarm(0)
+
+    clock["now"] = 200                 # 200 s later; the window is 90 s
+    monitor.check()
+
+    assert messages == [] and announced == []
+
+
+def test_no_alarm_reader_changes_nothing():
+    """Without an alarm reader only the firmware flags matter."""
+    monitor, messages, _, clock = _alarm_monitor([])
+    monitor._alarm_reader = None
+    monitor._poll_alarm(1)
+    clock["now"] = 60
+    monitor.check()
+    assert messages == []
+
+
+def test_alarm_read_errors_are_ignored():
+    """A failing alarm read never stops monitoring."""
+    monitor, messages, _, clock = _alarm_monitor([])
+    monitor._alarm_reader = MagicMock(side_effect=OSError("sysfs gone"))
+    monitor._poll_alarm(1)             # must not raise
+    clock["now"] = 60
+    monitor.check()
+    assert messages == []
+
+
+def test_background_thread_polls_the_alarm_between_full_checks():
+    """With a slow full check and a fast poll, the thread still notices a short dip and reports it."""
+    messages = []
+    seen = threading.Event()
+    polls = {"n": 0}
+
+    def alarm():
+        polls["n"] += 1
+        return polls["n"] == 3         # one brief dip, a few polls in
+
+    def log(message):
+        messages.append(message)
+        seen.set()
+
+    monitor = PowerMonitor(
+        log=log,
+        reader=lambda: PowerStatus(0),
+        check_interval_sec=0.3,
+        alarm_reader=alarm,
+        poll_interval_sec=0.02,
+    )
+    monitor.start()
+    assert seen.wait(timeout=3)
+    monitor.stop()
+
+    assert any("under-voltage detected" in m for m in messages)
+    assert polls["n"] > 5              # polled much more often than the full check ran
+
+
+def test_a_dip_is_reported_once_not_at_every_following_check():
+    """One short dip produces one report, even with no rate limit and several checks afterwards."""
+    messages, announced = [], []
+    clock = {"now": 0.0}
+    monitor = PowerMonitor(
+        log=messages.append, reader=lambda: PowerStatus(0), check_interval_sec=60.0,
+        warn_interval_sec=0.0, announce_interval_sec=0.0, clear_after_sec=0.0,
+        clock=lambda: clock["now"], alarm_reader=lambda: False,
+        announce=lambda status: announced.append(1) or True,
+    )
+    monitor._poll_alarm(0.0)                      # not a dip
+    monitor._last_undervoltage = 5.0              # one dip at t=5 s
+
+    for t in (60, 120, 180):
+        clock["now"] = t
+        monitor.check()
+
+    reports = [m for m in messages if m.startswith("Warning: CPU throttling")]
+    assert len(reports) == 1 and len(announced) == 1
+
+
+def test_two_separate_dips_are_two_reports():
+    """Dips in different check intervals are each reported."""
+    messages = []
+    clock = {"now": 0.0}
+    monitor = PowerMonitor(
+        log=messages.append, reader=lambda: PowerStatus(0), check_interval_sec=60.0,
+        warn_interval_sec=0.0, clear_after_sec=0.0, clock=lambda: clock["now"], alarm_reader=lambda: False,
+    )
+    monitor._last_undervoltage = 5.0
+    clock["now"] = 60
+    monitor.check()
+    clock["now"] = 120
+    monitor.check()                               # nothing new: clear
+    monitor._last_undervoltage = 130.0
+    clock["now"] = 180
+    monitor.check()
+
+    assert len([m for m in messages if m.startswith("Warning: CPU throttling")]) == 2

@@ -464,7 +464,7 @@ Each bit:
 
 #### Service warnings
 
-The service checks the firmware flags once a minute. While the CPU is throttled or under-voltage it logs a warning at most every 15 minutes, even when the supply keeps dipping and recovering. After the CPU has stayed clear for 5 minutes it logs a notice, and the next problem warns immediately. A condition that happened earlier since boot is logged once.
+The service reads the firmware flags once a minute and checks the kernel's under-voltage alarm every 2 seconds in between, so a dip that lasts only a few seconds (typical on a weak supply) is still reported at the next minute. While the CPU is throttled or under-voltage it logs a warning at most every 15 minutes, even when the supply keeps dipping and recovering. After the CPU has stayed clear for 5 minutes it logs a notice, and the next problem warns immediately. A condition that happened earlier since boot is logged once.
 
 | Setting | Default | Effect |
 | :--- | :--- | :--- |
@@ -489,7 +489,7 @@ While the firmware reports under-voltage, the persona says one line from the pro
 | Rule | Behavior |
 | :--- | :--- |
 | Frequency | At most once per `LOW_POWER_ANNOUNCE_SEC` (one hour by default) |
-| Trigger | Under-voltage detected now; a thermal limit alone does not trigger it |
+| Trigger | Under-voltage detected since the last check; a thermal limit alone does not trigger it |
 | Timing | Not spoken during a conversation or within 10 seconds of one, or while the display is asleep. The attempt is repeated at the next check, so a skipped line does not use up the hour |
 | Wording | A random line from `low_power_lines` in the active personality profile. A profile without the list says a plain sentence about the power supply |
 

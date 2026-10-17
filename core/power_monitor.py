@@ -22,6 +22,7 @@ DEFAULT_CHECK_SEC = 60.0
 DEFAULT_WARN_SEC = 900.0
 DEFAULT_CLEAR_SEC = 300.0
 DEFAULT_ANNOUNCE_SEC = 3600.0
+DEFAULT_POLL_SEC = 2.0
 UNDER_VOLTAGE_NOW = 1 << 0
 
 # Bit meanings from the Raspberry Pi firmware documentation for get_throttled.
@@ -100,6 +101,16 @@ def _read_hwmon_undervoltage() -> Optional[int]:
     return None
 
 
+def read_undervoltage_alarm() -> Optional[bool]:
+    """Return whether the kernel reports under-voltage right now, or None if it cannot say.
+
+    This is a plain file read, cheap enough to repeat every couple of seconds, which catches
+    dips that last only a few seconds.
+    """
+    raw = _read_hwmon_undervoltage()
+    return None if raw is None else bool(raw)
+
+
 def read_status() -> Optional[PowerStatus]:
     """Read the current power status.
 
@@ -132,6 +143,8 @@ class PowerMonitor:
         clear_after_sec: float = DEFAULT_CLEAR_SEC,
         announce: Optional[Callable[["PowerStatus"], bool]] = None,
         announce_interval_sec: float = DEFAULT_ANNOUNCE_SEC,
+        alarm_reader: Optional[Callable[[], Optional[bool]]] = read_undervoltage_alarm,
+        poll_interval_sec: float = DEFAULT_POLL_SEC,
     ) -> None:
         """Create a monitor.
 
@@ -146,6 +159,10 @@ class PowerMonitor:
                 announce_interval_sec. It returns True if it spoke; returning False (for example
                 because a visitor is talking) does not use up the interval.
             announce_interval_sec: Minimum seconds between announcements.
+            alarm_reader: Optional cheap reader of the under-voltage alarm. It is polled every
+                poll_interval_sec between full checks, so a dip of a few seconds is not missed;
+                a dip since the last check counts as under-voltage at the next check, once.
+            poll_interval_sec: Seconds between alarm polls.
         """
         self._log = log
         self._reader = reader
@@ -154,6 +171,9 @@ class PowerMonitor:
         self._clock = clock
         self.clear_after_sec = clear_after_sec
         self._announce = announce
+        self._alarm_reader = alarm_reader
+        self.poll_interval_sec = poll_interval_sec
+        self._last_undervoltage: Optional[float] = None
         self.announce_interval_sec = announce_interval_sec
         self._last_announce: Optional[float] = None
         self._last_warning: Optional[float] = None
@@ -197,6 +217,13 @@ class PowerMonitor:
             return None
 
         now = self._clock()
+        if self._last_undervoltage is not None:
+            # The alarm fired since the last full check. Report it once, here, so a dip that
+            # lasted only a few seconds is neither missed nor counted at two checks in a row.
+            recent = now - self._last_undervoltage <= self.check_interval_sec * 2
+            self._last_undervoltage = None
+            if recent and not status.raw & UNDER_VOLTAGE_NOW:
+                status = PowerStatus(raw=status.raw | UNDER_VOLTAGE_NOW, temp_c=status.temp_c)
         temp = f", CPU {status.temp_c:.1f}C" if status.temp_c is not None else ""
 
         if status.active:
@@ -266,9 +293,26 @@ class PowerMonitor:
         self._thread.start()
         return True
 
+    def _poll_alarm(self, now: float) -> None:
+        """Remember when the kernel last reported under-voltage."""
+        if self._alarm_reader is None:
+            return
+        try:
+            if self._alarm_reader():
+                self._last_undervoltage = now
+        except Exception:  # isolation point: a failed read must not stop monitoring
+            pass
+
     def _run(self) -> None:
-        """Background loop: check every check_interval_sec until stopped."""
-        while not self._stop.wait(self.check_interval_sec):
+        """Background loop: poll the alarm often, run a full check every check_interval_sec."""
+        wait = min(self.poll_interval_sec, self.check_interval_sec)
+        next_check = self._clock() + self.check_interval_sec
+        while not self._stop.wait(wait):
+            now = self._clock()
+            self._poll_alarm(now)
+            if now < next_check:
+                continue
+            next_check = now + self.check_interval_sec
             try:
                 self.check()
             except Exception as exc:  # isolation point: monitoring must never stop the service
