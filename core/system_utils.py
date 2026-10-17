@@ -138,17 +138,25 @@ def trigger_host_shutdown(dry_run: bool = False) -> bool:
 
     # 5. Fallback: Linux Magic SysRq trigger (sync -> unmount -> poweroff)
     sysrq_path = "/proc/sysrq-trigger"
-    if os.path.exists(sysrq_path):
+    sysrq_mask_path = "/proc/sys/kernel/sysrq"
+    if os.path.exists(sysrq_path) and os.path.exists(sysrq_mask_path):
         try:
-            with open(sysrq_path, "w", encoding="utf-8") as f:
-                f.write("s\n")
-            time.sleep(1.0)
-            with open(sysrq_path, "w", encoding="utf-8") as f:
-                f.write("u\n")
-            time.sleep(0.5)
-            with open(sysrq_path, "w", encoding="utf-8") as f:
-                f.write("o\n")
-            return True
+            with open(sysrq_mask_path, "r", encoding="utf-8") as f:
+                mask = int(f.read().strip())
+            # 1 enables all commands; bit 7 (128) enables poweroff ('o') and bit 5 (32) enables remount-ro ('u')
+            can_poweroff = (mask == 1) or bool(mask & 128)
+            can_unmount = (mask == 1) or bool(mask & 32)
+            if can_poweroff:
+                with open(sysrq_path, "w", encoding="utf-8") as f:
+                    f.write("s\n")
+                time.sleep(1.0)
+                if can_unmount:
+                    with open(sysrq_path, "w", encoding="utf-8") as f:
+                        f.write("u\n")
+                    time.sleep(0.5)
+                with open(sysrq_path, "w", encoding="utf-8") as f:
+                    f.write("o\n")
+                time.sleep(1.5)
         except Exception as exc:
             sys.stderr.write(f"SysRq shutdown error: {exc}\n")
 

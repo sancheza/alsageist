@@ -53,6 +53,18 @@ def test_trigger_host_shutdown_linux_systemctl(monkeypatch):
         assert mock_run.call_args[0][0] == ["/bin/systemctl", "poweroff"]
 
 
+def test_trigger_host_shutdown_sysrq_masked_returns_false(monkeypatch):
+    """When sysrq mask does not permit poweroff (e.g. mask is 0), SysRq is not run and returns False."""
+    from unittest.mock import mock_open
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    with patch("shutil.which", return_value=None), \
+         patch("os.path.isfile", return_value=False), \
+         patch("os.path.exists", side_effect=lambda p: p in ("/proc/sysrq-trigger", "/proc/sys/kernel/sysrq")), \
+         patch("builtins.open", mock_open(read_data="0")):
+        assert trigger_host_shutdown(dry_run=False) is False
+
+
 def test_load_env_file(tmp_path, monkeypatch):
     """Verify load_env_file parses key-value pairs into os.environ."""
     env_file = tmp_path / ".env"

@@ -32,10 +32,10 @@ if [[ ! -f "${GRIMJAW_MODEL}" ]]; then
     python3 /app/scripts/download_model.py --voice alan
 fi
 
-# 4. Ensure offline Vosk STT model is available if no cloud keys are configured
+# 4. Ensure offline Vosk STT model is available for offline fallback
 VOSK_DIR="${MODELS_DIR}/vosk-model-small-en-us-0.15"
-if [[ ! -d "${VOSK_DIR}" && -z "${GROQ_API_KEY}" && -z "${GEMINI_API_KEY}" ]]; then
-    echo "[AlsaGeist Bootstrap] No cloud STT keys configured and offline Vosk model missing."
+if [[ ! -d "${VOSK_DIR}" ]]; then
+    echo "[AlsaGeist Bootstrap] Offline Vosk model missing in ${MODELS_DIR}."
     echo "[AlsaGeist Bootstrap] Downloading Vosk speech recognition model..."
     python3 /app/scripts/download_model.py --vosk
 fi

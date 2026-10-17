@@ -79,14 +79,13 @@ def test_llm_empty_groq_reply_falls_back_to_gemini():
     assert llm.history[-1]["content"] == "Halt."
 
 
-def test_llm_empty_groq_reply_without_gemini_raises():
-    """With only Groq configured an empty reply is an error, not a silent empty line."""
+def test_llm_empty_groq_reply_without_gemini_returns_fallback():
+    """With only Groq configured, a failure or empty reply returns fallback_response."""
     from unittest.mock import patch
 
-    llm = ConversationalLLMService(groq_api_key="g")
+    llm = ConversationalLLMService(groq_api_key="g", fallback_response="Canned fallback.")
     with patch("services.llm_service.cloud_api.groq_chat", return_value=""):
-        with pytest.raises(RuntimeError, match="empty reply"):
-            llm.generate_response("hello")
+        assert llm.generate_response("hello") == "Canned fallback."
     assert llm.history == []
 
 

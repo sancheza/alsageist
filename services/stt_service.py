@@ -67,10 +67,12 @@ class SpeechToTextService:
             except Exception as exc:
                 print(f"Warning: Failed to load offline Vosk model from '{chosen_path}': {exc}")
 
-        if not self.groq_api_key and not self.gemini_api_key and not self._vosk_model:
-            raise ValueError(
-                "Neither GROQ_API_KEY nor GEMINI_API_KEY nor offline Vosk model is configured for Speech-to-Text."
-            )
+        if not self._vosk_model:
+            if not self.groq_api_key and not self.gemini_api_key:
+                raise ValueError(
+                    "Neither GROQ_API_KEY nor GEMINI_API_KEY nor offline Vosk model is configured for Speech-to-Text."
+                )
+            print("Warning: Offline Vosk STT model is not installed; offline fallback will be unavailable.")
 
     def _audio_to_wav_bytes(self, audio_array: np.ndarray) -> bytes:
         """Convert numpy audio array to in-memory WAV bytes with gain normalization.
@@ -225,6 +227,9 @@ class SpeechToTextService:
                             raw_t = p.get("text", "").strip()
                             if raw_t and "cannot fulfill" not in raw_t.lower():
                                 return raw_t
+                # A model successfully answered but found no speech (empty transcript);
+                # do not waste latency and calls trying further models on silent audio.
+                return ""
             except Exception as exc:
                 last_error = exc
 

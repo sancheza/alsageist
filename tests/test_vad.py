@@ -152,3 +152,14 @@ def test_vad_short_speech_unaffected_by_max_length():
     completed = [r for r in results if r[1]]
     assert len(completed) == 1
     assert len(completed[0][2]) >= 20 * 480
+
+
+def test_vad_noise_floor_adapts_to_higher_ambient_noise():
+    """Noise floor adapts when ambient noise is above 0.008."""
+    vad = VoiceActivityDetector(min_energy_threshold=0.02)
+    vad.noise_floor = 0.002
+    ambient_frame = np.full(480, 0.012, dtype=np.float32)
+    for _ in range(50):
+        vad.process_frame(ambient_frame)
+    assert vad.noise_floor > 0.008
+

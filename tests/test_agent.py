@@ -824,3 +824,36 @@ def test_agent_redacts_transcripts_when_logging_disabled(capsys):
     assert "secret persona answer" not in captured
     assert "[TRANSCRIPT REDACTED]" in captured
 
+
+def test_agent_dialogue_error_is_logged():
+    """A dialogue engine error logs an interaction record with status ERROR."""
+    agent = _agent_with_failed_cloud_stt()
+    agent.stt.transcribe.return_value = "hello"
+    agent.dialogue_engine.classify_and_respond.side_effect = RuntimeError("reasoning failure")
+
+    with patch("services.agent.time.sleep"):
+        agent._handle_utterance(np.zeros(16000, dtype=np.float32))
+
+    agent.logger.log_interaction.assert_called_once()
+    kwargs = agent.logger.log_interaction.call_args.kwargs
+    assert kwargs["status"] == "ERROR"
+    assert kwargs["matched_intent"] == "dialogue_error"
+    assert "reasoning failure" in kwargs["notes"]
+
+
+def test_agent_tts_error_is_logged():
+    """A TTS synthesis failure logs an interaction record with status ERROR."""
+    agent = _agent_with_failed_cloud_stt()
+    agent.stt.transcribe.return_value = "hello"
+    agent.dialogue_engine.classify_and_respond.return_value = ("reply text", "greeting")
+    agent.tts.synthesize.side_effect = RuntimeError("synthesis failure")
+
+    with patch("services.agent.time.sleep"):
+        agent._handle_utterance(np.zeros(16000, dtype=np.float32))
+
+    agent.logger.log_interaction.assert_called_once()
+    kwargs = agent.logger.log_interaction.call_args.kwargs
+    assert kwargs["status"] == "ERROR"
+    assert "synthesis failure" in kwargs["notes"]
+
+

@@ -266,3 +266,21 @@ def test_lazy_load_failure_falls_back_to_command_once(tmp_path, monkeypatch, cap
             with pytest.raises(RuntimeError):
                 lazy._synthesize_chunk("hello")
     assert capsys.readouterr().out.count("could not load") == 1
+
+
+def test_piper_cli_timeout_kills_process(tmp_path, monkeypatch):
+    """Piper CLI fallback raises RuntimeError when process times out."""
+    import subprocess
+    import sys
+
+    monkeypatch.setitem(sys.modules, "piper", None)
+    lazy = PiperTTSService(model_path=_model(tmp_path), cache_dir=str(tmp_path / "c"), lazy_load=True)
+
+    mock_proc = MagicMock()
+    mock_proc.communicate.side_effect = [subprocess.TimeoutExpired(cmd="piper", timeout=10.0), (b"", b"")]
+
+    with patch("services.tts_service.subprocess.Popen", return_value=mock_proc):
+        with pytest.raises(RuntimeError, match="timed out"):
+            lazy._synthesize_chunk("hello")
+        mock_proc.kill.assert_called_once()
+

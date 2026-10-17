@@ -92,12 +92,19 @@ class ConversationalLLMService:
                 reply = self._generate_groq(user_text)
                 if not reply:
                     raise RuntimeError("Groq returned an empty reply")
-            except Exception as exc:
-                if not self.gemini_api_key:
-                    raise RuntimeError(f"Groq LLM generation failed: {exc}") from exc
-                reply = self._generate_gemini(user_text)
+            except Exception:
+                if self.gemini_api_key:
+                    try:
+                        reply = self._generate_gemini(user_text)
+                    except Exception:
+                        reply = ""
+                else:
+                    reply = ""
         else:
-            reply = self._generate_gemini(user_text)
+            try:
+                reply = self._generate_gemini(user_text)
+            except Exception:
+                reply = ""
 
         if not reply:
             # Every backend failed or answered with nothing: speak the canned line,

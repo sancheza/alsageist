@@ -96,7 +96,8 @@ class VoiceActivityDetector:
         if not self.is_speaking:
             # Update adaptive noise floor only during true ambient silence (clamped to prevent creeping)
             if not is_speech:
-                if rms < 0.008:
+                max_adapt_rms = max(0.04, self.min_energy_threshold * 4)
+                if rms < max_adapt_rms:
                     self.noise_floor = 0.98 * self.noise_floor + 0.02 * max(rms, 0.0005)
                 self._pre_speech_buffer.append(frame)
                 self._consecutive_speech_frames = 0
@@ -125,7 +126,10 @@ class VoiceActivityDetector:
         # The maximum length applies to speech frames as well, so continuous loud sound cannot
         # grow the buffer without bound.
         utterance_dur = (len(self._speech_buffer) * self.frame_duration_ms) / 1000.0
-        if self._consecutive_silence_frames >= self.silence_timeout_frames or utterance_dur >= self.max_utterance_sec:
+        hit_max_duration = utterance_dur >= self.max_utterance_sec
+        if self._consecutive_silence_frames >= self.silence_timeout_frames or hit_max_duration:
+            if hit_max_duration and self._consecutive_silence_frames < self.silence_timeout_frames:
+                self.noise_floor = 0.8 * self.noise_floor + 0.2 * min(0.05, rms)
             completed, audio = self._finish_utterance()
             return is_speech, completed, audio
 

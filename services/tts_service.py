@@ -164,7 +164,15 @@ class PiperTTSService:
                 f"and the 'piper' command could not be run ({exc})."
             ) from exc
 
-        raw_pcm, stderr = process.communicate(input=normalized_text.encode("utf-8"))
+        try:
+            raw_pcm, stderr = process.communicate(input=normalized_text.encode("utf-8"), timeout=10.0)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            try:
+                process.communicate()
+            except Exception:
+                pass
+            raise RuntimeError("Piper CLI synthesis timed out after 10.0 seconds")
 
         if process.returncode != 0 or not raw_pcm:
             detail = stderr.decode("utf-8", errors="replace").strip()[-300:]

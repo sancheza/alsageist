@@ -202,3 +202,30 @@ def test_offline_only_use_is_never_a_cloud_failure():
     with patch.object(stt, "transcribe_offline", return_value="words"):
         stt.transcribe(_audio(), offline=True)
     assert stt.last_cloud_failed is False
+
+
+def test_stt_warns_when_vosk_missing_with_cloud_keys(monkeypatch, capsys):
+    """When cloud keys exist but Vosk model is missing, a warning is printed."""
+    monkeypatch.setattr("os.path.isdir", lambda path: False)
+    SpeechToTextService(groq_api_key="g", gemini_api_key="k")
+    captured = capsys.readouterr().out
+    assert "Offline Vosk STT model is not installed" in captured
+
+
+def test_stt_gemini_stops_iteration_on_empty_answer(monkeypatch):
+    """When a Gemini model answers successfully with empty text, subsequent models are not called."""
+    from unittest.mock import patch
+    import numpy as np
+
+    stt = SpeechToTextService(gemini_api_key="k")
+    called_models = []
+
+    def mock_generate(api_key, model, payload, timeout):
+        called_models.append(model)
+        return [{"text": ""}]
+
+    with patch("services.stt_service.cloud_api.gemini_generate_parts", side_effect=mock_generate):
+        result = stt.transcribe(np.zeros(1600, dtype=np.float32))
+        assert result == ""
+        assert len(called_models) == 1
+

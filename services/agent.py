@@ -55,6 +55,7 @@ class AlsaGeistAgent:
         self._idle_reset_done = False
         self._mode_forced: Optional[bool] = None
         self._last_check_request = 0.0
+        self._consecutive_filtered_turns = 0
 
         print(f"Initializing AlsaGeist subsystems (Dialogue Engine: {args.engine.upper()})...")
 
@@ -876,6 +877,14 @@ class AlsaGeistAgent:
 
         should_filter, matched_intent, filter_status = self._filter_utterance(user_text, audio_rms)
         if should_filter:
+            self._consecutive_filtered_turns += 1
+            if self._consecutive_filtered_turns >= 2:
+                # Ambient noise is false-triggering utterances: adapt noise floor upward
+                self.vad.noise_floor = max(self.vad.noise_floor, audio_rms)
+                backoff_sec = min(2.0, 0.5 * (self._consecutive_filtered_turns - 1))
+            else:
+                backoff_sec = 0.0
+
             if filter_status == "FILTERED_SILENCE":
                 print("  (Silence / ambient noise filtered)")
             else:
@@ -896,6 +905,18 @@ class AlsaGeistAgent:
                 latencies_ms={"stt": stt_ms},
                 status=filter_status,
             )
+            if backoff_sec > 0:
+                time.sleep(backoff_sec)
+            return
+
+        self._consecutive_filtered_turns = 0
+
+        # Check turn deadline before proceeding to reasoning
+        if (time.time() - t_start) > 15.0:
+            print("Warning: Utterance processing deadline exceeded; aborting turn.")
+            self.led.set_state(LEDState.IDLE)
+            self.audio.drain_input_queue()
+            self.vad.reset()
             return
 
         if getattr(self.logger, "store_text", True):
@@ -909,6 +930,17 @@ class AlsaGeistAgent:
         except Exception as exc:
             print(f"Dialogue Error: {exc}")
             self.led.set_state(LEDState.ERROR)
+            self.logger.log_interaction(
+                transcribed_text=user_text,
+                response_text="",
+                engine=self.args.engine,
+                matched_intent="dialogue_error",
+                audio_duration_sec=audio_dur,
+                audio_rms=audio_rms,
+                latencies_ms={"stt": stt_ms, "dialogue": int((time.time() - t_stt) * 1000)},
+                status="ERROR",
+                notes=f"Dialogue Exception: {exc}",
+            )
             self.audio.drain_input_queue()
             self.vad.reset()
             time.sleep(1.0)
@@ -927,6 +959,21 @@ class AlsaGeistAgent:
         except Exception as exc:
             print(f"TTS Error: {exc}")
             self.led.set_state(LEDState.ERROR)
+            self.logger.log_interaction(
+                transcribed_text=user_text,
+                response_text=reply,
+                engine=self.args.engine,
+                matched_intent=matched_intent,
+                audio_duration_sec=audio_dur,
+                audio_rms=audio_rms,
+                latencies_ms={
+                    "stt": stt_ms,
+                    "dialogue": llm_ms,
+                    "tts": int((time.time() - t_llm) * 1000),
+                },
+                status="ERROR",
+                notes=f"TTS Exception: {exc}",
+            )
             self.audio.drain_input_queue()
             self.vad.reset()
             time.sleep(1.0)
