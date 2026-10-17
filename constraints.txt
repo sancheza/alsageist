@@ -1,0 +1,31 @@
+# Exact versions of the runtime dependencies and everything they install.
+# Taken from the working AlsaGeist environment on Raspberry Pi OS (Debian 12, aarch64, Python 3.11).
+#
+# Use:   pip install -c constraints.txt -e ".[rpi]"
+#
+# Regenerate after changing dependencies: in a fresh virtual environment on the Pi run
+#   pip install -e ".[rpi]" && pip freeze --exclude-editable
+# and keep the lines for installed packages other than pip, setuptools, and wheel.
+certifi==2026.7.22
+cffi==2.1.1
+charset-normalizer==3.5.2
+colorzero==2.0
+flatbuffers==25.12.19
+gpiozero==2.0.1.post3
+idna==3.20
+lgpio==0.2.2.0
+numpy==2.4.6
+onnxruntime==1.31.0
+packaging==26.3
+pathvalidate==3.3.1
+piper-tts==1.8.0
+protobuf==7.36.2
+pycparser==3.11
+requests==2.34.2
+rpi-lgpio==0.6
+sounddevice==0.5.6
+srt==3.5.3
+tqdm==4.70.1
+urllib3==2.8.0
+vosk==0.3.45
+websockets==17.2

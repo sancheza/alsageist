@@ -47,3 +47,19 @@ def test_groq_transcribe_uploads_wav_with_model():
     assert post.call_args.kwargs["fields"] == {"model": "whisper-x"}
     assert post.call_args.kwargs["files"] == {"file": ("audio.wav", "audio/wav", b"WAV")}
     assert post.call_args.kwargs["timeout"] == 5
+
+
+def test_groq_model_params_only_for_gpt_oss():
+    """Only the gpt-oss models get the reasoning_effort field."""
+    assert cloud_api.groq_model_params("openai/gpt-oss-120b") == {"reasoning_effort": "low"}
+    assert cloud_api.groq_model_params("openai/gpt-oss-20b") == {"reasoning_effort": "low"}
+    assert cloud_api.groq_model_params("qwen/qwen3.8-27b") == {}
+    assert cloud_api.groq_model_params("whisper-large-v3") == {}
+
+
+def test_groq_llm_model_env_override(monkeypatch):
+    """$GROQ_LLM_MODEL overrides the default model."""
+    monkeypatch.delenv("GROQ_LLM_MODEL", raising=False)
+    assert cloud_api.groq_llm_model() == cloud_api.GROQ_DEFAULT_LLM_MODEL
+    monkeypatch.setenv("GROQ_LLM_MODEL", "qwen/qwen3.8-27b")
+    assert cloud_api.groq_llm_model() == "qwen/qwen3.8-27b"

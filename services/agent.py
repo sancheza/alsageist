@@ -7,6 +7,7 @@ control server. Entry points (main.py) only parse arguments and call start().
 
 import argparse
 import os
+import random
 import re
 import threading
 import time
@@ -46,6 +47,8 @@ class AlsaGeistAgent:
         self._state_lock = threading.RLock()
         self._audio_lock = threading.RLock()
         self._switch_lock = threading.Lock()
+        self._playback_generation = 0
+        self._mic_lock = threading.Lock()  # guards only the short mute/unmute decisions, never playback
         self._last_activity_time = time.time()
         self._idle_reset_done = False
         self._mode_forced: Optional[bool] = None
@@ -191,8 +194,16 @@ class AlsaGeistAgent:
             Configured ConversationalLLMService.
         """
         if profile:
+            # In-character canned lines for when every backend fails (an explicit env override wins)
+            fallback = None
+            if profile.fallbacks and not os.environ.get("LLM_FALLBACK_RESPONSE"):
+                lines = list(profile.fallbacks)
+                fallback = lambda: random.choice(lines)  # noqa: E731
             try:
-                return ConversationalLLMService(system_prompt=profile.build_system_prompt())
+                return ConversationalLLMService(
+                    system_prompt=profile.build_system_prompt(),
+                    fallback_response=fallback,
+                )
             except Exception:
                 pass
         return ConversationalLLMService()
@@ -426,7 +437,11 @@ class AlsaGeistAgent:
     ) -> None:
         """Play synthesized audio while muting capture and managing LED state.
 
-        Only one caller plays at a time.
+        Only one caller plays at a time. The trailing cooldown runs outside the audio
+        lock so other callers are not held up by it. The caller that started the most
+        recent playback is the one that unmutes the microphone, so a clip that starts
+        during another's cooldown is never cut off by an early unmute. The mute and
+        unmute decisions share a short lock so they cannot interleave.
 
         Args:
             audio_data: Synthesized audio PCM or numpy buffer.
@@ -436,18 +451,24 @@ class AlsaGeistAgent:
         """
         if self.is_disabled:
             return
-        with self._audio_lock:
-            self.led.set_state(LEDState.SPEAKING)
-            self.audio.mute_capture()
-            try:
+        generation = -1
+        try:
+            with self._audio_lock:
+                with self._mic_lock:
+                    self._playback_generation += 1
+                    generation = self._playback_generation
+                    self.led.set_state(LEDState.SPEAKING)
+                    self.audio.mute_capture()
                 self.audio.play_audio(audio_data, sample_rate=sample_rate, blocking=blocking)
-            finally:
+        finally:
+            if generation >= 0:
                 if cooldown_sec > 0:
                     time.sleep(cooldown_sec)
-                if not self.is_disabled:
-                    self.audio.unmute_capture()
-                    self.vad.reset()
-                    self.led.set_state(LEDState.IDLE)
+                with self._mic_lock:
+                    if generation == self._playback_generation and not self.is_disabled:
+                        self.audio.unmute_capture()
+                        self.vad.reset()
+                        self.led.set_state(LEDState.IDLE)
 
     def speak(
         self,

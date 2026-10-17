@@ -55,6 +55,8 @@ def make_bare_agent(**overrides) -> AlsaGeistAgent:
     agent._state_lock = threading.RLock()
     agent._audio_lock = threading.RLock()
     agent._switch_lock = threading.Lock()
+    agent._playback_generation = 0
+    agent._mic_lock = threading.Lock()
     agent._last_activity_time = time.time()
     agent._idle_reset_done = False
     agent._mode_forced = None

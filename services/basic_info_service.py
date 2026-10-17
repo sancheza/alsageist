@@ -66,15 +66,12 @@ class BasicInfoService:
             template = time_responses.get("bedtime")
             if template:
                 return template.format(time=time_str)
-            return (
-                f"It is currently {time_str}. Which means it is way past your bedtime! "
-                "Grab ONE treat and scram before the midnight ghouls wake up!"
-            )
+            return f"It is currently {time_str}. It is late."
 
         template = time_responses.get("standard")
         if template:
             return template.format(time=time_str)
-        return f"It is precisely {time_str}. The night is young, but watch your fingers around my candy bowl!"
+        return f"It is {time_str}."
 
     def get_weather_data(self, allow_network: bool = True) -> Optional[Dict[str, str]]:
         """Return current weather from the cache, fetching from wttr.in when needed.
@@ -162,25 +159,13 @@ class BasicInfoService:
 
             comment = ""
             if temp_val <= 40:
-                comment = weather_resp.get(
-                    "freezing",
-                    "Freezing cold! The autumn chill whistles straight through my ribs!",
-                )
+                comment = weather_resp.get("freezing", "It is freezing.")
             elif temp_val <= 60:
-                comment = weather_resp.get(
-                    "cold",
-                    "Crisp and chilly! Perfect weather for rattling around a porch.",
-                )
+                comment = weather_resp.get("cold", "It is chilly.")
             elif temp_val <= 75:
-                comment = weather_resp.get(
-                    "mild",
-                    "Mild and comfortable, though my bones prefer a crypt's cold draft.",
-                )
+                comment = weather_resp.get("mild", "It is comfortable.")
             else:
-                comment = weather_resp.get(
-                    "hot",
-                    "Sweltering! Far too warm for an ancient skeleton.",
-                )
+                comment = weather_resp.get("hot", "It is hot.")
 
             if desc and desc not in ("clear", "sunny"):
                 return (
@@ -188,8 +173,4 @@ class BasicInfoService:
                 )
             return f"It is currently {temp_f} degrees Fahrenheit outside. {comment}"
 
-        return weather_resp.get(
-            "fallback",
-            "My internal barometer says it's chilly enough to make your teeth chatter "
-            "and my ribs rattle! Check the sky yourself, mortal.",
-        )
+        return weather_resp.get("fallback", "I cannot check the weather right now.")

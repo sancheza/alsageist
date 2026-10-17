@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from core.intent_builder import PersonalityProfile, find_personality_file
+from core.led_controller import LEDState
 from services.agent import AlsaGeistAgent
 from services.intent_service import PersonaIntentEngine
 from tests.agent_helpers import make_args, make_bare_agent
@@ -81,7 +82,28 @@ def test_build_llm_uses_profile_prompt():
     profile = PersonalityProfile.load_from_file(find_personality_file("grimjaw"))
     with patch("services.agent.ConversationalLLMService") as llm_cls:
         AlsaGeistAgent._build_llm(profile)
-    llm_cls.assert_called_once_with(system_prompt=profile.build_system_prompt())
+    llm_cls.assert_called_once()
+    assert llm_cls.call_args.kwargs["system_prompt"] == profile.build_system_prompt()
+
+
+def test_build_llm_failure_lines_come_from_the_persona(monkeypatch):
+    """When every backend fails the spoken line is one of the persona's own fallback lines."""
+    monkeypatch.delenv("LLM_FALLBACK_RESPONSE", raising=False)
+    profile = PersonalityProfile.load_from_file(find_personality_file("grimjaw"))
+    with patch("services.agent.ConversationalLLMService") as llm_cls:
+        AlsaGeistAgent._build_llm(profile)
+    fallback = llm_cls.call_args.kwargs["fallback_response"]
+    assert callable(fallback)
+    assert {fallback() for _ in range(50)} <= set(profile.fallbacks)
+
+
+def test_build_llm_env_override_beats_persona_fallback_lines(monkeypatch):
+    """An explicit LLM_FALLBACK_RESPONSE is not replaced by the persona's lines."""
+    monkeypatch.setenv("LLM_FALLBACK_RESPONSE", "Custom line.")
+    profile = PersonalityProfile.load_from_file(find_personality_file("grimjaw"))
+    with patch("services.agent.ConversationalLLMService") as llm_cls:
+        AlsaGeistAgent._build_llm(profile)
+    assert llm_cls.call_args.kwargs["fallback_response"] is None
 
 
 def test_build_tts_prefers_cli_overrides_over_profile():
@@ -436,3 +458,100 @@ def test_agent_starts_and_stops_power_monitor():
 
     agent.power_monitor.start.assert_called_once()
     agent.power_monitor.stop.assert_called_once()
+
+
+class _CooldownGate:
+    """Replaces time.sleep inside the agent so a test decides exactly when a cooldown ends."""
+
+    def __init__(self):
+        self.entered = threading.Event()
+        self.open = threading.Event()
+
+    def sleep(self, _seconds):
+        self.entered.set()
+        assert self.open.wait(timeout=5), "cooldown gate was never opened"
+
+
+def test_cooldown_does_not_hold_the_audio_lock():
+    """Other callers can take the audio lock while a finished clip is cooling down."""
+    agent = make_bare_agent()
+    gate = _CooldownGate()
+
+    with patch("services.agent.time.sleep", gate.sleep):
+        cooling = threading.Thread(
+            target=agent._play_speech_audio, args=(b"", 22050), kwargs={"cooldown_sec": 1.0}, daemon=True
+        )
+        cooling.start()
+        assert gate.entered.wait(timeout=3)          # the clip has played and is now cooling down
+
+        got_lock = agent._audio_lock.acquire(timeout=1.0)  # would time out if the cooldown held the lock
+        if got_lock:
+            agent._audio_lock.release()
+        gate.open.set()
+        cooling.join(timeout=3)
+
+    assert got_lock is True
+
+
+def test_microphone_stays_muted_until_the_latest_clip_finishes():
+    """A clip that starts during another's cooldown keeps the mic muted until it ends."""
+    agent = make_bare_agent()
+    gate = _CooldownGate()
+    second_playing = threading.Event()
+    release_second = threading.Event()
+    calls = {"n": 0}
+
+    def play(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            second_playing.set()
+            assert release_second.wait(timeout=5)
+
+    agent.audio.play_audio.side_effect = play
+
+    with patch("services.agent.time.sleep", gate.sleep):
+        first = threading.Thread(
+            target=agent._play_speech_audio, args=(b"", 22050), kwargs={"cooldown_sec": 1.0}, daemon=True
+        )
+        first.start()
+        assert gate.entered.wait(timeout=3)          # first clip played; it is cooling down
+
+        second = threading.Thread(
+            target=agent._play_speech_audio, args=(b"", 22050), kwargs={"cooldown_sec": 0.0}, daemon=True
+        )
+        second.start()
+        assert second_playing.wait(timeout=3)        # second clip is playing during the first's cooldown
+
+        gate.open.set()                              # the first cooldown ends
+        first.join(timeout=3)
+        assert not first.is_alive()
+        agent.audio.unmute_capture.assert_not_called()
+        assert agent.audio.is_muted is True
+
+        release_second.set()
+        second.join(timeout=3)
+
+    agent.audio.unmute_capture.assert_called_once()
+    assert agent.audio.is_muted is False
+
+
+def test_microphone_unmutes_after_a_failed_playback():
+    """An error while playing still ends in an unmuted microphone and an idle LED."""
+    agent = make_bare_agent()
+    agent.audio.play_audio.side_effect = RuntimeError("device busy")
+
+    with pytest.raises(RuntimeError):
+        agent._play_speech_audio(b"", 22050, cooldown_sec=0.0)
+
+    agent.audio.unmute_capture.assert_called_once()
+    assert agent.led.current_state == LEDState.IDLE
+
+
+def test_disabled_agent_is_not_unmuted_after_playback():
+    """If the agent is put to sleep during playback the microphone stays muted."""
+    agent = make_bare_agent()
+    agent.audio.play_audio.side_effect = lambda *a, **k: setattr(agent, "is_disabled", True)
+
+    agent._play_speech_audio(b"", 22050, cooldown_sec=0.0)
+
+    agent.audio.unmute_capture.assert_not_called()

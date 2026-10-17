@@ -4,6 +4,7 @@ Wraps endpoints, authentication headers, and response parsing on top of
 core.http_client so callers pass a payload and receive text or parts.
 """
 
+import os
 from typing import Any, Dict, List
 
 from core import http_client
@@ -11,6 +12,29 @@ from core import http_client
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_TRANSCRIBE_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+GROQ_DEFAULT_LLM_MODEL = "openai/gpt-oss-120b"
+
+
+def groq_llm_model() -> str:
+    """Return the Groq chat model: $GROQ_LLM_MODEL, else the default."""
+    return os.environ.get("GROQ_LLM_MODEL", GROQ_DEFAULT_LLM_MODEL)
+
+
+def groq_model_params(model: str) -> Dict[str, Any]:
+    """Return extra chat request fields a Groq model needs.
+
+    The gpt-oss models spend max_tokens on hidden reasoning, and with a short limit
+    they often return an empty reply. Low reasoning effort leaves room for the answer.
+
+    Args:
+        model: Groq model name.
+
+    Returns:
+        Fields to merge into the chat completions request body.
+    """
+    if model.startswith("openai/gpt-oss"):
+        return {"reasoning_effort": "low"}
+    return {}
 
 
 def gemini_generate_parts(

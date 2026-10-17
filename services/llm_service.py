@@ -5,7 +5,7 @@ using Groq Llama 3.3 or Gemini Flash.
 """
 
 import os
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Union
 
 from core import cloud_api
 
@@ -20,7 +20,7 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 GEMINI_TIMEOUT_SEC = 6.0
 GROQ_TIMEOUT_SEC = 8.0
-DEFAULT_FALLBACK_RESPONSE = "Halt, little mortal! Reach into my bowl if you dare, but leave before I take your bones!"
+DEFAULT_FALLBACK_RESPONSE = "Sorry, I lost my train of thought. Please ask me again."
 
 
 class ConversationalLLMService:
@@ -34,7 +34,7 @@ class ConversationalLLMService:
         max_history_turns: int = 6,
         groq_model: Optional[str] = None,
         gemini_model: Optional[str] = None,
-        fallback_response: Optional[str] = None,
+        fallback_response: Union[str, Callable[[], str], None] = None,
     ) -> None:
         """Initialize the conversational LLM service.
 
@@ -43,9 +43,10 @@ class ConversationalLLMService:
             gemini_api_key: Optional Gemini API key for Gemini Flash text.
             system_prompt: Character persona and behavioral constraints.
             max_history_turns: Max back-and-forth dialogue turns to retain.
-            groq_model: Optional Groq LLM model (default: $GROQ_LLM_MODEL or llama-3.3-70b-versatile).
+            groq_model: Optional Groq LLM model (default: $GROQ_LLM_MODEL or cloud_api.GROQ_DEFAULT_LLM_MODEL).
             gemini_model: Optional Gemini model override (default: $GEMINI_LLM_MODEL).
-            fallback_response: Optional dialogue string on API failure (default: $LLM_FALLBACK_RESPONSE or default warning).
+            fallback_response: Optional dialogue string, or a function returning one, spoken when
+                every backend fails (default: $LLM_FALLBACK_RESPONSE or a neutral apology).
         """
         self.groq_api_key = groq_api_key or os.environ.get("GROQ_API_KEY")
         self.gemini_api_key = (
@@ -53,9 +54,9 @@ class ConversationalLLMService:
         )
         self.system_prompt = system_prompt
         self.max_history_turns = max_history_turns
-        self.groq_model = groq_model or os.environ.get("GROQ_LLM_MODEL", "llama-3.3-70b-versatile")
+        self.groq_model = groq_model or cloud_api.groq_llm_model()
         self.gemini_model = gemini_model or os.environ.get("GEMINI_LLM_MODEL")
-        self.fallback_response = (
+        self._fallback_source = (
             fallback_response
             or os.environ.get("LLM_FALLBACK_RESPONSE")
             or DEFAULT_FALLBACK_RESPONSE
@@ -66,6 +67,12 @@ class ConversationalLLMService:
             raise ValueError(
                 "Neither GROQ_API_KEY nor GEMINI_API_KEY is configured for LLM dialogue."
             )
+
+    @property
+    def fallback_response(self) -> str:
+        """Return the line to speak when every backend fails (a function source is called each time)."""
+        source = self._fallback_source
+        return source() if callable(source) else source
 
     def generate_response(self, user_text: str) -> str:
         """Generate creature reply to user speech.
@@ -163,6 +170,7 @@ class ConversationalLLMService:
             "messages": messages,
             "temperature": 0.8,
             "max_tokens": 100,
+            **cloud_api.groq_model_params(self.groq_model),
         }
 
         text = cloud_api.groq_chat(self.groq_api_key, payload, timeout=GROQ_TIMEOUT_SEC)

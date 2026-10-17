@@ -216,11 +216,11 @@ python3 -m venv venv
 source venv/bin/activate
 ```
 
-3. Upgrade packaging tools and install AlsaGeist with the Raspberry Pi GPIO libraries in editable mode:
+3. Upgrade packaging tools and install AlsaGeist with the Raspberry Pi GPIO libraries in editable mode, pinned to the tested dependency versions in `constraints.txt`:
 
 ```bash
 pip install --upgrade pip setuptools wheel
-pip install -e ".[rpi]"
+pip install -c constraints.txt -e ".[rpi]"
 ```
 
 4. Verify Python dependencies:

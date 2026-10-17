@@ -29,17 +29,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy source code and entrypoint
-COPY pyproject.toml README.md main.py ./
+COPY pyproject.toml constraints.txt README.md main.py ./
 COPY core/ ./core/
 COPY services/ ./services/
 COPY scripts/ ./scripts/
 COPY data/personalities/ ./data.defaults/personalities/
 COPY docker/entrypoint.sh /entrypoint.sh
 
-# Install AlsaGeist and its dependencies (including Raspberry Pi GPIO libraries) in editable mode
+# Install AlsaGeist and its dependencies (including Raspberry Pi GPIO libraries) in editable mode,
+# pinned to the versions in constraints.txt
 RUN chmod +x /entrypoint.sh && \
     pip install --upgrade pip setuptools wheel && \
-    pip install -e ".[rpi]"
+    pip install -c constraints.txt -e ".[rpi]"
 
 # Create volume mount targets
 RUN mkdir -p /app/data /app/models /app/logs

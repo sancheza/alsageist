@@ -494,14 +494,16 @@ class IntentParser:
 
     def _call_groq(self, prompt: str) -> str:
         """Call Groq API for intent expansion."""
+        model = cloud_api.groq_llm_model()
         payload = {
-            "model": "llama-3.3-70b-versatile",
+            "model": model,
             "messages": [
                 {"role": "system", "content": "You are a regex intent parser. Output valid JSON only."},
                 {"role": "user", "content": prompt},
             ],
             "response_format": {"type": "json_object"},
             "temperature": 0.2,
+            **cloud_api.groq_model_params(model),
         }
         try:
             return cloud_api.groq_chat(self.groq_api_key, payload, timeout=INTENT_API_TIMEOUT_SEC)

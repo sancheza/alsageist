@@ -154,7 +154,7 @@ def main() -> int:
                 print(f"Warning: Could not load personality '{args.personality}': {exc}", file=sys.stderr)
                 profile = None
 
-        display_name = profile.display_name if profile else "Grimjaw"
+        display_name = profile.display_name if profile else args.personality
         voice_id = profile.voice if profile else None
         with timer.phase("resolve voice"):
             model_path = resolve_piper_model_path(

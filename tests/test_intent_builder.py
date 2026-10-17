@@ -427,3 +427,17 @@ def test_resolve_voice_settings_precedence():
     assert resolve_voice_settings(profile, noise=0.1) == (1.3, 0.1)
     assert resolve_voice_settings(None) == (1.15, 0.85)
     assert resolve_voice_settings(PersonalityProfile("d", "D", "")) == (1.15, 0.85)
+
+
+def test_intent_parser_groq_uses_shared_model_and_params(monkeypatch):
+    """The intent parser asks Groq for the shared default model with its reasoning setting."""
+    from core.intent_builder import IntentParser
+
+    monkeypatch.delenv("GROQ_LLM_MODEL", raising=False)
+    parser = IntentParser(groq_api_key="g")
+    with patch("core.intent_builder.cloud_api.groq_chat", return_value="{}") as chat:
+        parser._call_groq("expand this")
+    payload = chat.call_args.args[1]
+    assert payload["model"] == "openai/gpt-oss-120b"
+    assert payload["reasoning_effort"] == "low"
+    assert payload["response_format"] == {"type": "json_object"}

@@ -15,9 +15,7 @@ def test_time_response_daytime():
     dt = datetime.datetime(2026, 10, 11, 14, 30, 0)
     resp = service.get_time_response(now=dt)
 
-    assert "2:30 PM" in resp
-    assert "past your bedtime" not in resp.lower()
-    assert "watch your fingers" in resp.lower()
+    assert resp == "It is 2:30 PM."
 
 
 def test_time_response_past_bedtime_night():
@@ -27,9 +25,7 @@ def test_time_response_past_bedtime_night():
     dt_10pm = datetime.datetime(2026, 10, 11, 22, 15, 0)
     resp = service.get_time_response(now=dt_10pm)
 
-    assert "10:15 PM" in resp
-    assert "past your bedtime" in resp.lower()
-    assert "midnight ghouls" in resp.lower()
+    assert resp == "It is currently 10:15 PM. It is late."
 
 
 def test_time_response_past_bedtime_midnight():
@@ -39,8 +35,7 @@ def test_time_response_past_bedtime_midnight():
     dt_midnight = datetime.datetime(2026, 10, 12, 1, 45, 0)
     resp = service.get_time_response(now=dt_midnight)
 
-    assert "1:45 AM" in resp
-    assert "past your bedtime" in resp.lower()
+    assert resp == "It is currently 1:45 AM. It is late."
 
 
 def test_time_response_morning_after_5am():
@@ -50,8 +45,7 @@ def test_time_response_morning_after_5am():
     dt_morning = datetime.datetime(2026, 10, 12, 8, 5, 0)
     resp = service.get_time_response(now=dt_morning)
 
-    assert "8:05 AM" in resp
-    assert "past your bedtime" not in resp.lower()
+    assert resp == "It is 8:05 AM."
 
 
 def test_weather_response_success():
@@ -62,7 +56,7 @@ def test_weather_response_success():
         resp = service.get_weather_response()
         assert "55 degrees Fahrenheit" in resp
         assert "light rain" in resp.lower()
-        assert "crisp and chilly" in resp.lower()
+        assert resp.endswith("It is chilly.")
 
 
 def test_weather_response_freezing():
@@ -72,16 +66,14 @@ def test_weather_response_freezing():
     with patch.object(service, "get_weather_data", return_value=fake_data):
         resp = service.get_weather_response()
         assert "32 degrees Fahrenheit" in resp
-        assert "freezing cold" in resp.lower()
+        assert resp.endswith("It is freezing.")
 
 
 def test_weather_response_offline_fallback():
     """Verify weather response falls back gracefully when weather data is None."""
     service = BasicInfoService()
     with patch.object(service, "get_weather_data", return_value=None):
-        resp = service.get_weather_response()
-        assert "internal barometer" in resp.lower()
-        assert "ribs rattle" in resp.lower()
+        assert service.get_weather_response() == "I cannot check the weather right now."
 
 
 def test_custom_profile_time_and_weather_responses():
@@ -151,7 +143,7 @@ def test_weather_offline_never_touches_network():
     service = BasicInfoService()
     with patch("services.basic_info_service.http_client.get_json") as get_json:
         assert service.get_weather_data(allow_network=False) is None
-        assert "internal barometer" in service.get_weather_response(allow_network=False).lower()
+        assert service.get_weather_response(allow_network=False) == "I cannot check the weather right now."
     get_json.assert_not_called()
 
 
@@ -180,3 +172,32 @@ def test_prefetch_weather_runs_one_fetch_at_a_time():
         release.set()
         first.join(timeout=2)
     assert get_json.call_count == 1
+
+
+def test_defaults_carry_no_persona_wording():
+    """Without profile text the answers are neutral; no character voice leaks in."""
+    service = BasicInfoService()
+    texts = [
+        service.get_time_response(now=datetime.datetime(2026, 10, 11, 14, 30)),
+        service.get_time_response(now=datetime.datetime(2026, 10, 11, 23, 30)),
+    ]
+    for temp in ("20", "50", "70", "90"):
+        with patch.object(service, "get_weather_data", return_value={"temp_f": temp, "temp_c": "0", "desc": "Clear"}):
+            texts.append(service.get_weather_response())
+    with patch.object(service, "get_weather_data", return_value=None):
+        texts.append(service.get_weather_response())
+
+    for text in texts:
+        for word in ("candy", "bones", "ribs", "crypt", "skeleton", "ghoul", "mortal"):
+            assert word not in text.lower(), (word, text)
+
+
+def test_grimjaw_profile_still_supplies_its_own_voice():
+    """The shipped persona keeps its wording because its profile defines every template."""
+    from core.intent_builder import load_personality
+
+    service = BasicInfoService(profile=load_personality("grimjaw"))
+    assert "candy bowl" in service.get_time_response(now=datetime.datetime(2026, 10, 11, 14, 30))
+    assert "goosebumps" not in service.get_time_response(now=datetime.datetime(2026, 10, 11, 14, 30))
+    with patch.object(service, "get_weather_data", return_value=None):
+        assert "barometer" in service.get_weather_response().lower()
