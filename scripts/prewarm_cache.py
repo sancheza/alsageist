@@ -97,6 +97,9 @@ def collect_phrases_to_prewarm(engine: PersonaIntentEngine, warm_all: bool, limi
     phrases.append(announcements.get("powering_off", "Powering off."))
     phrases.append(announcements.get("powering_down", "Powering down."))
 
+    # 2b. Spoken low-power lines
+    phrases.extend(getattr(profile, "low_power_lines", []) if profile else [])
+
     # 3. Volume step announcements
     volume_template = announcements.get("volume_template", "Volume {percent} percent.")
     for p in range(0, 101, 10):

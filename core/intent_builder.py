@@ -77,6 +77,7 @@ class PersonalityProfile:
     costume_prompts: List[str] = field(default_factory=list)
     fallbacks: List[str] = field(default_factory=list)
     escalation_lines: List[str] = field(default_factory=list)
+    low_power_lines: List[str] = field(default_factory=list)
     intents: List[CustomIntent] = field(default_factory=list)
     startup_greeting: Optional[str] = None
     priority_intents: List[str] = field(default_factory=list)
@@ -141,6 +142,8 @@ class PersonalityProfile:
             data["priority_intents"] = self.priority_intents
         if self.system_announcements:
             data["system_announcements"] = self.system_announcements
+        if self.low_power_lines:
+            data["low_power_lines"] = self.low_power_lines
         if self.voice_settings:
             data["voice_settings"] = self.voice_settings
         if self.time_responses:
@@ -165,6 +168,7 @@ class PersonalityProfile:
             costume_prompts=list(data.get("costume_prompts", [])),
             fallbacks=list(data.get("fallbacks", [])),
             escalation_lines=list(data.get("escalation_lines", [])),
+            low_power_lines=list(data.get("low_power_lines", [])),
             intents=intents,
             startup_greeting=data.get("startup_greeting"),
             priority_intents=list(data.get("priority_intents", [])),

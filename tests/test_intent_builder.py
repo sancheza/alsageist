@@ -441,3 +441,21 @@ def test_intent_parser_groq_uses_shared_model_and_params(monkeypatch):
     assert payload["model"] == "openai/gpt-oss-120b"
     assert payload["reasoning_effort"] == "low"
     assert payload["response_format"] == {"type": "json_object"}
+
+
+def test_low_power_lines_round_trip_and_are_omitted_when_empty():
+    """low_power_lines is saved and loaded, and left out of the file when a profile has none."""
+    with_lines = PersonalityProfile(personality="d", display_name="D", description="", low_power_lines=["I am weak."])
+    assert PersonalityProfile.from_dict(with_lines.to_dict()).low_power_lines == ["I am weak."]
+    assert "low_power_lines" not in PersonalityProfile(personality="d", display_name="D", description="").to_dict()
+
+
+def test_grimjaw_low_power_lines_are_speakable():
+    """The shipped persona has several short lines with no emoji or em-dash (they are spoken aloud)."""
+    from core.intent_builder import load_personality
+
+    lines = load_personality("grimjaw").low_power_lines
+    assert len(lines) >= 4 and len(set(lines)) == len(lines)
+    for line in lines:
+        assert 20 < len(line) <= 110, line
+        assert "—" not in line and not any(ord(ch) > 0x2000 for ch in line), line

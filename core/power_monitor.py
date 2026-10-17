@@ -21,6 +21,8 @@ from typing import Callable, List, Optional
 DEFAULT_CHECK_SEC = 60.0
 DEFAULT_WARN_SEC = 900.0
 DEFAULT_CLEAR_SEC = 300.0
+DEFAULT_ANNOUNCE_SEC = 3600.0
+UNDER_VOLTAGE_NOW = 1 << 0
 
 # Bit meanings from the Raspberry Pi firmware documentation for get_throttled.
 FLAGS_NOW = {
@@ -128,6 +130,8 @@ class PowerMonitor:
         warn_interval_sec: float = DEFAULT_WARN_SEC,
         clock: Callable[[], float] = time.monotonic,
         clear_after_sec: float = DEFAULT_CLEAR_SEC,
+        announce: Optional[Callable[["PowerStatus"], bool]] = None,
+        announce_interval_sec: float = DEFAULT_ANNOUNCE_SEC,
     ) -> None:
         """Create a monitor.
 
@@ -138,6 +142,10 @@ class PowerMonitor:
             warn_interval_sec: Minimum seconds between repeated warnings while throttling persists.
             clock: Monotonic time source in seconds.
             clear_after_sec: Seconds the CPU must stay clear before the recovery notice is logged.
+            announce: Optional function called while the supply is under-voltage, at most once per
+                announce_interval_sec. It returns True if it spoke; returning False (for example
+                because a visitor is talking) does not use up the interval.
+            announce_interval_sec: Minimum seconds between announcements.
         """
         self._log = log
         self._reader = reader
@@ -145,6 +153,9 @@ class PowerMonitor:
         self.warn_interval_sec = warn_interval_sec
         self._clock = clock
         self.clear_after_sec = clear_after_sec
+        self._announce = announce
+        self.announce_interval_sec = announce_interval_sec
+        self._last_announce: Optional[float] = None
         self._last_warning: Optional[float] = None
         self._was_active = False
         self._clear_since: Optional[float] = None
@@ -153,11 +164,16 @@ class PowerMonitor:
         self._thread: Optional[threading.Thread] = None
 
     @classmethod
-    def from_env(cls, log: Callable[[str], None] = print) -> "PowerMonitor":
-        """Create a monitor configured by THROTTLE_CHECK_SEC and THROTTLE_WARN_SEC.
+    def from_env(
+        cls,
+        log: Callable[[str], None] = print,
+        announce: Optional[Callable[["PowerStatus"], bool]] = None,
+    ) -> "PowerMonitor":
+        """Create a monitor configured by THROTTLE_CHECK_SEC, THROTTLE_WARN_SEC and LOW_POWER_ANNOUNCE_SEC.
 
         Args:
             log: Function that receives each message.
+            announce: Optional spoken-announcement function (see __init__).
 
         Returns:
             Configured PowerMonitor.
@@ -166,6 +182,8 @@ class PowerMonitor:
             log=log,
             check_interval_sec=float(os.environ.get("THROTTLE_CHECK_SEC", DEFAULT_CHECK_SEC)),
             warn_interval_sec=float(os.environ.get("THROTTLE_WARN_SEC", DEFAULT_WARN_SEC)),
+            announce=announce,
+            announce_interval_sec=float(os.environ.get("LOW_POWER_ANNOUNCE_SEC", DEFAULT_ANNOUNCE_SEC)),
         )
 
     def check(self) -> Optional[PowerStatus]:
@@ -191,6 +209,7 @@ class PowerMonitor:
             self._was_active = True
             self._clear_since = None
             self._reported_occurred.update(status.occurred)
+            self._maybe_announce(status, now)
             return status
 
         if self._was_active:
@@ -207,6 +226,20 @@ class PowerMonitor:
             self._reported_occurred.update(new)
             self._log(f"Warning: since boot the CPU reported: {', '.join(new)}{temp}. {self._advice(status)}")
         return status
+
+    def _maybe_announce(self, status: PowerStatus, now: float) -> None:
+        """Call the announcement function while under-voltage, at most once per interval."""
+        if self._announce is None or not status.raw & UNDER_VOLTAGE_NOW:
+            return
+        if self._last_announce is not None and now - self._last_announce < self.announce_interval_sec:
+            return
+        try:
+            spoke = self._announce(status)
+        except Exception as exc:  # isolation point: a failed announcement must not stop monitoring
+            self._log(f"Warning: low-power announcement failed: {exc}")
+            return
+        if spoke:
+            self._last_announce = now
 
     @staticmethod
     def _advice(status: PowerStatus) -> str:

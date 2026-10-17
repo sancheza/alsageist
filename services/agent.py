@@ -29,6 +29,8 @@ from services.tts_service import PiperTTSService
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IDLE_RESET_SEC = 10.0  # silence after which the next visitor starts a fresh conversation
+LOW_POWER_QUIET_SEC = 10.0  # no spoken low-power line within this time of a conversation
+DEFAULT_LOW_POWER_LINE = "My power supply is too weak. Please check the power adapter."
 
 
 class AlsaGeistAgent:
@@ -93,7 +95,8 @@ class AlsaGeistAgent:
         )
 
         self.control_server = ControlServer(agent=self)
-        self.power_monitor = PowerMonitor.from_env()
+        low_power_enabled = os.environ.get("LOW_POWER_ANNOUNCE", "true").strip().lower() not in ("false", "0", "no", "off")
+        self.power_monitor = PowerMonitor.from_env(announce=self._announce_low_power if low_power_enabled else None)
 
     # ------------------------------------------------------------------
     # Construction helpers
@@ -274,6 +277,27 @@ class AlsaGeistAgent:
         """Return a system announcement for the active persona."""
         profile = self.active_profile
         return profile.announcement(key, default) if profile else default
+
+    def _announce_low_power(self, status) -> bool:
+        """Say an in-character line about the weak power supply, if nobody is talking to the agent.
+
+        Called by the power monitor while the supply is under-voltage. It declines (returns
+        False, so the monitor tries again at its next check) during or just after a conversation
+        and while the agent is asleep.
+
+        Args:
+            status: The PowerStatus that triggered the call.
+
+        Returns:
+            True if the line was spoken.
+        """
+        if self.is_disabled or time.time() - self._last_activity_time < LOW_POWER_QUIET_SEC:
+            return False
+        profile = self.active_profile
+        lines = list(profile.low_power_lines) if profile and profile.low_power_lines else [DEFAULT_LOW_POWER_LINE]
+        line = random.choice(lines)
+        print(f"{self.persona_name} (low power): \"{line}\"")
+        return self.speak(line, blocking=True)
 
     # ------------------------------------------------------------------
     # Control API (thread-safe; used by button handlers and the IPC server)
@@ -579,8 +603,6 @@ class AlsaGeistAgent:
         self.led.set_state(LEDState.IDLE)
         if hasattr(self, "control_server"):
             self.control_server.start()
-        if getattr(self, "power_monitor", None) is not None:
-            self.power_monitor.start()
         if self.is_online:
             self.basic_info.prefetch_weather()
         self._note_activity()
@@ -607,6 +629,12 @@ class AlsaGeistAgent:
             self._play_startup_greeting()
             if not self.is_online:
                 self._announce_mode(online=False)
+
+        # Start the power monitor last: its first check may speak, and that must come after the
+        # greeting and outside the quiet period that follows startup
+        self._note_activity()
+        if getattr(self, "power_monitor", None) is not None:
+            self.power_monitor.start()
 
         try:
             while self.running:

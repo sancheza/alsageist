@@ -470,6 +470,8 @@ The service checks the firmware flags once a minute. While the CPU is throttled 
 | :--- | :--- | :--- |
 | `THROTTLE_CHECK_SEC` | `60` | Seconds between checks; `0` disables the monitor |
 | `THROTTLE_WARN_SEC` | `900` | Minimum seconds between repeated warnings while throttling continues |
+| `LOW_POWER_ANNOUNCE` | `true` | `false` turns off the spoken low-power line (the log warnings stay) |
+| `LOW_POWER_ANNOUNCE_SEC` | `3600` | Minimum seconds between spoken low-power lines |
 
 Example log lines (`journalctl -u alsageist.service`):
 ```text
@@ -479,6 +481,24 @@ Warning: since boot the CPU reported: under-voltage has occurred, throttling has
 ```
 
 * The monitor reads `vcgencmd get_throttled`, falling back to the kernel's under-voltage alarm. On machines with neither it does nothing.
+
+#### Spoken low-power line
+
+While the firmware reports under-voltage, the persona says one line from the profile's `low_power_lines` list out loud, such as "My power levels are low. I need to frighten more children to recharge."
+
+| Rule | Behavior |
+| :--- | :--- |
+| Frequency | At most once per `LOW_POWER_ANNOUNCE_SEC` (one hour by default) |
+| Trigger | Under-voltage detected now; a thermal limit alone does not trigger it |
+| Timing | Not spoken during a conversation or within 10 seconds of one, or while the display is asleep. The attempt is repeated at the next check, so a skipped line does not use up the hour |
+| Wording | A random line from `low_power_lines` in the active personality profile. A profile without the list says a plain sentence about the power supply |
+
+Turn it off in `.env`:
+```ini
+LOW_POWER_ANNOUNCE=false
+```
+
+After editing `low_power_lines`, run `python3 scripts/prewarm_cache.py --all` so the new lines play without a synthesis delay.
 
 ---
 
@@ -554,9 +574,14 @@ Personalities live in `data/personalities/<name>.json`. A profile defines charac
   "fallbacks": [
     "My ancient skull cannot decipher your mortal tongue.",
     "Speak clearly, mortal, or step away from the crypt."
+  ],
+  "low_power_lines": [
+    "My power levels are low. I need to frighten more children to recharge."
   ]
 }
 ```
+
+`fallbacks`, `escalation_lines`, and `low_power_lines` are lists of lines the persona speaks; `low_power_lines` is spoken while the power supply is weak (see section 5.5).
 
 ---
 

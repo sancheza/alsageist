@@ -651,3 +651,106 @@ def test_cloud_failure_with_network_up_stays_online():
 
     assert agent.is_online is True
     agent._announce_mode.assert_not_called()
+
+
+# ---- spoken low-power line ----
+
+def test_low_power_line_is_one_of_the_personas_lines(capsys):
+    """The agent speaks one of the profile's low-power lines when nobody is talking to it."""
+    profile = PersonalityProfile.load_from_file(find_personality_file("grimjaw"))
+    agent = make_bare_agent(profile=profile, dialogue_engine=PersonaIntentEngine(profile))
+    agent._last_activity_time = time.time() - 60
+
+    assert agent._announce_low_power(MagicMock()) is True
+
+    spoken = agent.tts.synthesize.call_args.args[0]
+    assert spoken in profile.low_power_lines
+    assert "(low power)" in capsys.readouterr().out
+
+
+def test_low_power_line_waits_while_a_conversation_is_active():
+    """During or right after a conversation the agent declines, so the monitor retries later."""
+    profile = PersonalityProfile.load_from_file(find_personality_file("grimjaw"))
+    agent = make_bare_agent(profile=profile, dialogue_engine=PersonaIntentEngine(profile))
+    agent._note_activity()
+
+    assert agent._announce_low_power(MagicMock()) is False
+    agent.tts.synthesize.assert_not_called()
+
+
+def test_low_power_line_not_spoken_while_asleep():
+    """A disabled (sleeping) agent stays silent."""
+    agent = make_bare_agent()
+    agent._last_activity_time = time.time() - 60
+    agent.is_disabled = True
+    assert agent._announce_low_power(MagicMock()) is False
+    agent.tts.synthesize.assert_not_called()
+
+
+def test_low_power_line_uses_neutral_default_without_persona_lines():
+    """A profile with no low-power lines gets a plain, persona-free sentence."""
+    from services.agent import DEFAULT_LOW_POWER_LINE
+
+    agent = make_bare_agent()
+    agent._last_activity_time = time.time() - 60
+    assert agent._announce_low_power(MagicMock()) is True
+    agent.tts.synthesize.assert_called_once_with(DEFAULT_LOW_POWER_LINE)
+    for word in ("crypt", "bones", "mortal", "children"):
+        assert word not in DEFAULT_LOW_POWER_LINE.lower()
+
+
+def _construct_agent(tmp_path, monkeypatch, **env):
+    monkeypatch.setenv("LOG_DIR", str(tmp_path))
+    monkeypatch.delenv("MODEL_PATH", raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    args = make_args(led_pin=25, button_pin=23, button_hold_sec=5.0, button_shutdown_sec=10.0)
+    with patch("services.agent.AudioIO"), patch("services.agent.SpeechToTextService"), \
+         patch("services.agent.PiperTTSService"), patch("services.agent.create_led_controller"), \
+         patch("services.agent.ControlServer"), patch("services.agent.PowerMonitor.from_env") as from_env, \
+         patch.object(AlsaGeistAgent, "_check_internet", return_value=True):
+        agent = AlsaGeistAgent(args)
+    return agent, from_env
+
+
+def test_low_power_announcement_is_on_by_default(tmp_path, monkeypatch):
+    """Without LOW_POWER_ANNOUNCE the monitor is given the agent's announce method."""
+    monkeypatch.delenv("LOW_POWER_ANNOUNCE", raising=False)
+    agent, from_env = _construct_agent(tmp_path, monkeypatch)
+    assert from_env.call_args.kwargs["announce"] == agent._announce_low_power
+
+
+def test_low_power_announcement_can_be_turned_off(tmp_path, monkeypatch):
+    """LOW_POWER_ANNOUNCE=false keeps the log warnings but removes the spoken line."""
+    for value in ("false", "0", "no", "off", "FALSE"):
+        _, from_env = _construct_agent(tmp_path, monkeypatch, LOW_POWER_ANNOUNCE=value)
+        assert from_env.call_args.kwargs["announce"] is None, value
+
+
+def test_power_monitor_starts_after_the_startup_greeting():
+    """A low-power line can never be spoken before the greeting or during startup."""
+    agent = make_bare_agent()
+    agent.args = make_args(no_greeting=False)
+    agent.logger.jsonl_path = "unused"
+    agent.last_net_check_time = time.time()
+    agent.net_check_interval = 3600.0
+    agent._net_check_thread = None
+    agent._net_check_result = None
+    agent.audio.read_frame.return_value = None
+    order = []
+    agent._play_startup_greeting = MagicMock(side_effect=lambda: order.append("greeting"))
+    agent.power_monitor = MagicMock()
+    agent.power_monitor.start.side_effect = lambda: order.append("monitor")
+
+    runner = threading.Thread(target=agent.start, daemon=True)
+    runner.start()
+    for _ in range(100):
+        if "monitor" in order:
+            break
+        time.sleep(0.02)
+    agent.running = False
+    runner.join(timeout=3)
+
+    assert order == ["greeting", "monitor"]
+    # and the quiet period has just been restarted, so the monitor's first check would not speak
+    assert time.time() - agent._last_activity_time < 5

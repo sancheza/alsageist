@@ -227,3 +227,99 @@ def test_read_status_survives_vcgencmd_failures():
         with patch("core.power_monitor.subprocess.run") as run:
             run.return_value = MagicMock(returncode=0, stdout="garbage")
             assert power_monitor.read_status() is None
+
+
+# ---- spoken low-power announcement ----
+
+UNDER_VOLTAGE = PowerStatus(0x50005)       # under-voltage and throttled now
+THERMAL_ONLY = PowerStatus(1 << 3)         # soft temperature limit; the supply is fine
+
+
+def _announcing_monitor(statuses, announce, interval=3600.0):
+    messages = []
+    queue = list(statuses)
+    clock = {"now": 0.0}
+    monitor = PowerMonitor(
+        log=messages.append,
+        reader=lambda: queue.pop(0) if queue else None,
+        clock=lambda: clock["now"],
+        announce=announce,
+        announce_interval_sec=interval,
+    )
+    return monitor, messages, clock
+
+
+def test_announces_under_voltage_at_most_once_per_interval():
+    """The spoken line is limited to one per hour even though the supply stays low."""
+    calls = []
+    monitor, _, clock = _announcing_monitor([UNDER_VOLTAGE] * 5, lambda status: calls.append(status) or True)
+
+    monitor.check()                 # t=0: announces
+    clock["now"] = 60
+    monitor.check()
+    clock["now"] = 3000
+    monitor.check()
+    assert len(calls) == 1 and calls[0].raw == 0x50005
+
+    clock["now"] = 3601
+    monitor.check()                 # an hour has passed: announces again
+    assert len(calls) == 2
+
+
+def test_declined_announcement_does_not_use_up_the_interval():
+    """If the agent declines (a visitor is talking), the next check tries again."""
+    answers = iter([False, False, True, True])
+    calls = []
+    monitor, _, clock = _announcing_monitor([UNDER_VOLTAGE] * 4, lambda s: calls.append(1) or next(answers))
+
+    for minute in range(4):
+        clock["now"] = minute * 60
+        monitor.check()
+
+    assert len(calls) == 3          # declined twice, spoke on the third, then the hour limit applies
+
+
+def test_no_announcement_without_under_voltage():
+    """Healthy readings and thermal throttling never trigger the spoken line."""
+    calls = []
+    monitor, _, _ = _announcing_monitor([PowerStatus(0), THERMAL_ONLY, PowerStatus(0x50000)], lambda s: calls.append(1) or True)
+    for _ in range(3):
+        monitor.check()
+    assert calls == []
+
+
+def test_announcement_failure_is_logged_and_retried():
+    """An error while speaking is logged; monitoring continues and tries again next check."""
+    attempts = []
+
+    def flaky(status):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise RuntimeError("audio busy")
+        return True
+
+    monitor, messages, clock = _announcing_monitor([UNDER_VOLTAGE, UNDER_VOLTAGE], flaky)
+    monitor.check()
+    clock["now"] = 60
+    monitor.check()
+
+    assert len(attempts) == 2
+    assert any("low-power announcement failed: audio busy" in m for m in messages)
+
+
+def test_no_announce_function_means_log_only():
+    """Without an announce function the monitor only logs, as before."""
+    monitor, messages, _ = _announcing_monitor([UNDER_VOLTAGE], announce=None)
+    monitor.check()
+    assert len(messages) == 1 and messages[0].startswith("Warning: CPU throttling")
+
+
+def test_from_env_reads_announce_interval(monkeypatch):
+    """LOW_POWER_ANNOUNCE_SEC sets the interval and the announce function is passed through."""
+    function = lambda status: True  # noqa: E731
+    monkeypatch.setenv("LOW_POWER_ANNOUNCE_SEC", "120")
+    monitor = PowerMonitor.from_env(announce=function)
+    assert monitor.announce_interval_sec == 120.0 and monitor._announce is function
+
+    monkeypatch.delenv("LOW_POWER_ANNOUNCE_SEC")
+    assert PowerMonitor.from_env().announce_interval_sec == 3600.0

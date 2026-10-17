@@ -62,6 +62,14 @@
     "powering_off": "Powering off.",
     "powering_down": "Powering down."
   },
+  "low_power_lines": [
+    "My power levels are low. I need to frighten more children to recharge.",
+    "I am running on fumes and spite. Someone check my power cord, or send a child to scare.",
+    "My life force is flickering. A weak power supply is draining the crypt.",
+    "Even a skeleton needs proper voltage. Fetch me a better charger, mortal.",
+    "My bones are tingling with too little power. A few good screams would help.",
+    "The spirits of the electrical grid have abandoned me. Please feed me more power."
+  ],
   "voice_settings": {
     "tempo": 1.15,
     "noise": 0.85

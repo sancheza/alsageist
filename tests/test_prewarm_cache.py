@@ -88,3 +88,18 @@ def test_prewarm_cache_custom_personality():
         assert "Witch whisper level 50 percent." in result.stdout
         assert "Eye of newt and toe of frog!" in result.stdout
         assert "This bog has stood for ten centuries." in result.stdout
+
+
+def test_prewarm_includes_low_power_lines():
+    """The spoken low-power lines are pre-rendered, since a new sentence takes seconds to synthesize on a Pi."""
+    from core.intent_builder import PersonalityProfile
+    from scripts.prewarm_cache import collect_phrases_to_prewarm
+    from services.intent_service import PersonaIntentEngine
+
+    profile = PersonalityProfile(
+        personality="demo", display_name="Demo", description="",
+        fallbacks=["Huh?"], costume_prompts=["Who are you?"], escalation_lines=["Go away."],
+        low_power_lines=["I am low on power.", "Feed me electricity."],
+    )
+    phrases = collect_phrases_to_prewarm(PersonaIntentEngine(profile), warm_all=True, limit=10)
+    assert "I am low on power." in phrases and "Feed me electricity." in phrases
