@@ -124,8 +124,7 @@ class ConversationalLLMService:
         Returns:
             Cleaned reply text, or an empty string when every model fails or answers with nothing.
         """
-        candidates_models = [self.gemini_model, "gemini-3.1-flash-lite", "gemini-3.5-flash"]
-        models_to_try = [m for m in candidates_models if m]
+        models_to_try = cloud_api.gemini_llm_models(self.gemini_model)
 
         contents = []
         for msg in self.history:

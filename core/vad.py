@@ -67,13 +67,16 @@ class VoiceActivityDetector:
         Returns:
             RMS energy float value.
         """
+        if frame is None or len(frame) == 0:
+            return 0.0
+
         if frame.dtype == np.int16:
             normalized = frame.astype(np.float32) / 32768.0
         else:
             normalized = frame.astype(np.float32)
 
         mean_square = np.mean(normalized ** 2)
-        if mean_square <= 0.0:
+        if np.isnan(mean_square) or mean_square <= 0.0:
             return 0.0
         return float(math.sqrt(mean_square))
 
@@ -95,11 +98,11 @@ class VoiceActivityDetector:
             if not is_speech:
                 if rms < 0.008:
                     self.noise_floor = 0.98 * self.noise_floor + 0.02 * max(rms, 0.0005)
-                self._pre_speech_buffer.append(frame.copy())
+                self._pre_speech_buffer.append(frame)
                 self._consecutive_speech_frames = 0
             else:
                 self._consecutive_speech_frames += 1
-                self._pre_speech_buffer.append(frame.copy())
+                self._pre_speech_buffer.append(frame)
                 if self._consecutive_speech_frames >= self.min_speech_frames:
                     self.is_speaking = True
                     self._consecutive_silence_frames = 0
@@ -109,7 +112,7 @@ class VoiceActivityDetector:
             return is_speech, False, None
 
         # Ongoing speech tracking
-        self._speech_buffer.append(frame.copy())
+        self._speech_buffer.append(frame)
 
         if is_speech:
             self._consecutive_silence_frames = 0

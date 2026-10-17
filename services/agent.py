@@ -79,12 +79,17 @@ class AlsaGeistAgent:
         log_dir = os.environ.get("LOG_DIR", os.path.join(REPO_ROOT, "logs"))
         self.logger = InteractionLogger.from_env(log_dir=log_dir, persona_name=self.persona_name)
         self.basic_info = BasicInfoService(profile=self.profile)
+        self.basic_info.prefetch_weather()
 
-        self.is_online = self._check_internet()
-        self.last_net_check_time = time.time()
+        self.is_online = True
+        self.last_net_check_time = 0.0
         self.net_check_interval = 15.0 * 60.0  # 15 minutes
         self._net_check_thread: Optional[threading.Thread] = None
         self._net_check_result: Optional[bool] = None
+        self._net_check_thread = threading.Thread(
+            target=self._probe_network, daemon=True, name="AlsaGeist-NetCheck"
+        )
+        self._net_check_thread.start()
 
         self.led.set_button_callbacks(
             on_press=self._on_button_press,
@@ -428,7 +433,21 @@ class AlsaGeistAgent:
             profile = self._load_profile(name_or_path, strict=True)
             engine, fallback = self._build_dialogue(profile, name_or_path)
             tts = self._reuse_or_build_tts(profile)
-            info = BasicInfoService(profile=profile)
+            cached_weather = (
+                self.basic_info.cached_weather
+                if hasattr(self, "basic_info") and self.basic_info is not None
+                else None
+            )
+            cached_time = (
+                self.basic_info.cached_weather_time
+                if hasattr(self, "basic_info") and self.basic_info is not None
+                else 0.0
+            )
+            info = BasicInfoService(
+                profile=profile,
+                cached_weather=cached_weather,
+                cached_weather_time=cached_time,
+            )
 
             with self._state_lock:
                 self.profile = profile
@@ -482,6 +501,15 @@ class AlsaGeistAgent:
         """
         if self.is_disabled:
             return
+        if not blocking:
+            threading.Thread(
+                target=self._play_speech_audio,
+                args=(audio_data, sample_rate),
+                kwargs={"blocking": True, "cooldown_sec": cooldown_sec},
+                daemon=True,
+                name="AlsaGeist-SpeechPlayback",
+            ).start()
+            return
         generation = -1
         try:
             with self._audio_lock:
@@ -490,7 +518,7 @@ class AlsaGeistAgent:
                     generation = self._playback_generation
                     self.led.set_state(LEDState.SPEAKING)
                     self.audio.mute_capture()
-                self.audio.play_audio(audio_data, sample_rate=sample_rate, blocking=blocking)
+                self.audio.play_audio(audio_data, sample_rate=sample_rate, blocking=True)
         finally:
             if generation >= 0:
                 if cooldown_sec > 0:
@@ -838,6 +866,8 @@ class AlsaGeistAgent:
                 status="ERROR",
                 notes=f"STT Exception: {exc}",
             )
+            self.audio.drain_input_queue()
+            self.vad.reset()
             time.sleep(1.0)
             return
 
@@ -851,6 +881,8 @@ class AlsaGeistAgent:
             else:
                 print(f"  (Filtered ambient background artifact / timecode: \"{user_text}\")")
             self.led.set_state(LEDState.IDLE)
+            self.audio.drain_input_queue()
+            self.vad.reset()
             self.logger.log_interaction(
                 transcribed_text=user_text or "",
                 response_text="",
@@ -871,6 +903,8 @@ class AlsaGeistAgent:
         except Exception as exc:
             print(f"Dialogue Error: {exc}")
             self.led.set_state(LEDState.ERROR)
+            self.audio.drain_input_queue()
+            self.vad.reset()
             time.sleep(1.0)
             return
 
@@ -884,6 +918,8 @@ class AlsaGeistAgent:
         except Exception as exc:
             print(f"TTS Error: {exc}")
             self.led.set_state(LEDState.ERROR)
+            self.audio.drain_input_queue()
+            self.vad.reset()
             time.sleep(1.0)
             return
 

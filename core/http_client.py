@@ -24,8 +24,28 @@ def _send(request: urllib.request.Request, timeout: float) -> Any:
     """Send a prepared request and decode the JSON response body."""
     if not request.has_header("User-agent"):
         request.add_unredirected_header("User-Agent", USER_AGENT)
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read().decode("utf-8")
+            try:
+                return json.loads(body)
+            except json.JSONDecodeError as err:
+                preview = body.strip().replace("\n", " ")[:200]
+                status = getattr(response, "status", 200)
+                raise RuntimeError(
+                    f"Invalid JSON received from {request.full_url} (HTTP {status}): {preview}"
+                ) from err
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = exc.read().decode("utf-8", errors="replace").strip().replace("\n", " ")[:300]
+        except Exception:
+            detail = ""
+        msg = f"HTTP {exc.code} {exc.reason} from {request.full_url}"
+        if detail:
+            msg = f"{msg}: {detail}"
+        raise urllib.error.HTTPError(
+            exc.url, exc.code, msg, exc.hdrs, exc.fp
+        ) from exc
 
 
 def get_json(

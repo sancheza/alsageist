@@ -357,20 +357,34 @@ class RaspberryPiLEDController(BaseLEDController):
     def _set_duty_cycle(self, duty_percent: float) -> None:
         """Set LED brightness duty cycle (0.0 to 100.0)."""
         clamped = max(0.0, min(100.0, float(duty_percent)))
-        if self._backend == "gpiozero" and self._gpio_led:
-            self._gpio_led.value = clamped / 100.0
-        elif self._backend == "rpi.gpio" and self._rpi_pwm:
-            self._rpi_pwm.ChangeDutyCycle(clamped)
+        try:
+            if self._backend == "gpiozero" and self._gpio_led:
+                self._gpio_led.value = clamped / 100.0
+            elif self._backend == "rpi.gpio" and self._rpi_pwm:
+                self._rpi_pwm.ChangeDutyCycle(clamped)
+        except Exception:
+            pass
 
     def stop(self) -> None:
         """Stop PWM and clean up GPIO."""
         self._running = False
         self._buttons.cancel()
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(timeout=1.0)
+            self._thread = None
         if self._backend == "gpiozero":
             if self._gpio_led:
-                self._gpio_led.close()
+                try:
+                    self._gpio_led.close()
+                except Exception:
+                    pass
+                self._gpio_led = None
             if self._gpio_btn:
-                self._gpio_btn.close()
+                try:
+                    self._gpio_btn.close()
+                except Exception:
+                    pass
+                self._gpio_btn = None
         elif self._backend == "rpi.gpio":
             if self._rpi_pwm:
                 try:
@@ -379,6 +393,7 @@ class RaspberryPiLEDController(BaseLEDController):
                     GPIO.cleanup([self.led_pin, self.button_pin])
                 except Exception:
                     pass
+                self._rpi_pwm = None
 
     def set_state(self, state: LEDState) -> None:
         """Update hardware LED operating state."""
@@ -424,6 +439,8 @@ class RaspberryPiLEDController(BaseLEDController):
         while self._running:
             if self._run_pending_flash():
                 continue
+            if step > 6283.0:  # ~1000 * 2*pi
+                step %= (2.0 * math.pi)
             if self.current_state == LEDState.IDLE:
                 # 0.5 Hz smooth sinusoidal breathing
                 duty = (math.sin(step) + 1.0) / 2.0 * 80.0 + 5.0

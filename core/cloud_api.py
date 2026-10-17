@@ -5,7 +5,7 @@ core.http_client so callers pass a payload and receive text or parts.
 """
 
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from core import http_client
 
@@ -13,6 +13,20 @@ GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:ge
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_TRANSCRIBE_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 GROQ_DEFAULT_LLM_MODEL = "openai/gpt-oss-120b"
+GEMINI_DEFAULT_LLM_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+GEMINI_DEFAULT_STT_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+
+
+def gemini_llm_models(override: Optional[str] = None) -> List[str]:
+    """Return prioritized candidate models for Gemini text generation."""
+    explicit = override or os.environ.get("GEMINI_LLM_MODEL")
+    return [explicit] if explicit else list(GEMINI_DEFAULT_LLM_MODELS)
+
+
+def gemini_stt_models(override: Optional[str] = None) -> List[str]:
+    """Return prioritized candidate models for Gemini audio transcription."""
+    explicit = override or os.environ.get("GEMINI_STT_MODEL")
+    return [explicit] if explicit else list(GEMINI_DEFAULT_STT_MODELS)
 
 
 def groq_llm_model() -> str:

@@ -177,11 +177,24 @@ def load_env_file(path: str = ".env") -> None:
         with open(target_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("export "):
+                    line = line[7:].lstrip()
+                if "=" not in line:
                     continue
                 key, val = line.split("=", 1)
                 key = key.strip()
-                val = val.strip().strip('"').strip("'")
+                val = val.strip()
+                if val.startswith('"') and '"' in val[1:]:
+                    end_idx = val[1:].find('"') + 1
+                    val = val[1:end_idx]
+                elif val.startswith("'") and "'" in val[1:]:
+                    end_idx = val[1:].find("'") + 1
+                    val = val[1:end_idx]
+                else:
+                    if "#" in val:
+                        val = val.split("#", 1)[0].strip()
                 if key and key not in os.environ:
                     os.environ[key] = val
     except Exception as exc:

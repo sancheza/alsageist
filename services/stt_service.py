@@ -148,13 +148,19 @@ class SpeechToTextService:
         if offline:
             return self.transcribe_offline(audio_array)
 
-        wav_bytes = self._audio_to_wav_bytes(audio_array)
+        wav_bytes: Optional[bytes] = None
+
+        def _get_wav() -> bytes:
+            nonlocal wav_bytes
+            if wav_bytes is None:
+                wav_bytes = self._audio_to_wav_bytes(audio_array)
+            return wav_bytes
 
         backends = []
         if self.groq_api_key:
-            backends.append(("Groq Whisper", lambda: self._transcribe_groq(wav_bytes)))
+            backends.append(("Groq Whisper", lambda: self._transcribe_groq(_get_wav())))
         if self.gemini_api_key:
-            backends.append(("Gemini", lambda: self._transcribe_gemini(wav_bytes)))
+            backends.append(("Gemini", lambda: self._transcribe_gemini(_get_wav())))
         if self._vosk_model:
             backends.append(("Vosk", lambda: self.transcribe_offline(audio_array)))
         if not backends:
@@ -180,13 +186,7 @@ class SpeechToTextService:
     def _transcribe_gemini(self, wav_bytes: bytes) -> str:
         """Transcribe using fast Google Gemini multimodal audio transcription."""
         b64_data = base64.b64encode(wav_bytes).decode("utf-8")
-        candidates_models = [
-            self.gemini_model,
-            "gemini-3.5-flash-lite",
-            "gemini-flash-lite-latest",
-            "gemini-3.5-transcribe",
-        ]
-        models_to_try = [m for m in candidates_models if m]
+        models_to_try = cloud_api.gemini_stt_models(self.gemini_model)
 
         prompt_text = (
             "Listen carefully to the audio and transcribe the spoken words verbatim. "

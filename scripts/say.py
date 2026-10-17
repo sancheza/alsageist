@@ -122,6 +122,12 @@ def parse_args() -> argparse.Namespace:
         help="Print how long each phase took (imports, model load, synthesis, playback).",
     )
     parser.add_argument(
+        "-d",
+        "--dry-run",
+        action="store_true",
+        help="Simulate speech synthesis and playback without modifying audio hardware.",
+    )
+    parser.add_argument(
         "-v",
         "--version",
         action="version",
@@ -164,6 +170,11 @@ def main() -> int:
             )
             tempo, noise = resolve_voice_settings(profile, args.tempo)
             vol = args.volume if args.volume is not None else float(os.environ.get("VOLUME", "0.5"))
+
+        if args.dry_run:
+            print(f"[DRY-RUN] {display_name} speaking (volume={vol}): \"{args.text}\"")
+            print(f"  Voice Model: {model_path} (tempo={tempo}, noise={noise})")
+            return 0
 
         with timer.phase("init audio"):
             audio = AudioIO(volume=vol)

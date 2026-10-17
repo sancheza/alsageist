@@ -83,6 +83,7 @@ class ControlServer:
         self._bound = False
         self._server_sock: Optional[socket.socket] = None
         self._thread: Optional[threading.Thread] = None
+        self._client_semaphore = threading.BoundedSemaphore(8)
 
     def start(self) -> None:
         """Start the control server background listening thread.
@@ -189,6 +190,20 @@ class ControlServer:
                 conn.close()
                 continue
 
+            if not self._client_semaphore.acquire(blocking=False):
+                try:
+                    conn.settimeout(1.0)
+                    busy_msg = (
+                        json.dumps({"status": "error", "message": "Server busy: maximum concurrent clients reached."})
+                        + "\n"
+                    )
+                    conn.sendall(busy_msg.encode("utf-8"))
+                except Exception:
+                    pass
+                finally:
+                    conn.close()
+                continue
+
             # Handle each connection in a quick worker thread
             client_thread = threading.Thread(
                 target=self._handle_client,
@@ -259,6 +274,7 @@ class ControlServer:
                 conn.close()
             except Exception:
                 pass
+            self._client_semaphore.release()
 
     def dispatch_command(self, cmd: str, value: Any = None) -> Dict[str, Any]:
         """Dispatch command to the AlsaGeist agent and return response dict.

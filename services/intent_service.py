@@ -75,13 +75,14 @@ class PersonaIntentEngine:
             Tuple of (response_text, matched_intent_name).
         """
         if not user_text or not user_text.strip():
-            return random.choice(self._fallbacks), "fallback_empty"
+            fallback = random.choice(self._fallbacks) if self._fallbacks else "I am listening."
+            return fallback, "fallback_empty"
 
         self._turn_count += 1
         clean_text = re.sub(r"[^\w\s\']", " ", user_text.lower()).strip()
         clean_text = re.sub(r"\s+", " ", clean_text)
 
-        # 1. Check intent rules first to always answer direct questions and costume statements accurately
+        # 1. Check intent rules first to always answer direct questions accurately
         for intent_name, compiled_patterns, responses in self._compiled_intent_rules:
             for pattern in compiled_patterns:
                 if pattern.search(clean_text):
@@ -89,26 +90,29 @@ class PersonaIntentEngine:
                         chosen = self._pick_unique(self._random_content_pool)
                     else:
                         chosen = self._pick_unique(responses)
-                    if intent_name in ("goodbye", "holidays_and_farewell") and any(
-                        w in clean_text for w in ["bye", "see you", "thank", "next year"]
+                    if not chosen:
+                        chosen = self._pick_unique(self._fallbacks) if self._fallbacks else "I hear you."
+                    if intent_name in ("goodbye", "farewell", "holidays_and_farewell") and any(
+                        w in clean_text for w in ["bye", "see you", "thank", "next year", "farewell"]
                     ):
                         self.reset_conversation()
                     return chosen, intent_name
 
-        # 2. Once a conversation has been initiated (Turn 2), occasionally (1 in 3 chance) ask who they are dressed as
-        if self._turn_count >= 2 and not self._asked_costume and random.random() < 0.33:
+        # 2. Once a conversation has been initiated (Turn 2), occasionally ask who they are dressed as if prompts exist
+        if self._turn_count >= 2 and not self._asked_costume and self._costume_prompts and random.random() < 0.33:
             self._asked_costume = True
             prompt_line = random.choice(self._costume_prompts)
             return prompt_line, "costume_inquiry"
 
         # 3. Lingerer escalation for unrecognized phrases on late turns
-        if self._turn_count >= 8 and random.random() < 0.6:
+        if self._turn_count >= 8 and self._escalation_lines and random.random() < 0.6:
             chosen = self._pick_unique(self._escalation_lines)
             self.reset_conversation()
             return chosen, "lingerer_escalation"
 
         # 4. Fallback for unrecognized phrases
-        return self._pick_unique(self._fallbacks), "fallback_unrecognized"
+        fallback = self._pick_unique(self._fallbacks) if self._fallbacks else "I am not sure how to answer that."
+        return fallback, "fallback_unrecognized"
 
     def generate_response(self, user_text: str) -> str:
         """Classify user text and return the best conversational response.
@@ -131,10 +135,15 @@ class PersonaIntentEngine:
         Returns:
             Selected response string.
         """
-        available = [c for c in choices if c not in self._recently_used]
+        valid_choices = [c for c in choices if c and c.strip()]
+        if not valid_choices:
+            return ""
+
+        available = [c for c in valid_choices if c not in self._recently_used]
         if not available:
-            available = choices
-            self._recently_used.clear()
+            for c in valid_choices:
+                self._recently_used.pop(c, None)
+            available = valid_choices
 
         chosen = random.choice(available)
         self._recently_used[chosen] = None

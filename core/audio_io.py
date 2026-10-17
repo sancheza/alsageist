@@ -204,9 +204,15 @@ class AudioIO:
         """
         if orig_sr == target_sr or len(audio_data) == 0:
             return audio_data
+        if target_sr == 2 * orig_sr and len(audio_data) > 1:
+            out = np.empty(len(audio_data) * 2, dtype=np.float32)
+            out[0::2] = audio_data
+            out[1:-1:2] = 0.5 * (audio_data[:-1] + audio_data[1:])
+            out[-1] = audio_data[-1]
+            return out
         num_samples = int(len(audio_data) * (target_sr / orig_sr))
-        orig_indices = np.linspace(0, len(audio_data) - 1, len(audio_data))
-        target_indices = np.linspace(0, len(audio_data) - 1, num_samples)
+        orig_indices = np.arange(len(audio_data), dtype=np.float32)
+        target_indices = np.linspace(0, len(audio_data) - 1, num_samples, dtype=np.float32)
         return np.interp(target_indices, orig_indices, audio_data).astype(np.float32)
 
     def play_audio(

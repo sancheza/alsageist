@@ -70,6 +70,7 @@ class PiperTTSService:
         self._syn_config = None
         self._voice_loaded = False
         self._load_lock = threading.Lock()
+        self._lock = threading.RLock()
         self.voice_load_sec = 0.0  # time spent loading the voice model so far
         self._cache: "OrderedDict[str, np.ndarray]" = OrderedDict()
         self.max_memory_entries = max(1, int(max_memory_entries))
@@ -82,7 +83,8 @@ class PiperTTSService:
             os.makedirs(self.cache_dir, exist_ok=True)
         except OSError:
             pass
-        self._prune_disk_cache()
+        with self._lock:
+            self._prune_disk_cache()
 
         if not lazy_load:
             self._ensure_voice()
@@ -230,47 +232,48 @@ class PiperTTSService:
         if not text or not text.strip():
             return np.zeros(0, dtype=np.float32), self.sample_rate
 
-        # 1. Check in-memory RAM cache
-        if text in self._cache:
-            self._cache.move_to_end(text)
-            return self._cache[text], self.sample_rate
+        with self._lock:
+            # 1. Check in-memory RAM cache
+            if text in self._cache:
+                self._cache.move_to_end(text)
+                return self._cache[text], self.sample_rate
 
-        # 2. Check persistent disk cache
-        cache_path = self._get_cache_path(text)
-        if os.path.isfile(cache_path):
+            # 2. Check persistent disk cache
+            cache_path = self._get_cache_path(text)
+            if os.path.isfile(cache_path):
+                try:
+                    audio = np.load(cache_path)
+                    os.utime(cache_path)  # mark as recently used
+                    self._remember(text, audio)
+                    return audio, self.sample_rate
+                except (OSError, ValueError, EOFError):
+                    pass
+
+            # Split on explicit pauses (ellipsis '...' or multiple newlines)
+            chunks = [c.strip() for c in re.split(r"\.{2,}|\n+", text) if c.strip()]
+
+            if len(chunks) <= 1:
+                audio = self._synthesize_chunk(text)
+            else:
+                audio_parts = []
+                pause_samples = np.zeros(int(self.sample_rate * self.pause_duration_sec), dtype=np.float32)
+
+                for i, chunk in enumerate(chunks):
+                    chunk_audio = self._synthesize_chunk(chunk)
+                    audio_parts.append(chunk_audio)
+                    if i < len(chunks) - 1:
+                        audio_parts.append(pause_samples)
+
+                audio = np.concatenate(audio_parts)
+
+            # Store in RAM and disk cache
+            self._remember(text, audio)
             try:
-                audio = np.load(cache_path)
-                os.utime(cache_path)  # mark as recently used
-                self._remember(text, audio)
+                tmp_path = f"{cache_path[:-4]}.tmp.{os.getpid()}.{threading.get_ident()}.npy"
+                np.save(tmp_path, audio)
+                os.replace(tmp_path, cache_path)
+            except OSError:
                 return audio, self.sample_rate
-            except (OSError, ValueError, EOFError):
-                pass
+            self._prune_disk_cache()
 
-        # Split on explicit pauses (ellipsis '...' or multiple newlines)
-        chunks = [c.strip() for c in re.split(r"\.{2,}|\n+", text) if c.strip()]
-
-        if len(chunks) <= 1:
-            audio = self._synthesize_chunk(text)
-        else:
-            audio_parts = []
-            pause_samples = np.zeros(int(self.sample_rate * self.pause_duration_sec), dtype=np.float32)
-
-            for i, chunk in enumerate(chunks):
-                chunk_audio = self._synthesize_chunk(chunk)
-                audio_parts.append(chunk_audio)
-                if i < len(chunks) - 1:
-                    audio_parts.append(pause_samples)
-
-            audio = np.concatenate(audio_parts)
-
-        # Store in RAM and disk cache
-        self._remember(text, audio)
-        try:
-            tmp_path = f"{cache_path[:-4]}.tmp.npy"
-            np.save(tmp_path, audio)
-            os.replace(tmp_path, cache_path)
-        except OSError:
             return audio, self.sample_rate
-        self._prune_disk_cache()
-
-        return audio, self.sample_rate

@@ -21,6 +21,7 @@ import sys
 import time
 from typing import List
 
+from core.intent_builder import resolve_voice_settings
 from core.system_utils import resolve_piper_model_path
 from services.intent_service import PersonaIntentEngine
 from services.tts_service import PiperTTSService
@@ -157,6 +158,7 @@ def main() -> int:
         voice_name=voice_name,
         repo_root=repo_root,
     )
+    tempo, noise = resolve_voice_settings(profile)
 
     unique_phrases = collect_phrases_to_prewarm(engine, warm_all=args.all, limit=args.limit)
 
@@ -164,7 +166,7 @@ def main() -> int:
         print("\n" + "=" * 60)
         print(f" DRY RUN: Pre-warm Cache Preview ({len(unique_phrases)} phrases)")
         print(f" Personality: {getattr(profile, 'display_name', args.personality)}")
-        print(f" Voice Model: {model_path}")
+        print(f" Voice Model: {model_path} (tempo={tempo}, noise={noise})")
         print("=" * 60)
         for idx, phrase in enumerate(unique_phrases, start=1):
             print(f"[{idx:02d}/{len(unique_phrases):02d}] \"{phrase}\"")
@@ -182,8 +184,12 @@ def main() -> int:
         )
         return 1
 
-    print(f"Initializing Piper TTS synthesizer ({model_path})...")
-    tts = PiperTTSService(model_path=model_path)
+    print(f"Initializing Piper TTS synthesizer ({model_path}, tempo={tempo}, noise={noise})...")
+    tts = PiperTTSService(
+        model_path=model_path,
+        length_scale=tempo,
+        noise_scale=noise,
+    )
 
     print(f"Pre-warming {len(unique_phrases)} phrases into '{tts.cache_dir}'...")
 

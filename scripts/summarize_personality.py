@@ -407,6 +407,12 @@ def parse_args() -> argparse.Namespace:
         help="Exclude system greetings, fallbacks, and environment responses.",
     )
     parser.add_argument(
+        "-d",
+        "--dry-run",
+        action="store_true",
+        help="Simulate summary generation without writing output files.",
+    )
+    parser.add_argument(
         "-v",
         "--version",
         action="version",
@@ -435,6 +441,11 @@ def main() -> int:
         return 1
 
     include_system = not args.no_system
+    if args.dry_run:
+        destination = f" and write to {args.output}" if args.output else ""
+        print(f"[DRY-RUN] Would generate {args.format} summary for '{profile.display_name}' ({len(profile.intents)} intents){destination}")
+        return 0
+
     if args.format == "markdown":
         output_text = generate_markdown_summary(
             profile=profile,

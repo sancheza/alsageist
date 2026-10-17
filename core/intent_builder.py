@@ -476,7 +476,7 @@ class IntentParser:
 
     def _call_gemini(self, prompt: str) -> str:
         """Call Gemini API for intent expansion."""
-        models = ["gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"]
+        models = cloud_api.gemini_llm_models()
         payload = {
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {
@@ -715,8 +715,11 @@ def create_custom_intent(
                     profile.save_to_file(profile_path)
                     if prewarm and responses:
                         try:
+                            from core.system_utils import resolve_piper_model_path
                             from services.tts_service import PiperTTSService
-                            tts = PiperTTSService()
+                            tempo, noise = resolve_voice_settings(profile)
+                            v_path = resolve_piper_model_path(voice_name=profile.voice if profile else None)
+                            tts = PiperTTSService(model_path=v_path, length_scale=tempo, noise_scale=noise)
                             for resp in responses:
                                 tts.synthesize(resp)
                         except Exception as tts_err:
@@ -740,8 +743,11 @@ def create_custom_intent(
 
         if prewarm and intent.responses:
             try:
+                from core.system_utils import resolve_piper_model_path
                 from services.tts_service import PiperTTSService
-                tts = PiperTTSService()
+                tempo, noise = resolve_voice_settings(profile)
+                v_path = resolve_piper_model_path(voice_name=profile.voice if profile else None)
+                tts = PiperTTSService(model_path=v_path, length_scale=tempo, noise_scale=noise)
                 for resp in intent.responses:
                     tts.synthesize(resp)
             except Exception as tts_err:

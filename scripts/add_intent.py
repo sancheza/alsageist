@@ -13,7 +13,7 @@ Target Data Files Modified:
        data/personalities/<personality>.json (e.g., data/personalities/grimjaw.json)
        Stores intent identifiers, regex trigger patterns, responses, and fallbacks.
     2. Neural TTS Audio Cache:
-       cache/tts/<voice_id>/<hash>.npy
+       models/cache/<hash>.npy
        Pre-synthesizes NumPy audio arrays when --prewarm is enabled to eliminate
        runtime voice latency.
 
@@ -83,7 +83,7 @@ TARGET DATA FILES MODIFIED:
      data/personalities/<personality>.json  (e.g., data/personalities/grimjaw.json)
      Persists intent identifiers, regex trigger patterns, and dialogue response pools.
   2. Neural TTS Audio Cache:
-     cache/tts/<voice_id>/<hash>.npy
+     models/cache/<hash>.npy
      Pre-synthesizes NumPy audio arrays when --prewarm is enabled so responses
      play with zero synthesis latency at runtime.
 """,

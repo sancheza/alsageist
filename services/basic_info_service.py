@@ -20,19 +20,35 @@ class BasicInfoService:
         self,
         cache_ttl_sec: float = 600.0,
         profile: Optional[PersonalityProfile] = None,
+        cached_weather: Optional[Dict[str, str]] = None,
+        cached_weather_time: float = 0.0,
     ) -> None:
         """Initialize the basic info service.
 
         Args:
             cache_ttl_sec: Weather cache time-to-live in seconds (default: 10 minutes).
             profile: Optional personality profile with custom time and weather response templates.
+            cached_weather: Optional pre-existing weather cache dictionary.
+            cached_weather_time: Optional timestamp when pre-existing cache was recorded.
         """
         self._cache_ttl_sec = cache_ttl_sec
         self._profile = profile
-        self._weather_cache: Optional[Dict[str, str]] = None
-        self._weather_cache_time: float = 0.0
+        self._weather_cache: Optional[Dict[str, str]] = dict(cached_weather) if cached_weather else None
+        self._weather_cache_time: float = cached_weather_time
         self._lock = threading.Lock()
         self._fetch_thread: Optional[threading.Thread] = None
+
+    @property
+    def cached_weather(self) -> Optional[Dict[str, str]]:
+        """Return the raw cached weather data."""
+        with self._lock:
+            return dict(self._weather_cache) if self._weather_cache else None
+
+    @property
+    def cached_weather_time(self) -> float:
+        """Return the timestamp when the weather cache was last updated."""
+        with self._lock:
+            return self._weather_cache_time
 
     def get_time_response(self, now: Optional[datetime.datetime] = None) -> str:
         """Generate a spoken response indicating the current local time.
