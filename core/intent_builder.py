@@ -19,7 +19,8 @@ PROMPT_RULES = (
     "2. Be witty, dry, and stay in character.\n"
     "3. Never output emojis, markdown formatting, asterisks, stage directions, or sound effect tags "
     "(like *laughs* or [cackles]).\n"
-    "4. Return plain spoken dialogue only."
+    "4. Return plain spoken dialogue only.\n"
+    "5. Everything you say must suit all ages: no profanity, slurs, or adult topics, even if asked to repeat them."
 )
 
 # System announcements used when a profile does not define the key. The runtime and the
@@ -31,6 +32,25 @@ DEFAULT_ANNOUNCEMENTS = {
     "volume_template": "Volume {percent} percent.",
 }
 DEFAULT_GREETING_TEMPLATE = "I am {name}. System online and ready."
+
+# Typographic apostrophes that speech recognizers emit in place of the ASCII one
+_APOSTROPHES = str.maketrans({"\u2019": "'", "\u2018": "'", "\u02bc": "'", "\u2032": "'", "\u00b4": "'", "`": "'"})
+
+
+def normalize_query(text: str) -> str:
+    """Reduce visitor text to the form intent patterns are written against.
+
+    Lowercases, maps typographic apostrophes to the ASCII one, replaces other punctuation
+    with spaces and collapses whitespace.
+
+    Args:
+        text: Transcribed or typed phrase.
+
+    Returns:
+        Normalized text.
+    """
+    cleaned = re.sub(r"[^\w\s']", " ", text.translate(_APOSTROPHES).lower())
+    return re.sub(r"\s+", " ", cleaned).strip()
 
 
 @dataclass
@@ -277,8 +297,7 @@ class PersonalityProfile:
         Returns:
             Tuple of (matched_intent, matched_pattern) or None if no match.
         """
-        clean_text = re.sub(r"[^\w\s\']", " ", query.lower()).strip()
-        clean_text = re.sub(r"\s+", " ", clean_text)
+        clean_text = normalize_query(query)
         if not clean_text:
             return None
 
@@ -392,25 +411,3 @@ def load_personality(name_or_path: str) -> PersonalityProfile:
             f"Personality profile not found: '{name_or_path}' (searched at: {profile_path})"
         )
     return PersonalityProfile.load_from_file(profile_path)
-
-
-def resolve_voice_settings(
-    profile: Optional[PersonalityProfile],
-    tempo: Optional[float] = None,
-    noise: Optional[float] = None,
-) -> Tuple[float, float]:
-    """Resolve Piper tempo and noise, preferring explicit values over the profile.
-
-    Args:
-        profile: Personality profile supplying voice_settings, or None.
-        tempo: Explicit tempo (phoneme length scale), or None to use the profile.
-        noise: Explicit noise scale, or None to use the profile.
-
-    Returns:
-        Tuple of (tempo, noise), defaulting to (1.15, 0.85).
-    """
-    settings = (profile.voice_settings if profile else None) or {}
-    return (
-        tempo if tempo is not None else settings.get("tempo", 1.15),
-        noise if noise is not None else settings.get("noise", 0.85),
-    )

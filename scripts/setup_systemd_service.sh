@@ -14,6 +14,8 @@
 
 set -eo pipefail
 
+die() { echo "Error: $*" >&2; exit 1; }
+
 VERSION="1.0.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -75,6 +77,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -u|--user)
+            [[ $# -ge 2 ]] || die "$1 requires a value."
             USER_ARG="$2"
             shift 2
             ;;
@@ -83,6 +86,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -p|--dir)
+            [[ $# -ge 2 ]] || die "$1 requires a value."
             DIR_ARG="$2"
             shift 2
             ;;
@@ -91,6 +95,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -t|--template)
+            [[ $# -ge 2 ]] || die "$1 requires a value."
             TEMPLATE_PATH="$2"
             shift 2
             ;;
@@ -99,6 +104,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -o|--output)
+            [[ $# -ge 2 ]] || die "$1 requires a value."
             OUTPUT_PATH="$2"
             shift 2
             ;;

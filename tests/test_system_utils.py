@@ -5,11 +5,11 @@ import os
 import sys
 import pytest
 
+from core.voice_config import resolve_piper_model_path
 from core.system_utils import (
     check_internet_connectivity,
     is_running_in_docker,
     load_env_file,
-    resolve_piper_model_path,
     trigger_host_shutdown,
 )
 

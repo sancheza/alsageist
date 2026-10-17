@@ -8,7 +8,8 @@ import pytest
 from core import cloud_api
 from core.control_server import ControlServer
 from core.intent_builder import PersonalityProfile
-from core.system_utils import load_env_file, resolve_agent_voice_config
+from core.system_utils import load_env_file
+from core.voice_config import resolve_agent_voice_config
 from core.vad import VoiceActivityDetector
 from services.agent import AlsaGeistAgent
 from services.tts_service import PiperTTSService

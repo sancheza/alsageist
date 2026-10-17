@@ -8,14 +8,55 @@ import os
 import re
 from typing import Callable, List, Optional, Tuple
 
-from core import cloud_api, env_utils
+from core import cloud_api, env_utils, intent_samples
 from core.intent_builder import (
     CustomIntent,
     PersonalityProfile,
     find_personality_file,
+    normalize_query,
 )
 
 INTENT_API_TIMEOUT_SEC = 6.0
+MAX_PATTERN_CHARS = 300
+# A quantified group that itself contains a quantifier, such as (a+)+, can take exponential time
+_NESTED_QUANTIFIER = re.compile(r"\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)\s*(?:[+*]|\{\d*,\d*\})")
+
+
+def is_backtracking_risk(pattern: str) -> bool:
+    """Return True if a regex is long or nests quantifiers, so matching could stall the voice loop.
+
+    Args:
+        pattern: Regular expression source.
+
+    Returns:
+        True if the pattern should not be added to a profile.
+    """
+    return len(pattern) > MAX_PATTERN_CHARS or _NESTED_QUANTIFIER.search(pattern) is not None
+
+
+def find_shadowed_intents(profile: PersonalityProfile, patterns: List[str], ignore_name: str) -> List[str]:
+    """Return existing intents whose sample questions a new intent's patterns would capture.
+
+    A new intent is matched before the existing ones, so a broad pattern silently takes over
+    their questions.
+
+    Args:
+        profile: Profile that holds the existing intents.
+        patterns: Regex patterns of the new intent.
+        ignore_name: Name of the intent being added or replaced; it is not compared with itself.
+
+    Returns:
+        Names of the intents that would lose questions.
+    """
+    compiled = [re.compile(p, re.IGNORECASE) for p in patterns]
+    shadowed: List[str] = []
+    for intent in profile.intents:
+        if intent.name == ignore_name:
+            continue
+        samples = intent_samples.extract_sample_questions(intent.patterns, max_questions=3)
+        if any(c.search(normalize_query(sample)) for sample in samples for c in compiled):
+            shadowed.append(intent.name)
+    return shadowed
 
 
 class IntentCollisionError(Exception):
@@ -30,6 +71,18 @@ class IntentCollisionError(Exception):
         self.query = query
         self.existing_intent = existing_intent
         self.matched_pattern = matched_pattern
+
+
+class IntentShadowError(Exception):
+    """Raised when a new intent's patterns would capture questions of existing intents."""
+
+    def __init__(self, intent_name: str, shadowed: List[str]) -> None:
+        """Initialize with the new intent's name and the intents it would shadow."""
+        super().__init__(
+            f"Intent '{intent_name}' would capture questions of existing intents: {', '.join(shadowed)}"
+        )
+        self.intent_name = intent_name
+        self.shadowed = shadowed
 
 
 class IntentParser:
@@ -88,9 +141,8 @@ class IntentParser:
                 )
                 if llm_intent and llm_intent.patterns and llm_intent.responses:
                     return llm_intent
-            except Exception:
-                # Graceful fallback to offline deterministic parser on network or API failure
-                pass
+            except Exception as exc:  # isolation point: any LLM failure falls back to the offline parser
+                print(f"Warning: LLM pattern expansion failed ({type(exc).__name__}: {exc}); using the rule-based parser.")
 
         return self._parse_rule_based(
             text=cleaned_input,
@@ -155,9 +207,10 @@ class IntentParser:
         for pat in intent_patterns:
             try:
                 re.compile(pat, re.IGNORECASE)
-                valid_patterns.append(pat)
             except re.error:
                 continue
+            if not is_backtracking_risk(pat):
+                valid_patterns.append(pat)
 
         if not valid_patterns:
             return None
@@ -180,16 +233,10 @@ class IntentParser:
             },
         }
 
-        for model in models:
-            try:
-                parts = cloud_api.gemini_generate_parts(
-                    self.gemini_api_key, model, payload, timeout=INTENT_API_TIMEOUT_SEC
-                )
-                if parts:
-                    return parts[0].get("text", "").strip()
-            except Exception:
-                continue
-        return ""
+        return cloud_api.gemini_generate(
+            self.gemini_api_key, models, payload, INTENT_API_TIMEOUT_SEC,
+            extract=lambda parts: parts[0].get("text", "").strip(),
+        )
 
     def _call_groq(self, prompt: str) -> str:
         """Call Groq API for intent expansion."""
@@ -309,6 +356,8 @@ def create_custom_intent(
 
     Raises:
         IntentCollisionError: If query conflicts with an existing intent and collision_action is 'raise'.
+        IntentShadowError: If the new patterns would capture questions of other intents and
+            collision_action is not 'force'.
     """
     profile_path = find_personality_file(personality_name_or_path)
 
@@ -351,6 +400,11 @@ def create_custom_intent(
         persona=profile,
         use_llm=use_llm,
     )
+
+    if collision_action != "force":
+        shadowed = find_shadowed_intents(profile, intent.patterns, ignore_name=intent.name)
+        if shadowed:
+            raise IntentShadowError(intent.name, shadowed)
 
     if not dry_run:
         profile.add_intent(intent, overwrite=True, prepend=True)

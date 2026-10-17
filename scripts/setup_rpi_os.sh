@@ -14,6 +14,8 @@
 
 set -eo pipefail
 
+die() { echo "Error: $*" >&2; exit 1; }
+
 VERSION="1.0.0"
 PROFILE="aiy"
 DRY_RUN=false
@@ -61,6 +63,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -u|--user)
+            [[ $# -ge 2 ]] || die "$1 requires a value."
             USER_ARG="$2"
             shift 2
             ;;
@@ -69,6 +72,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -p|--profile)
+            [[ $# -ge 2 ]] || die "$1 requires a value."
             PROFILE="$2"
             shift 2
             ;;
@@ -77,6 +81,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -c|--config-file)
+            [[ $# -ge 2 ]] || die "$1 requires a value."
             CONFIG_PATH="$2"
             shift 2
             ;;
@@ -85,6 +90,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -a|--asound-file)
+            [[ $# -ge 2 ]] || die "$1 requires a value."
             ASOUND_PATH="$2"
             shift 2
             ;;
@@ -180,16 +186,26 @@ backup_file() {
 }
 
 # Portable file write helpers
+# Write to a temporary file in the destination directory, then rename it over the destination,
+# so a power loss cannot leave a truncated boot or sound configuration file.
 safe_write() {
     local content="$1"
     local dest="$2"
-    if [[ -w "$dest" ]] || { [[ ! -e "$dest" ]] && [[ -w "$(dirname "$dest")" ]]; }; then
-        printf "%s\n" "$content" > "$dest"
-    elif [[ $EUID -eq 0 ]]; then
-        printf "%s\n" "$content" > "$dest"
-    else
-        printf "%s\n" "$content" | sudo tee "$dest" > /dev/null
+    local dir
+    local priv=()
+    dir="$(dirname "$dest")"
+    if [[ ! -w "$dir" && $EUID -ne 0 ]]; then
+        priv=(sudo)
     fi
+    local tmp
+    tmp="$("${priv[@]}" mktemp "${dest}.XXXXXX")"
+    printf "%s\n" "$content" | "${priv[@]}" tee "$tmp" > /dev/null
+    if [[ -e "$dest" ]]; then
+        "${priv[@]}" chmod --reference="$dest" "$tmp" 2>/dev/null || "${priv[@]}" chmod 644 "$tmp"
+    else
+        "${priv[@]}" chmod 644 "$tmp"
+    fi
+    "${priv[@]}" mv "$tmp" "$dest"
 }
 
 safe_append() {
@@ -233,7 +249,7 @@ dtoverlay=googlevoicehat-soundcard
         fi
 
         # Append overlay configuration if not already present
-        if grep -q "googlevoicehat-soundcard" "$CONFIG_PATH" 2>/dev/null; then
+        if grep -q "^dtoverlay=googlevoicehat-soundcard" "$CONFIG_PATH" 2>/dev/null; then
             echo "  Voice HAT overlay 'googlevoicehat-soundcard' is already present in ${CONFIG_PATH}."
         else
             echo "  Appending Voice HAT overlay to ${CONFIG_PATH}..."

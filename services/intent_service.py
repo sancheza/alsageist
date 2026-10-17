@@ -8,8 +8,10 @@ from collections import OrderedDict
 import os
 import random
 import re
+import threading
 from typing import List, Optional, Tuple, Union
 
+from core import intent_builder
 from core.intent_builder import PersonalityProfile, load_personality
 
 
@@ -25,6 +27,8 @@ class PersonaIntentEngine:
         Raises:
             FileNotFoundError: If the requested personality profile JSON file cannot be found.
         """
+        # Reset requests arrive from button and control threads while the main loop classifies
+        self._lock = threading.RLock()
         self._recently_used: "OrderedDict[str, None]" = OrderedDict()
         self._max_recent: int = 25
         self._turn_count: int = 0
@@ -49,7 +53,7 @@ class PersonaIntentEngine:
         # Compile a curated pool of quotes, songs, jokes, and lore (excluding costume feedback)
         self._random_content_pool: List[str] = []
         for name, _, responses in self._intent_rules:
-            if name.startswith("costume") or name in ("costume", "favorite_costume"):
+            if name.startswith("costume") or name == "favorite_costume":
                 continue
             for r in responses:
                 if r and r not in self._random_content_pool:
@@ -77,8 +81,9 @@ class PersonaIntentEngine:
 
     def reset_conversation(self) -> None:
         """Reset turn counter and costume inquiry state for a new visitor."""
-        self._turn_count = 0
-        self._asked_costume = False
+        with self._lock:
+            self._turn_count = 0
+            self._asked_costume = False
 
     def classify_and_respond(self, user_text: str) -> Tuple[str, str]:
         """Classify user text and return both the response and matched intent name.
@@ -89,13 +94,17 @@ class PersonaIntentEngine:
         Returns:
             Tuple of (response_text, matched_intent_name).
         """
+        with self._lock:
+            return self._classify(user_text)
+
+    def _classify(self, user_text: str) -> Tuple[str, str]:
+        """Classify under the engine lock (see classify_and_respond)."""
         if not user_text or not user_text.strip():
             fallback = random.choice(self._fallbacks) if self._fallbacks else "I am listening."
             return fallback, "fallback_empty"
 
         self._turn_count += 1
-        clean_text = re.sub(r"[^\w\s\']", " ", user_text.lower()).strip()
-        clean_text = re.sub(r"\s+", " ", clean_text)
+        clean_text = intent_builder.normalize_query(user_text)
 
         # 1. Check intent rules first to always answer direct questions accurately
         for intent_name, compiled_patterns, responses in self._compiled_intent_rules:

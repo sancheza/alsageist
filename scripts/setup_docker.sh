@@ -15,6 +15,8 @@
 
 set -eo pipefail
 
+die() { echo "Error: $*" >&2; exit 1; }
+
 VERSION="1.1.0"
 PROFILE="aiy"
 DRY_RUN=false
@@ -74,6 +76,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -p|--profile)
+            [[ $# -ge 2 ]] || die "$1 requires a value."
             PROFILE="$2"
             shift 2
             ;;
@@ -82,6 +85,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -u|--user)
+            [[ $# -ge 2 ]] || die "$1 requires a value."
             USER_ARG="$2"
             shift 2
             ;;
@@ -90,6 +94,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -d|--dir)
+            [[ $# -ge 2 ]] || die "$1 requires a value."
             DIR_ARG="$2"
             shift 2
             ;;
@@ -122,6 +127,15 @@ if [[ "$DRY_RUN" == true ]]; then
     echo " Mode: DRY RUN (no modifications will be made)"
 fi
 echo "======================================================================"
+
+# Append KEY=VALUE to a file, starting a new line first if the file does not end with one
+append_line() {
+    local file="$1" line="$2"
+    if [[ -s "$file" && -n "$(tail -c 1 "$file")" ]]; then
+        echo >> "$file"
+    fi
+    echo "$line" >> "$file"
+}
 
 # Helper for elevated commands
 run_root() {
@@ -164,7 +178,14 @@ echo "[2/5] Verifying Docker and Docker Compose..."
 if command -v docker > /dev/null 2>&1; then
     echo "  Docker is installed: $(docker --version)"
 else
-    echo "  Docker not found. Installing Docker Engine..."
+    echo "  Docker not found. Installing Docker Engine with Docker's installation script (run as root)..."
+    if [[ "$DRY_RUN" != true && "$NON_INTERACTIVE" != true ]]; then
+        read -r -p "  Download https://get.docker.com and run it as root? (y/N): " DOCKER_CHOICE
+        if [[ ! "$DOCKER_CHOICE" =~ ^[Yy]$ ]]; then
+            echo "  Install Docker Engine manually, then run this script again." >&2
+            exit 1
+        fi
+    fi
     if [[ "$DRY_RUN" == true ]]; then
         echo "  [DRY RUN] Would download https://get.docker.com to a temporary file and run it with sh"
     else
@@ -297,7 +318,7 @@ else
         grp="${pair##*:}"
         gid="$(getent group "$grp" | cut -d: -f3 || true)"
         if [[ -n "$gid" ]] && ! grep -q "^${var}=" "$ENV_FILE" 2>/dev/null; then
-            echo "${var}=${gid}" >> "$ENV_FILE"
+            append_line "$ENV_FILE" "${var}=${gid}"
             echo "  Recorded ${var}=${gid} in ${ENV_FILE}."
         fi
     done
@@ -309,7 +330,7 @@ else
         GPIO_CHIP="/dev/gpiochip0"
     fi
     if ! grep -q "^GPIO_DEVICE=" "$ENV_FILE" 2>/dev/null; then
-        echo "GPIO_DEVICE=${GPIO_CHIP}" >> "$ENV_FILE"
+        append_line "$ENV_FILE" "GPIO_DEVICE=${GPIO_CHIP}"
         echo "  Recorded GPIO_DEVICE=${GPIO_CHIP} in ${ENV_FILE}."
     fi
 fi
@@ -366,6 +387,11 @@ if [[ "$DRY_RUN" == true ]]; then
     echo "  [DRY RUN] Would write systemd unit to ${SERVICE_PATH}:"
     echo "${SERVICE_CONTENT}"
 else
+    if [[ -f "$SERVICE_PATH" ]] && ! grep -q "docker compose up" "$SERVICE_PATH"; then
+        # The existing unit is the bare-metal service; keep a copy before replacing it
+        run_root cp -p "$SERVICE_PATH" "${SERVICE_PATH}.alsageist.bak"
+        echo "  Backed up the existing unit to ${SERVICE_PATH}.alsageist.bak"
+    fi
     printf "%s\n" "$SERVICE_CONTENT" | run_root tee "$SERVICE_PATH" > /dev/null
     run_root systemctl daemon-reload
     run_root systemctl enable alsageist.service

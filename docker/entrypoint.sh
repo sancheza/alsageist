@@ -12,17 +12,21 @@ LOGS_DIR="/app/logs"
 PIPER_DIR="${MODELS_DIR}/piper"
 CACHE_DIR="${MODELS_DIR}/cache"
 
-# 1. Seed default personality profile if external mount is empty
-mkdir -p "${DATA_DIR}/personalities"
+# 1. Ensure data, model and log directories exist and are writable by the container user
+mkdir -p "${DATA_DIR}/personalities" "${PIPER_DIR}" "${CACHE_DIR}" "${LOGS_DIR}" 2>/dev/null || true
+for dir in "${DATA_DIR}/personalities" "${PIPER_DIR}" "${CACHE_DIR}" "${LOGS_DIR}"; do
+    if [[ ! -w "${dir}" ]]; then
+        echo "[AlsaGeist Bootstrap] ERROR: ${dir} is not writable by uid $(id -u)." >&2
+        echo "[AlsaGeist Bootstrap] On the host, run: sudo chown -R $(id -u):$(id -g) <the mounted data, models and logs directories>" >&2
+        exit 1
+    fi
+done
+
+# 2. Seed default personality profile if external mount is empty
 if [[ ! -f "${DATA_DIR}/personalities/grimjaw.json" && -f "/app/data.defaults/personalities/grimjaw.json" ]]; then
     echo "[AlsaGeist Bootstrap] Seeding default grimjaw personality to external data volume..."
     cp "/app/data.defaults/personalities/grimjaw.json" "${DATA_DIR}/personalities/grimjaw.json"
 fi
-
-# 2. Ensure model directories exist
-mkdir -p "${PIPER_DIR}"
-mkdir -p "${CACHE_DIR}"
-mkdir -p "${LOGS_DIR}"
 
 # 3. Ensure Grimjaw voice model is available
 GRIMJAW_MODEL="${PIPER_DIR}/en_GB-alan-medium.onnx"

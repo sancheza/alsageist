@@ -24,7 +24,8 @@ from typing import Iterator, List, Tuple
 from core.audio_io import AudioIO
 from core.env_utils import env_float
 from core.intent_builder import load_personality
-from core.system_utils import load_env_file, resolve_agent_voice_config
+from core import voice_config
+from core.system_utils import load_env_file
 from services.tts_service import PiperTTSService
 
 VERSION = "1.1.0"
@@ -163,7 +164,7 @@ def main() -> int:
 
         display_name = profile.display_name if profile else args.personality
         with timer.phase("resolve voice"):
-            model_path, tempo, noise = resolve_agent_voice_config(
+            model_path, tempo, noise = voice_config.resolve_agent_voice_config(
                 profile=profile,
                 model_path=args.model_path or os.environ.get("MODEL_PATH"),
                 tempo=args.tempo,

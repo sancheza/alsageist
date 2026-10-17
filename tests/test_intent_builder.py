@@ -408,7 +408,7 @@ def test_load_personality_by_name_and_missing():
 
 def test_resolve_voice_settings_precedence():
     """Explicit values beat profile settings, which beat the built-in defaults."""
-    from core.intent_builder import resolve_voice_settings
+    from core.voice_config import resolve_voice_settings
 
     profile = PersonalityProfile(
         personality="demo",

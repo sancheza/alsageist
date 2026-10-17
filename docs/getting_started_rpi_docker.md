@@ -223,11 +223,27 @@ docker exec alsageist python3 scripts/alsageist_ctl.py shutdown --yes
 
 ## 8. Physical Controls & Host Shutdown
 
-The containerized service retains direct access to GPIO button pins and systemd/D-Bus sockets:
+The containerized service has direct access to the GPIO button pins. Host poweroff needs the host's system D-Bus socket, which `docker-compose.shutdown.yml` mounts:
+
+**Starting Host & Directory:** Raspberry Pi, repository root
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.shutdown.yml up -d
+```
+
+To keep the override after reboots, add this line to `.env`; `docker compose` and the systemd unit from `scripts/setup_docker.sh` then both use it:
+
+```text
+COMPOSE_FILE=docker-compose.yml:docker-compose.shutdown.yml
+```
+
+> [!WARNING]
+> The D-Bus mount gives the container access to the host's system services. Without it, the long hold and the `shutdown` command announce power-off and then return to normal operation.
+
 
 * **Short Press (< 5s):** Cycles playback volume in 10% steps.
 * **Medium Hold (5s):** Mutes / disables Grimjaw (turns off audio and LED).
-* **Long Hold (10s):** Initiates safe host poweroff. The container speaks offline pre-cached "Powering off.", extinguishes the status LED, and signals the host systemd daemon over the shared system socket to cleanly shut down the Raspberry Pi.
+* **Long Hold (10s):** Initiates safe host poweroff. The container speaks offline pre-cached "Powering off.", extinguishes the status LED, and signals the host systemd daemon over the D-Bus socket to cleanly shut down the Raspberry Pi. `BUTTON_SHUTDOWN_ENABLED=false` turns the long hold into an ordinary hold (mute / disable); the `shutdown` control command still works.
 
 ---
 

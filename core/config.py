@@ -88,14 +88,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--min-speech-sec",
         type=float,
-        default=0.15,
-        help="Minimum sustained speech duration in seconds required to accept an utterance (default: 0.15s).",
+        default=env_float("MIN_SPEECH_SEC", 0.15),
+        help="Minimum sustained speech duration in seconds required to accept an utterance (default: 0.15s or $MIN_SPEECH_SEC).",
     )
     parser.add_argument(
         "--silence-timeout",
         type=float,
-        default=0.9,
-        help="Trailing silence in seconds required before speech is considered finished (default: 0.9s).",
+        default=env_float("SILENCE_TIMEOUT", 0.9),
+        help="Trailing silence in seconds required before speech is considered finished (default: 0.9s or $SILENCE_TIMEOUT).",
+    )
+    parser.add_argument(
+        "--vad-multiplier",
+        type=float,
+        default=env_float("VAD_MULTIPLIER", 2.2),
+        help="Speech must exceed the ambient noise floor by this factor (default: 2.2 or $VAD_MULTIPLIER).",
     )
     parser.add_argument(
         "--tempo",

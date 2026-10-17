@@ -57,8 +57,9 @@ AlsaGeist follows the dev ADR modular architecture standard (`core/`, `services/
 | **Orchestration** | `services/agent.py` | Subsystem lifecycle, periodic network polling, the decomposed utterance event loop (`_filter_utterance`, `_resolve_dialogue_response`, `_play_speech_audio`, `speak`), and the thread-safe control API used by the button handlers and the IPC server. | `core`, `services` |
 | **Runtime Entry Point** | `main.py` | Argument parsing, `.env` loading, signal handlers, and agent start. | `core`, `services` |
 | **Configuration** | `core/config.py` | Centralized command-line argument parser (`parse_args`, `build_arg_parser`), environment variable default resolution, and semantic version constants. | Standard library, `argparse` |
-| **System Utilities** | `core/system_utils.py` | Host and operating system utilities: `.env` file parsing, TCP network connectivity probing, and platform-safe operating system shutdown triggers. | Standard library, `socket`, `subprocess` |
-| **Core Subsystems** | `core/` | Cross-platform hardware interfaces and IPC: ALSA/CoreAudio streaming (`audio_io.py`), voice activity detection (`vad.py`), PWM LED driver (`led_controller.py`), structured JSONL interaction logging (`logger.py`), personality profile parsing (`intent_builder.py`), custom intent authoring (`intent_authoring.py`), environment parsing (`env_utils.py`), transcript artifact filtering (`utterance_filter.py`), Unix domain socket IPC daemon server (`control_server.py`), and HTTP transport with Groq/Gemini API wrappers (`http_client.py`, `cloud_api.py`). | `sounddevice`, `numpy`, `gpiozero`, `lgpio` |
+| **System Utilities** | `core/system_utils.py` | Host and operating system utilities: `.env` file parsing, TCP network connectivity probing, and platform-safe operating system shutdown triggers. |
+| **Voice Resolution** | `core/voice_config.py` | Piper model path, tempo and noise resolution for a persona (CLI, then environment, then profile, then defaults). | Standard library, `socket`, `subprocess` |
+| **Core Subsystems** | `core/` | Cross-platform hardware interfaces and IPC: ALSA/CoreAudio streaming (`audio_io.py`), voice activity detection (`vad.py`), PWM LED driver (`led_controller.py`), structured JSONL interaction logging (`logger.py`), personality profile parsing (`intent_builder.py`), sample questions derived from patterns (`intent_samples.py`), custom intent authoring (`intent_authoring.py`), environment parsing (`env_utils.py`), transcript artifact filtering (`utterance_filter.py`), Unix domain socket IPC daemon server (`control_server.py`), and HTTP transport with Groq/Gemini API wrappers (`http_client.py`, `cloud_api.py`). | `sounddevice`, `numpy`, `gpiozero`, `lgpio` |
 | **Domain Services** | `services/` | Speech-to-text conversion (cloud and offline), deterministic intent classification, costume inquiry state machine, optional cloud LLM fallback, and Piper neural TTS synthesis. | `vosk`, `piper-tts`, `onnxruntime` |
 | **Entry Points & Tools**| `scripts/` | Standalone CLI tools for system configuration, daemon control, voice synthesis previewing, and audio cache pre-warming. | Standard library, `argparse` |
 
@@ -213,12 +214,14 @@ alsageist/
 │   ├── http_client.py             # JSON & multipart HTTP client with mandatory timeouts
 │   ├── intent_builder.py          # Personality profile loader & intent dataclass schema
 │   ├── intent_authoring.py        # LLM-assisted intent creation for add_intent.py
+│   ├── intent_samples.py          # Sample questions derived from intent regex patterns
 │   ├── env_utils.py               # Environment variable parsing and API key lookup
 │   ├── utterance_filter.py        # Silence / recognizer-artifact transcript filter
 │   ├── led_controller.py          # GPIO PWM breathing, solid & speech flutter
 │   ├── logger.py                  # Structured JSONL telemetry logger (rotation, optional text redaction)
 │   ├── system_utils.py            # Environment loader, TCP network probe & safe shutdown
-│   └── vad.py                     # Energy VAD & silence boundary detector
+│   ├── vad.py                     # Energy VAD & silence boundary detector
+│   └── voice_config.py            # Piper model path, tempo & noise resolution
 ├── services/
 │   ├── agent.py                   # Agent orchestrator & control API
 │   ├── basic_info_service.py      # Real-time spoken time and weather status provider

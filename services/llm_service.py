@@ -23,6 +23,12 @@ _STAGE_DIRECTION = re.compile(r"\[[^\]]*\]|\([^)]*\)")
 _NON_SPEECH = re.compile(
     "[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U0000FE00-\U0000FE0F\U0000200D]"
 )
+# Replies containing these are withheld: the display speaks to children, and a visitor can steer
+# the model. LLM_BLOCKED_WORDS adds comma-separated words.
+_BLOCKED_WORDS = (
+    "fuck", "shit", "bitch", "asshole", "cunt", "dick", "pussy", "slut", "whore", "bastard",
+    "nigger", "nigga", "faggot", "retard", "rape", "porn", "nazi",
+)
 DEFAULT_FALLBACK_RESPONSE = "Sorry, I lost my train of thought. Please ask me again."
 
 
@@ -108,6 +114,10 @@ class ConversationalLLMService:
                 break
             print(f"  (LLM backend {name} returned an empty reply)")
 
+        if reply and self._is_unsuitable(reply):
+            print("  (LLM reply withheld: unsuitable content)")
+            reply = ""
+
         if not reply:
             # Every backend failed or answered with nothing: speak the canned line,
             # and keep it out of the conversation history.
@@ -167,27 +177,12 @@ class ConversationalLLMService:
             },
         }
 
-        last_error: Optional[Exception] = None
-        for model in models_to_try:
-            timeout = self._timeout(GEMINI_TIMEOUT_SEC, deadline)
-            if timeout <= 0:
-                break
-            try:
-                parts = cloud_api.gemini_generate_parts(
-                    self.gemini_api_key, model, payload, timeout=timeout
-                )
-                if not parts:
-                    continue
-                cleaned = self._clean_reply(parts[0].get("text", ""))
-                if cleaned:
-                    return cleaned
-            except Exception as exc:
-                last_error = exc
-                print(f"  (Gemini model {model} failed: {exc})")
-
-        if last_error is not None:
-            raise RuntimeError(f"all Gemini models failed: {last_error}") from last_error
-        return ""
+        return cloud_api.gemini_generate(
+            self.gemini_api_key, models_to_try, payload, GEMINI_TIMEOUT_SEC,
+            extract=lambda parts: self._clean_reply(parts[0].get("text", "")),
+            deadline=deadline,
+            on_error=lambda model, exc: print(f"  (Gemini model {model} failed: {exc})"),
+        )
 
     def _generate_groq(self, user_text: str, deadline: Optional[float] = None) -> str:
         """Generate reply using Groq Llama endpoint."""
@@ -208,6 +203,13 @@ class ConversationalLLMService:
             self.groq_api_key, payload, timeout=max(0.5, self._timeout(GROQ_TIMEOUT_SEC, deadline))
         )
         return self._clean_reply(text)
+
+    @staticmethod
+    def _is_unsuitable(text: str) -> bool:
+        """Return True if a reply contains a blocked word (also as the start of a longer word)."""
+        extra = [w.strip().lower() for w in os.environ.get("LLM_BLOCKED_WORDS", "").split(",") if w.strip()]
+        words = [re.escape(w) for w in (*_BLOCKED_WORDS, *extra)]
+        return re.search(r"\b(" + "|".join(words) + r")", text, re.IGNORECASE) is not None
 
     @staticmethod
     def _timeout(default_sec: float, deadline: Optional[float]) -> float:

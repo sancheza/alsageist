@@ -204,7 +204,8 @@ def test_agent_llm_fallback_custom_response():
     agent.llm_fallback_service.generate_response.assert_called_once_with(
         "What is the airspeed velocity of an unladen swallow?"
     )
-    agent.tts.synthesize.assert_called_once_with("African or European swallow, meatbag?!", cache=True)
+    # One-off LLM replies are not cached
+    agent.tts.synthesize.assert_called_once_with("African or European swallow, meatbag?!", cache=False)
     assert agent.logger.log_interaction.call_args[1]["matched_intent"] == "llm_fallback_custom"
 
 
@@ -389,11 +390,15 @@ def test_agent_shutdown_on_button_long_hold(monkeypatch):
 
     monkeypatch.setattr("core.system_utils.trigger_host_shutdown", mock_shutdown)
 
+    played_at = []
+    agent.audio.play_audio.side_effect = lambda *a, **k: played_at.append(agent.audio.volume)
+
     agent._on_button_long_hold()
 
     agent.tts.synthesize.assert_called_with("Powering off.")
     agent.audio.play_audio.assert_called_once()
-    assert agent.audio.volume == 0.5  # Restored volume for announcement
+    assert played_at == [0.5]  # audible for the announcement
+    assert agent.audio.volume == 0.0  # the visitor's setting is restored afterwards
     assert agent.led.current_state == LEDState.OFF
     assert shutdown_called is True
 

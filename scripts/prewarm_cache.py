@@ -26,7 +26,8 @@ from core.intent_builder import (
     DEFAULT_ANNOUNCEMENTS,
     DEFAULT_GREETING_TEMPLATE,
 )
-from core.system_utils import load_env_file, resolve_agent_voice_config
+from core import voice_config
+from core.system_utils import load_env_file
 from services.intent_service import PersonaIntentEngine
 from services.tts_service import PiperTTSService
 
@@ -166,7 +167,7 @@ def main() -> int:
     engine = PersonaIntentEngine(personality_name_or_path=args.personality)
     profile = getattr(engine, "profile", None)
 
-    model_path, tempo, noise = resolve_agent_voice_config(
+    model_path, tempo, noise = voice_config.resolve_agent_voice_config(
         profile=profile,
         model_path=args.model_path,
         tempo=args.tempo,

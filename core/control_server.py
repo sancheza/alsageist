@@ -6,19 +6,48 @@ switch online/offline modes, hot-swap personalities, and query status.
 """
 
 import json
+import math
 import os
+import re
 import socket
 import stat
 import struct
 import sys
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Protocol
 
 MAX_REQUEST_BYTES = 64 * 1024
 REQUEST_DEADLINE_SEC = 3.0  # total time a client has to send its request
 MAX_SAY_CHARS = 500
 SHUTDOWN_CONFIRMATION = "confirm"
+# The control socket switches personalities by name only; file paths are for the command line
+PERSONALITY_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+
+
+class ControlTarget(Protocol):
+    """What the control server needs from the agent it controls."""
+
+    start_time: float
+    is_disabled: bool
+    is_online: bool
+    mode_forced: bool
+    mic_muted: bool
+    volume: float
+    engine_name: str
+    llm_fallback_enabled: bool
+    led_state_name: str
+    active_profile: Any
+
+    def set_volume(self, volume: float) -> float: ...
+    def set_mic_muted(self, muted: bool) -> None: ...
+    def set_online(self, online: Optional[bool]) -> None: ...
+    def disable(self) -> None: ...
+    def enable(self) -> None: ...
+    def toggle(self) -> bool: ...
+    def switch_personality(self, name_or_path: str) -> Any: ...
+    def speak(self, text: str, blocking: bool = True, cooldown_sec: float = 0.25) -> bool: ...
+    def request_shutdown(self) -> None: ...
 
 
 class ControlSocketError(RuntimeError):
@@ -71,7 +100,7 @@ class ControlServer:
 
     def __init__(
         self,
-        agent: Any,
+        agent: ControlTarget,
         socket_path: Optional[str] = None,
     ) -> None:
         """Initialize the control server.
@@ -353,8 +382,11 @@ class ControlServer:
                 profile = agent.active_profile
                 return {"status": "ok", "personality": profile.personality if profile else "unknown"}
 
+            name = str(value).strip()
+            if not PERSONALITY_NAME.match(name):
+                return {"status": "error", "message": f"Invalid personality name '{name}'. Use letters, digits, '_' and '-'."}
             try:
-                profile = agent.switch_personality(str(value).strip())
+                profile = agent.switch_personality(name)
             except Exception as exc:
                 return {"status": "error", "message": f"Failed to switch personality: {exc}"}
             return {
@@ -411,8 +443,8 @@ class ControlServer:
             "disabled": agent.is_disabled,
             "mode": "ONLINE" if agent.is_online else "OFFLINE",
             "mode_forced": agent.mode_forced,
-            "engine": agent.args.engine.upper(),
-            "llm_fallback": getattr(agent, "llm_fallback_enabled", False),
+            "engine": agent.engine_name.upper(),
+            "llm_fallback": agent.llm_fallback_enabled,
             "led_state": agent.led_state_name,
             "uptime_sec": uptime_sec,
             "pid": os.getpid(),
@@ -426,6 +458,11 @@ class ControlServer:
             return {"status": "ok", "volume_pct": pct, "volume_float": round(agent.volume, 2)}
 
         val_str = str(value).strip()
+        try:
+            if not math.isfinite(float(val_str.lstrip("+-"))):
+                raise ValueError(val_str)
+        except ValueError:
+            return {"status": "error", "message": f"Invalid volume value '{val_str}'. Use 0-100 or +10/-10."}
         current_vol = agent.volume
 
         # A leading + or - is a change in percentage points ("+1" is one point, not 100%)

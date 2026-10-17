@@ -6,6 +6,7 @@ tracks ongoing speech, and signals when speech has finished after a silence dura
 
 from collections import deque
 import math
+import threading
 from typing import Deque, List, Optional, Tuple
 import numpy as np
 
@@ -49,6 +50,8 @@ class VoiceActivityDetector:
         self.min_active_speech_frames = int((min_active_speech_sec * 1000.0) / frame_duration_ms)
         self.max_utterance_sec = max_utterance_sec
 
+        # Frames arrive on the main loop while button, control and announcement threads reset
+        self._lock = threading.RLock()
         self.noise_floor: float = 0.002
         self.is_speaking: bool = False
         self._consecutive_speech_frames: int = 0
@@ -89,6 +92,11 @@ class VoiceActivityDetector:
         Returns:
             Tuple of (is_speech_frame, utterance_completed, utterance_audio_or_none).
         """
+        with self._lock:
+            return self._process_frame(frame)
+
+    def _process_frame(self, frame: np.ndarray) -> Tuple[bool, bool, Optional[np.ndarray]]:
+        """Update speech state for one frame; the caller holds the lock."""
         rms = self.calculate_rms(frame)
         threshold = max(self.noise_floor * self.energy_threshold_multiplier, self.min_energy_threshold)
         is_speech = rms > threshold
@@ -166,10 +174,11 @@ class VoiceActivityDetector:
 
     def reset(self) -> None:
         """Reset internal buffers and state."""
-        self.is_speaking = False
-        self._consecutive_speech_frames = 0
-        self._consecutive_silence_frames = 0
-        self._active_speech_frames_count = 0
-        self._peak_speech_rms = 0.0
-        self._pre_speech_buffer.clear()
-        self._speech_buffer.clear()
+        with self._lock:
+            self.is_speaking = False
+            self._consecutive_speech_frames = 0
+            self._consecutive_silence_frames = 0
+            self._active_speech_frames_count = 0
+            self._peak_speech_rms = 0.0
+            self._pre_speech_buffer.clear()
+            self._speech_buffer.clear()

@@ -66,9 +66,9 @@ class BasicInfoService:
         self._weather_cache_time: float = cached_weather_time
         self._last_fetch_attempt_time: float = 0.0
         self._negative_cache_ttl_sec: float = 60.0
-        # WEATHER_ENABLED=false stops all requests to wttr.in (which locates the device by IP address
-        # when WEATHER_LOCATION is unset)
-        self._enabled = env_bool("WEATHER_ENABLED", True)
+        # wttr.in locates the device by IP address when WEATHER_LOCATION is unset, so weather is on by
+        # default only when a location is configured; WEATHER_ENABLED=true opts in without one.
+        self._enabled = env_bool("WEATHER_ENABLED", bool(os.environ.get("WEATHER_LOCATION", "").strip()))
         self._lock = threading.Lock()
         self._fetch_thread: Optional[threading.Thread] = None
 
@@ -172,7 +172,8 @@ class BasicInfoService:
         if not allow_network or not self._enabled:
             return cached
         if cached is not None:
-            self.prefetch_weather()
+            if last_attempt_age >= self._negative_cache_ttl_sec:
+                self.prefetch_weather()
             return cached
         if last_attempt_age < self._negative_cache_ttl_sec:
             return None
@@ -221,8 +222,8 @@ class BasicInfoService:
                     self._weather_cache = result
                     self._weather_cache_time = time.time()
                 return result
-        except Exception:
-            pass
+        except Exception as exc:  # isolation point: weather is optional; the caller has a spoken fallback
+            print(f"  (Weather lookup failed: {type(exc).__name__}: {exc})")
 
         return None
 

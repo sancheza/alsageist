@@ -74,6 +74,11 @@ class SpeechToTextService:
                 )
             print("Warning: Offline Vosk STT model is not installed; offline fallback will be unavailable.")
 
+    @property
+    def offline_available(self) -> bool:
+        """Return True when the offline Vosk model is loaded."""
+        return self._vosk_model is not None
+
     def _audio_to_wav_bytes(self, audio_array: np.ndarray) -> bytes:
         """Convert numpy audio array to in-memory WAV bytes with gain normalization.
 
@@ -210,34 +215,27 @@ class SpeechToTextService:
             },
         }
 
-        answered = False
-        last_error: Optional[Exception] = None
-        for model in models_to_try:
-            try:
-                cand_parts = cloud_api.gemini_generate_parts(
-                    self.gemini_api_key, model, payload, timeout=GEMINI_TIMEOUT_SEC
-                )
-                answered = True
-                for p in cand_parts:
-                    if isinstance(p, dict):
-                        if "audioTranscription" in p:
-                            transcribed = p["audioTranscription"].get("text", "").strip()
-                            if transcribed:
-                                return transcribed
-                        if "text" in p:
-                            raw_t = p.get("text", "").strip()
-                            if raw_t and "cannot fulfill" not in raw_t.lower():
-                                return raw_t
-                # A model successfully answered but found no speech (empty transcript);
-                # do not waste latency and calls trying further models on silent audio.
-                return ""
-            except Exception as exc:
-                last_error = exc
+        # A model that answers with no text found no speech; further models are not tried on silence.
+        # If every model fails, cloud_api raises so the caller can fall back to another backend.
+        return cloud_api.gemini_generate(
+            self.gemini_api_key, models_to_try, payload, GEMINI_TIMEOUT_SEC,
+            extract=self._gemini_transcript, stop_on_answer=True,
+        )
 
-        # An empty transcript is valid only when a model answered; if every model failed,
-        # raise so the caller can fall back to another backend.
-        if not answered and last_error is not None:
-            raise RuntimeError(f"all Gemini models failed: {last_error}") from last_error
+    @staticmethod
+    def _gemini_transcript(parts: list) -> str:
+        """Return the transcript in a Gemini response's content parts, or an empty string."""
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            if "audioTranscription" in part:
+                transcribed = part["audioTranscription"].get("text", "").strip()
+                if transcribed:
+                    return transcribed
+            if "text" in part:
+                raw = part.get("text", "").strip()
+                if raw and "cannot fulfill" not in raw.lower():
+                    return raw
         return ""
 
     def _transcribe_groq(self, wav_bytes: bytes) -> str:

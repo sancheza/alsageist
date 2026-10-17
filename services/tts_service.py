@@ -15,17 +15,21 @@ import time
 from typing import Optional, Tuple
 import numpy as np
 
-from core import system_utils
+from core import voice_config
 from core.env_utils import env_float
 
 
 DEFAULT_MEMORY_CACHE_ENTRIES = 128
+DEFAULT_MEMORY_CACHE_MB = 32.0
 DEFAULT_DISK_CACHE_MB = 1024.0
+# A cached file's modification time marks it recently used; it is rewritten at most this often so
+# playing a cached phrase does not cost an SD-card write each time.
+TOUCH_INTERVAL_SEC = 3600.0
 
 PRONUNCIATION_RULES = [
     (re.compile(r"\bKrueger\b", re.IGNORECASE), "Kruger"),
     (re.compile(r"\bTannh[aä]user\b", re.IGNORECASE), "Tahnhoyzer"),
-    (re.compile(r"\bMwa+ha+ha+!*\b", re.IGNORECASE), "Ha ha ha ha ha!"),
+    (re.compile(r"\bMwa+ha+ha+!*", re.IGNORECASE), "Ha ha ha ha ha!"),
     (re.compile(r"\bHasta\b", re.IGNORECASE), "Ahsta"),
 ]
 
@@ -48,6 +52,7 @@ class PiperTTSService:
         pause_duration_sec: float = 0.55,
         cache_dir: Optional[str] = None,
         max_memory_entries: int = DEFAULT_MEMORY_CACHE_ENTRIES,
+        max_memory_mb: float = DEFAULT_MEMORY_CACHE_MB,
         max_disk_cache_mb: Optional[float] = None,
         lazy_load: bool = False,
     ) -> None:
@@ -61,6 +66,7 @@ class PiperTTSService:
             pause_duration_sec: Duration in seconds of silence inserted at ellipsis (...) breaks.
             cache_dir: Directory for the persistent audio cache (default: $ALSAGEIST_CACHE_DIR or models/cache).
             max_memory_entries: Most recently used phrases kept in RAM.
+            max_memory_mb: RAM limit in MB for those phrases; the least recently used are dropped beyond it.
             max_disk_cache_mb: Disk cache size limit in MB; least recently used files are deleted
                 beyond it (default: $ALSAGEIST_CACHE_MAX_MB or 1024).
             lazy_load: If True, load the voice model on the first phrase that is not already
@@ -68,7 +74,7 @@ class PiperTTSService:
                 Raspberry Pi, so short-lived tools use this; a long-running service keeps
                 the default so its first uncached reply is not delayed.
         """
-        self.model_path = system_utils.resolve_piper_model_path(model_path=model_path)
+        self.model_path = voice_config.resolve_piper_model_path(model_path=model_path)
         if sample_rate is None or sample_rate == 22050:
             config_path = f"{self.model_path}.json"
             if os.path.isfile(config_path):
@@ -101,10 +107,13 @@ class PiperTTSService:
         self._syn_config = None
         self._voice_loaded = False
         self._load_lock = threading.Lock()
-        self._lock = threading.RLock()
+        self._lock = threading.RLock()  # serializes synthesis and disk-cache writes
+        self._cache_lock = threading.Lock()  # guards _cache so cached phrases never wait on synthesis
         self.voice_load_sec = 0.0  # time spent loading the voice model so far
         self._cache: "OrderedDict[str, np.ndarray]" = OrderedDict()
         self.max_memory_entries = max(1, int(max_memory_entries))
+        self.max_memory_bytes = int(max_memory_mb * 1024 * 1024)
+        self._cache_bytes = 0
         if max_disk_cache_mb is None:
             max_disk_cache_mb = env_float("ALSAGEIST_CACHE_MAX_MB", DEFAULT_DISK_CACHE_MB)
         self.max_disk_cache_bytes = int(max_disk_cache_mb * 1024 * 1024)
@@ -239,11 +248,35 @@ class PiperTTSService:
         return text in self._cache or os.path.isfile(self._get_cache_path(text))
 
     def _remember(self, text: str, audio: np.ndarray) -> None:
-        """Store audio in the RAM cache, evicting the least recently used phrase when full."""
-        self._cache[text] = audio
-        self._cache.move_to_end(text)
-        while len(self._cache) > self.max_memory_entries:
-            self._cache.popitem(last=False)
+        """Store audio in the RAM cache, evicting least recently used phrases when it is full."""
+        with self._cache_lock:
+            previous = self._cache.pop(text, None)
+            if previous is not None:
+                self._cache_bytes -= previous.nbytes
+            self._cache[text] = audio
+            self._cache_bytes += audio.nbytes
+            while len(self._cache) > 1 and (
+                len(self._cache) > self.max_memory_entries or self._cache_bytes > self.max_memory_bytes
+            ):
+                _, evicted = self._cache.popitem(last=False)
+                self._cache_bytes -= evicted.nbytes
+
+    def _recall(self, text: str) -> Optional[np.ndarray]:
+        """Return a phrase from the RAM cache and mark it most recently used, or None."""
+        with self._cache_lock:
+            audio = self._cache.get(text)
+            if audio is not None:
+                self._cache.move_to_end(text)
+            return audio
+
+    @staticmethod
+    def _touch(path: str) -> None:
+        """Mark a cache file recently used, writing its timestamp at most once per TOUCH_INTERVAL_SEC."""
+        try:
+            if time.time() - os.stat(path).st_mtime > TOUCH_INTERVAL_SEC:
+                os.utime(path)
+        except OSError:
+            pass
 
     def _prune_disk_cache(self, force: bool = True) -> None:
         """Delete least recently used cache files until the cache fits its size limit."""
@@ -287,24 +320,24 @@ class PiperTTSService:
         if not text or not text.strip():
             return np.zeros(0, dtype=np.float32), self.sample_rate
 
+        # 1. Check in-memory RAM cache without waiting for any synthesis in progress
+        audio = self._recall(text)
+        if audio is not None:
+            self._touch(self._get_cache_path(text))
+            return audio, self.sample_rate
+
         with self._lock:
-            # 1. Check in-memory RAM cache
-            if text in self._cache:
-                self._cache.move_to_end(text)
-                cache_path = self._get_cache_path(text)
-                if os.path.isfile(cache_path):
-                    try:
-                        os.utime(cache_path)
-                    except OSError:
-                        pass
-                return self._cache[text], self.sample_rate
+            # A caller that held the lock may have produced this phrase while we waited
+            audio = self._recall(text)
+            if audio is not None:
+                return audio, self.sample_rate
 
             # 2. Check persistent disk cache
             cache_path = self._get_cache_path(text)
             if os.path.isfile(cache_path):
                 try:
                     audio = np.load(cache_path)
-                    os.utime(cache_path)  # mark as recently used
+                    self._touch(cache_path)
                     self._remember(text, audio)
                     return audio, self.sample_rate
                 except (OSError, ValueError, EOFError):

@@ -3,16 +3,17 @@
 Provides reliable cross-platform mechanisms for triggering host system poweroff
 across native bare-metal Linux (systemd / logind / shutdown) and containerized
 Docker environments (shared D-Bus socket / shared systemd socket / SysRq trigger),
-with safe simulation on developer workstations (macOS).
+with safe simulation on developer workstations (macOS). Also loads the `.env` file and
+probes internet connectivity. Voice model resolution is in core.voice_config.
 """
 
 import os
+import re
 import shutil
 import socket
 import subprocess
 import sys
 import time
-from typing import Any, Optional, Tuple
 
 
 def is_running_in_docker() -> bool:
@@ -163,20 +164,51 @@ def trigger_host_shutdown(dry_run: bool = False) -> bool:
     return False
 
 
+def _parse_env_value(raw: str) -> str:
+    """Return the value of a `.env` assignment, without quotes or a trailing comment.
+
+    A quoted value ends at its first unescaped matching quote, so `#` inside quotes is kept.
+    An unquoted value ends at the first `#` that starts a comment (at the start of the
+    value or after whitespace), so `#` inside a token such as a key is kept.
+
+    Args:
+        raw: Text after the `=` sign.
+
+    Returns:
+        The parsed value.
+    """
+    val = raw.strip()
+    if val[:1] in ('"', "'"):
+        index = 1
+        while index < len(val):
+            if val[index] == "\\":  # a backslash-escaped quote does not close the value
+                index += 2
+            elif val[index] == val[0]:
+                return val[1:index]
+            else:
+                index += 1
+        return val
+    if val.startswith("#"):
+        return ""
+    return re.split(r"\s#", val, maxsplit=1)[0].strip()
+
+
 def load_env_file(path: str = ".env") -> None:
     """Load key-value environment variables from an environment file if present.
 
-    Searches relative to the current working directory, the package directory,
-    or the parent directory. Existing environment variables are never overwritten.
+    An absolute path is used as given. A relative path is looked up in the repository
+    root first and then in the current working directory, so a stray `.env` in the
+    directory a command runs from cannot take precedence over the project's own.
+    Existing environment variables are never overwritten.
 
     Args:
         path: Relative or absolute path to the environment file.
     """
-    candidates = [
-        path,
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), path),
-        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), path),
-    ]
+    if os.path.isabs(path):
+        candidates = [path]
+    else:
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        candidates = [os.path.join(repo_root, path), path]
     target_path = next((p for p in candidates if os.path.isfile(p)), None)
     if not target_path:
         return
@@ -193,20 +225,8 @@ def load_env_file(path: str = ".env") -> None:
                     continue
                 key, val = line.split("=", 1)
                 key = key.strip()
-                val = val.strip()
-                if val.startswith('"'):
-                    closing = val.rfind('"')
-                    if closing > 0:
-                        val = val[1:closing]
-                elif val.startswith("'"):
-                    closing = val.rfind("'")
-                    if closing > 0:
-                        val = val[1:closing]
-                else:
-                    if "#" in val:
-                        val = val.split("#", 1)[0].strip()
                 if key and key not in os.environ:
-                    os.environ[key] = val
+                    os.environ[key] = _parse_env_value(val)
     except Exception as exc:
         print(f"Warning: Failed to load environment file from {target_path}: {exc}")
 
@@ -238,99 +258,4 @@ def check_internet_connectivity(timeout: float = 2.5) -> bool:
             if sock is not None:
                 sock.close()
     return False
-
-
-def resolve_piper_model_path(
-    model_path: Optional[str] = None,
-    voice_name: Optional[str] = None,
-    repo_root: Optional[str] = None,
-) -> str:
-    """Resolve the file path to a Piper ONNX neural voice model.
-
-    Evaluates explicit model paths and voice names (e.g. 'en_GB-alan-medium'). A voice
-    name resolves to `models/piper/<name>.onnx` whether or not the file exists; the default
-    model is used only when neither a path nor a voice name is given.
-
-    Args:
-        model_path: Explicit path from CLI flags or environment variables.
-        voice_name: Character voice identifier from personality profile or string.
-        repo_root: Root directory of the repository. Auto-resolved if None.
-
-    Returns:
-        Resolved absolute or normalized model file path.
-    """
-    if repo_root is None:
-        explicit_root = os.environ.get("ALSAGEIST_ROOT") or os.environ.get("REPO_ROOT")
-        if explicit_root and os.path.isdir(explicit_root):
-            repo_root = explicit_root
-        elif os.path.isdir(os.path.join(os.getcwd(), "models")):
-            repo_root = os.getcwd()
-        else:
-            repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-    # 1. Explicit model path from argument or environment; a bare voice ID is treated as voice_name
-    if model_path and not model_path.endswith(".onnx") and os.sep not in model_path:
-        voice_name = voice_name or model_path
-        model_path = None
-
-    if model_path:
-        if os.path.isabs(model_path) and os.path.exists(model_path):
-            return model_path
-        candidate = os.path.join(repo_root, model_path)
-        if os.path.exists(candidate):
-            return candidate
-        return model_path
-
-    # 2. Voice name from profile (e.g. 'en_GB-alan-medium' or 'models/piper/en_GB-alan-medium.onnx')
-    if voice_name:
-        if voice_name.endswith(".onnx"):
-            if os.path.isabs(voice_name) and os.path.exists(voice_name):
-                return voice_name
-            candidate = os.path.join(repo_root, voice_name)
-            if os.path.exists(candidate):
-                return candidate
-            candidate_in_piper = os.path.join(repo_root, "models", "piper", os.path.basename(voice_name))
-            if os.path.exists(candidate_in_piper):
-                return candidate_in_piper
-            return candidate
-        else:
-            # Short name or identifier without .onnx extension; a voice that is not installed
-            # resolves to its expected path so the caller reports the missing file
-            return os.path.join(repo_root, "models", "piper", f"{voice_name}.onnx")
-
-    # 3. Default model when no model path or voice name is given
-    return os.path.join(repo_root, "models", "piper", "en_GB-alan-medium.onnx")
-
-
-def resolve_agent_voice_config(
-    profile: Optional[Any] = None,
-    model_path: Optional[str] = None,
-    tempo: Optional[float] = None,
-    noise: Optional[float] = None,
-    repo_root: Optional[str] = None,
-) -> Tuple[str, float, float]:
-    """Resolve the voice model path, tempo, and noise for a persona in one place.
-
-    CLI arguments take precedence over environment variables, which take
-    precedence over profile settings, falling back to system defaults.
-
-    Args:
-        profile: Optional PersonalityProfile supplying voice and voice_settings.
-        model_path: Explicit model path CLI flag or environment override.
-        tempo: Explicit tempo CLI flag or environment override.
-        noise: Explicit noise CLI flag or environment override.
-        repo_root: Root directory of repository.
-
-    Returns:
-        Tuple of (model_path, tempo, noise).
-    """
-    from core.intent_builder import resolve_voice_settings
-    tempo_val, noise_val = resolve_voice_settings(profile, tempo=tempo, noise=noise)
-    resolved_path = resolve_piper_model_path(
-        model_path=model_path or os.environ.get("MODEL_PATH"),
-        voice_name=getattr(profile, "voice", None) if profile else None,
-        repo_root=repo_root,
-    )
-    return resolved_path, tempo_val, noise_val
-
 

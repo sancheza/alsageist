@@ -80,6 +80,7 @@ class AudioIO:
             channels = dev["max_input_channels"] if kind == "input" else dev["max_output_channels"]
             if channels > 0 and target in dev["name"].lower():
                 return idx
+        print(f"Warning: no {kind} audio device matches '{name_or_index}'; using the system default.")
         return None
 
     def _input_callback(

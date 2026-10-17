@@ -6,7 +6,8 @@ core.http_client so callers pass a payload and receive text or parts.
 
 import os
 import threading
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Callable, Dict, List, Optional
 import urllib.error
 
 from core import http_client
@@ -102,6 +103,59 @@ def gemini_generate_parts(
     return candidates[0].get("content", {}).get("parts", [])
 
 
+def gemini_generate(
+    api_key: str,
+    models: List[str],
+    payload: Dict[str, Any],
+    timeout: float,
+    extract: Callable[[List[Dict[str, Any]]], str],
+    deadline: Optional[float] = None,
+    stop_on_answer: bool = False,
+    on_error: Optional[Callable[[str, Exception], None]] = None,
+) -> str:
+    """Try Gemini models in order and return the first usable text.
+
+    Args:
+        api_key: Gemini API key.
+        models: Candidate models, most preferred first.
+        payload: generateContent request body.
+        timeout: Per-request timeout in seconds, shortened to what is left of the deadline.
+        extract: Reduces a candidate's content parts to text; an empty string means no usable text.
+        deadline: Optional time.monotonic() value after which no further model is tried.
+        stop_on_answer: If True, a model that answers with no usable text ends the search (an
+            empty transcript of silent audio is a valid answer, so further models are not tried).
+        on_error: Optional callback receiving (model, error) for each failed model.
+
+    Returns:
+        The extracted text, or an empty string when no model produced any.
+
+    Raises:
+        RuntimeError: If every model attempted failed.
+    """
+    last_error: Optional[Exception] = None
+    answered = False
+    for model in models:
+        remaining = timeout if deadline is None else min(timeout, deadline - time.monotonic())
+        if remaining <= 0:
+            break
+        try:
+            parts = gemini_generate_parts(api_key, model, payload, timeout=remaining)
+        except Exception as exc:  # isolation point: one bad model must not stop the others
+            last_error = exc
+            if on_error is not None:
+                on_error(model, exc)
+            continue
+        answered = True
+        text = extract(parts) if parts else ""
+        if text:
+            return text
+        if stop_on_answer:
+            return ""
+    if not answered and last_error is not None:
+        raise RuntimeError(f"all Gemini models failed: {last_error}") from last_error
+    return ""
+
+
 def groq_chat(api_key: str, payload: Dict[str, Any], timeout: float) -> str:
     """Call the Groq chat completions endpoint.
 
@@ -122,7 +176,7 @@ def groq_chat(api_key: str, payload: Dict[str, Any], timeout: float) -> str:
     choices = result.get("choices", [])
     if not choices:
         return ""
-    return choices[0].get("message", {}).get("content", "").strip()
+    return (choices[0].get("message", {}).get("content") or "").strip()
 
 
 def groq_transcribe(api_key: str, model: str, wav_bytes: bytes, timeout: float) -> str:

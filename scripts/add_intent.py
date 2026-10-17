@@ -43,8 +43,9 @@ Usage:
 import argparse
 import os
 import sys
+from typing import Optional
 
-from core.intent_authoring import IntentCollisionError, create_custom_intent
+from core.intent_authoring import IntentCollisionError, IntentShadowError, create_custom_intent
 from core.intent_builder import CustomIntent, PersonalityProfile, find_personality_file
 from core.system_utils import load_env_file
 
@@ -221,14 +222,27 @@ COMMON USAGE EXAMPLES:
     return parser.parse_args()
 
 
-def handle_check(personality_name: str, phrase: str) -> int:
-    """Test if a phrase triggers an existing intent."""
+def load_existing_profile(personality_name: str) -> Optional[PersonalityProfile]:
+    """Load a personality profile, reporting an error when it does not exist.
+
+    Args:
+        personality_name: Personality name or file path.
+
+    Returns:
+        The profile, or None after printing an error.
+    """
     profile_path = find_personality_file(personality_name)
     if not os.path.isfile(profile_path):
         print(f"Error: Personality profile '{personality_name}' not found at {profile_path}.", file=sys.stderr)
-        return 1
+        return None
+    return PersonalityProfile.load_from_file(profile_path)
 
-    profile = PersonalityProfile.load_from_file(profile_path)
+
+def handle_check(personality_name: str, phrase: str) -> int:
+    """Test if a phrase triggers an existing intent."""
+    profile = load_existing_profile(personality_name)
+    if profile is None:
+        return 1
     print(f"\nChecking phrase against personality: '{profile.display_name}' ({profile.personality})...")
     print(f"   Query: \"{phrase}\"")
 
@@ -250,12 +264,9 @@ def handle_check(personality_name: str, phrase: str) -> int:
 
 def handle_search(personality_name: str, keyword: str) -> int:
     """Search intents in a personality by keyword."""
-    profile_path = find_personality_file(personality_name)
-    if not os.path.isfile(profile_path):
-        print(f"Error: Personality profile '{personality_name}' not found at {profile_path}.", file=sys.stderr)
+    profile = load_existing_profile(personality_name)
+    if profile is None:
         return 1
-
-    profile = PersonalityProfile.load_from_file(profile_path)
     results = profile.search_intents(keyword)
     print(f"\nSearch results for '{keyword}' in '{profile.personality}' ({len(results)} found):")
     for idx, intent in enumerate(results, start=1):
@@ -268,12 +279,9 @@ def handle_search(personality_name: str, keyword: str) -> int:
 
 def handle_list(personality_name: str) -> int:
     """List all registered intents in a personality."""
-    profile_path = find_personality_file(personality_name)
-    if not os.path.isfile(profile_path):
-        print(f"Error: Personality profile '{personality_name}' not found at {profile_path}.", file=sys.stderr)
+    profile = load_existing_profile(personality_name)
+    if profile is None:
         return 1
-
-    profile = PersonalityProfile.load_from_file(profile_path)
     print(f"\nRegistered Intents in '{profile.display_name}' ({profile.personality}): {len(profile.intents)} total")
     print("-" * 70)
     for idx, intent in enumerate(profile.intents, start=1):
@@ -427,10 +435,10 @@ def main() -> int:
     print(f"\nProcessing intent for personality: '{personality}'...")
 
     def _cli_prewarm(phrases, target_profile):
-        from core.system_utils import resolve_agent_voice_config
+        from core import voice_config
         from services.tts_service import PiperTTSService
 
-        v_path, tempo, noise = resolve_agent_voice_config(profile=target_profile)
+        v_path, tempo, noise = voice_config.resolve_agent_voice_config(profile=target_profile)
         tts = PiperTTSService(model_path=v_path, length_scale=tempo, noise_scale=noise)
         for resp in phrases:
             tts.synthesize(resp)
@@ -487,6 +495,12 @@ def main() -> int:
         print(f"  --overwrite  Overwrite '{col_err.existing_intent.name}' with new patterns/responses", file=sys.stderr)
         print(f"  --force      Force create a separate high-priority intent", file=sys.stderr)
         print(f"Or use --interactive to choose interactively.\n", file=sys.stderr)
+        return 1
+
+    except IntentShadowError as shadow_err:
+        print(f"\nError: {shadow_err}", file=sys.stderr)
+        print("Its patterns match sample questions of those intents and would take priority over them.", file=sys.stderr)
+        print("Use a more specific query, or re-run with --force to create it anyway.\n", file=sys.stderr)
         return 1
 
     except Exception as exc:

@@ -1,0 +1,8 @@
+# Optional override that lets the container power off the host through systemd-logind.
+# It gives the container access to the host's system D-Bus, so add it only if the control
+# command `shutdown` and the long button hold must work from Docker:
+#   docker compose -f docker-compose.yml -f docker-compose.shutdown.yml up -d
+services:
+  alsageist:
+    volumes:
+      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket

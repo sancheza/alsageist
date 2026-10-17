@@ -380,7 +380,7 @@ VAD_THRESHOLD=0.0035
 | :--- | :--- | :--- |
 | `LOG_MAX_MB` | `5` | Size at which `logs/interactions.jsonl` and `logs/conversations.log` rotate |
 | `LOG_BACKUPS` | `3` | Rotated copies kept per file (`.1` is the newest) |
-| `LOG_TRANSCRIPTS` | `true` | `false` stores `[not stored]` instead of visitor speech and replies; timings, intents and audio levels are still logged |
+| `LOG_TRANSCRIPTS` | `false` | `true` stores visitor speech and replies in the logs and prints them on the console; `false` stores `[not stored]` and prints `[TRANSCRIPT REDACTED]`. Timings, intents and audio levels are always logged |
 
 * Log files are readable only by the user running AlsaGeist (mode 0600).
 * In online mode each utterance is sent to the configured cloud service (Groq or Google) for transcription, and unrecognized questions go to the LLM. In offline mode audio stays on the device.

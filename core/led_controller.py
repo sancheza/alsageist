@@ -106,7 +106,6 @@ class ButtonGestureTracker:
         """
         self._controller = controller
         self._lock = threading.Lock()
-        self._hold_timer: Optional[threading.Timer] = None
         self._long_hold_timer: Optional[threading.Timer] = None
         self._press_time: float = 0.0
         self._long_hold_fired = False
@@ -117,7 +116,9 @@ class ButtonGestureTracker:
             self._press_time = time.monotonic()
             self._long_hold_fired = False
             self._cancel_timers()
-            self._long_hold_timer = self._start_timer(self._controller.long_hold_time_sec, self._on_long_hold)
+            # Without a long-hold callback a long press is an ordinary hold, handled on release
+            if self._controller.button_long_hold_callback is not None:
+                self._long_hold_timer = self._start_timer(self._controller.long_hold_time_sec, self._on_long_hold)
 
     def released(self, *_args) -> None:
         """Handle a button release edge: trigger short-press or hold callback based on duration."""
@@ -145,11 +146,9 @@ class ButtonGestureTracker:
             self._cancel_timers()
 
     def _cancel_timers(self) -> None:
-        """Cancel and clear both timers. Caller holds self._lock."""
-        for timer in (self._hold_timer, self._long_hold_timer):
-            if timer is not None:
-                timer.cancel()
-        self._hold_timer = None
+        """Cancel and clear the long-hold timer. Caller holds self._lock."""
+        if self._long_hold_timer is not None:
+            self._long_hold_timer.cancel()
         self._long_hold_timer = None
 
     @staticmethod
@@ -163,6 +162,8 @@ class ButtonGestureTracker:
     def _on_long_hold(self) -> None:
         """Timer action: the button has been held continuously for long_hold_time_sec."""
         with self._lock:
+            if self._press_time == 0.0:  # released while the timer was firing
+                return
             self._long_hold_fired = True
         self._invoke(self._controller.button_long_hold_callback, "long hold")
 
@@ -301,8 +302,9 @@ class RaspberryPiLEDController(BaseLEDController):
             self._thread = threading.Thread(target=self._pwm_worker, daemon=True)
             self._thread.start()
             return
-        except Exception:
-            pass
+        except Exception as exc:
+            gpiozero_error = exc
+            self._close_gpiozero_devices()  # a half-built LED or button would keep its pin claimed
 
         # 2. Fallback to legacy RPi.GPIO (Bullseye / Buster)
         try:
@@ -320,8 +322,23 @@ class RaspberryPiLEDController(BaseLEDController):
             self._thread = threading.Thread(target=self._pwm_worker, daemon=True)
             self._thread.start()
             return
-        except Exception:
-            sys.stderr.write("Warning: Hardware GPIO unavailable (gpiozero/RPi.GPIO). Running in console mode.\n")
+        except Exception as exc:
+            sys.stderr.write(
+                "Warning: Hardware GPIO unavailable; LED and button are inactive "
+                f"(gpiozero: {type(gpiozero_error).__name__}: {gpiozero_error}; "
+                f"RPi.GPIO: {type(exc).__name__}: {exc}).\n"
+            )
+
+    def _close_gpiozero_devices(self) -> None:
+        """Release any gpiozero LED and button created before a failed start."""
+        for name in ("_gpio_led", "_gpio_btn"):
+            device = getattr(self, name)
+            if device is not None:
+                try:
+                    device.close()
+                except Exception:
+                    pass
+                setattr(self, name, None)
 
     def _wire_hardware_button(self) -> None:
         """Wire callbacks to underlying hardware backend."""
@@ -375,18 +392,7 @@ class RaspberryPiLEDController(BaseLEDController):
             self._thread.join(timeout=1.0)
             self._thread = None
         if self._backend == "gpiozero":
-            if self._gpio_led:
-                try:
-                    self._gpio_led.close()
-                except Exception:
-                    pass
-                self._gpio_led = None
-            if self._gpio_btn:
-                try:
-                    self._gpio_btn.close()
-                except Exception:
-                    pass
-                self._gpio_btn = None
+            self._close_gpiozero_devices()
         elif self._backend == "rpi.gpio":
             if self._rpi_pwm:
                 try:

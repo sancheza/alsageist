@@ -12,7 +12,7 @@ import threading
 import time
 from typing import Optional, Tuple
 
-from core import system_utils
+from core import system_utils, voice_config
 from core.audio_io import AudioIO
 from core.control_server import ControlServer
 from core.dialogue_interface import DialogueEngine
@@ -22,7 +22,6 @@ from core.intent_builder import (
     DEFAULT_GREETING_TEMPLATE,
     PersonalityProfile,
     load_personality,
-    resolve_voice_settings,
 )
 from core.led_controller import LEDState, create_led_controller
 from core.logger import InteractionLogger
@@ -38,7 +37,13 @@ from services.tts_service import PiperTTSService
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IDLE_RESET_SEC = 10.0  # silence after which the next visitor starts a fresh conversation
 LOW_POWER_QUIET_SEC = 10.0  # no spoken low-power line within this time of a conversation
-DYNAMIC_INTENTS = (INTENT_TIME, INTENT_WEATHER)  # one-off answers: their audio is not cached
+# One-off answers (live data and LLM replies): their audio is not cached, so they do not fill
+# the memory and SD-card caches or push the pre-warmed profile lines out of them.
+UNCACHED_INTENTS = (INTENT_TIME, INTENT_WEATHER, "llm_generated", "llm_fallback_custom")
+# Intents the rule engine returns when no rule matched; the LLM fallback answers these.
+UNRECOGNIZED_INTENTS = ("fallback_unrecognized", "costume_inquiry", "lingerer_escalation")
+TURN_DEADLINE_SEC = 30.0  # STT may take 22 s when every cloud backend is tried
+ERROR_PAUSE_SEC = 1.0
 LOOP_ERROR_PAUSE_SEC = 1.0
 MAX_ADAPTED_NOISE_FLOOR = 0.02
 DEFAULT_LOW_POWER_LINE = "My power supply is too weak. Please check the power adapter."
@@ -92,32 +97,31 @@ class AlsaGeistAgent:
         log_dir = os.environ.get("LOG_DIR", os.path.join(REPO_ROOT, "logs"))
         self.logger = InteractionLogger.from_env(log_dir=log_dir, persona_name=self.persona_name)
         self.basic_info = BasicInfoService(profile=self.profile)
-        self.basic_info.prefetch_weather()
 
         self.is_online = True
         self.last_net_check_time = 0.0
         self.net_check_interval = 15.0 * 60.0  # 15 minutes
-        self._net_check_thread: Optional[threading.Thread] = None
         self._net_check_result: Optional[bool] = None
         self._net_lock = threading.Lock()  # guards _net_check_result
-        self._net_check_thread = threading.Thread(
+        self._net_check_thread: Optional[threading.Thread] = threading.Thread(
             target=self._probe_network, daemon=True, name="AlsaGeist-NetCheck"
         )
         self._net_check_thread.start()
         self.last_net_check_time = time.time()  # the probe above is the first periodic check
 
+        # With button shutdown disabled the long hold is not registered, so a long press still
+        # acts as the sleep/wake hold instead of being swallowed
         self.led.set_button_callbacks(
             on_press=self._on_button_press,
             on_hold=self._on_button_hold,
-            on_long_hold=self._on_button_long_hold,
+            on_long_hold=self._on_button_long_hold if env_bool("BUTTON_SHUTDOWN_ENABLED", True) else None,
             hold_time_sec=getattr(args, "button_hold_sec", 5.0),
             long_hold_time_sec=getattr(args, "button_shutdown_sec", 10.0),
         )
 
         self.control_server = ControlServer(agent=self)
-        off_values = ("false", "0", "no", "off")
-        monitor_enabled = os.environ.get("LOW_POWER_MONITOR", "true").strip().lower() not in off_values
-        announce_enabled = os.environ.get("LOW_POWER_ANNOUNCE", "true").strip().lower() not in off_values
+        monitor_enabled = env_bool("LOW_POWER_MONITOR", True)
+        announce_enabled = env_bool("LOW_POWER_ANNOUNCE", True)
         self.power_monitor: Optional[PowerMonitor] = (
             PowerMonitor.from_env(announce=self._announce_low_power if announce_enabled else None)
             if monitor_enabled
@@ -167,7 +171,7 @@ class AlsaGeistAgent:
         return VoiceActivityDetector(
             sample_rate=16000,
             frame_duration_ms=30,
-            energy_threshold_multiplier=2.2,
+            energy_threshold_multiplier=getattr(self.args, "vad_multiplier", 2.2),
             min_speech_frames=3,
             silence_timeout_sec=self.args.silence_timeout,
             min_energy_threshold=self.args.threshold,
@@ -257,7 +261,7 @@ class AlsaGeistAgent:
         Returns:
             Tuple of (model_path, tempo, noise).
         """
-        return system_utils.resolve_agent_voice_config(
+        return voice_config.resolve_agent_voice_config(
             profile=profile,
             model_path=self.args.model_path or os.environ.get("MODEL_PATH"),
             tempo=self.args.tempo,
@@ -353,6 +357,11 @@ class AlsaGeistAgent:
         applied = round(min(1.0, max(0.0, float(volume))), 2)
         self.audio.volume = applied
         return applied
+
+    @property
+    def engine_name(self) -> str:
+        """Return the dialogue engine name ('intent' or 'llm')."""
+        return self.args.engine
 
     @property
     def mic_muted(self) -> bool:
@@ -501,8 +510,11 @@ class AlsaGeistAgent:
         return self._build_tts(profile)
 
     def request_shutdown(self) -> None:
-        """Announce power-off and shut down the host, without blocking the caller."""
-        threading.Thread(target=self._on_button_long_hold, daemon=True).start()
+        """Announce power-off and shut down the host, without blocking the caller.
+
+        An explicit control command always acts; BUTTON_SHUTDOWN_ENABLED limits only the button.
+        """
+        threading.Thread(target=self._power_off_host, daemon=True, name="AlsaGeist-Shutdown").start()
 
     # ------------------------------------------------------------------
     # Speech output
@@ -514,6 +526,7 @@ class AlsaGeistAgent:
         sample_rate: int,
         blocking: bool = True,
         cooldown_sec: float = 0.25,
+        force: bool = False,
     ) -> None:
         """Play synthesized audio while muting capture and managing LED state.
 
@@ -528,8 +541,9 @@ class AlsaGeistAgent:
             sample_rate: Sample rate in Hz.
             blocking: Whether audio playback should block execution.
             cooldown_sec: Trailing pause in seconds to allow room resonance to dissipate.
+            force: Play even while the agent is disabled (the power-off announcement).
         """
-        if self.is_disabled:
+        if self.is_disabled and not force:
             return
         if not blocking:
             threading.Thread(
@@ -641,24 +655,30 @@ class AlsaGeistAgent:
             print("\n[BUTTON] Long hold detected; button shutdown is disabled (BUTTON_SHUTDOWN_ENABLED=false).")
             return
         print("\n[BUTTON] 10-second hold detected: Announcing shutdown and powering off...")
+        self._power_off_host()
+
+    def _power_off_host(self) -> None:
+        """Announce power-off, then shut down the host; return to normal operation if that fails."""
         self.audio.stop_playback()
         self.reset_dialogue()
-        self.vad.reset()
+        with self._state_lock:
+            with self._mic_lock:
+                self.is_disabled = True
+                self.audio.mute_capture()
+            self.vad.reset()
 
-        self.is_disabled = True
-        self.audio.mute_capture()
-        if self.audio.volume <= 0.05:
+        # The announcement must be audible, but the visitor's volume setting is kept
+        saved_volume = self.audio.volume
+        if saved_volume <= 0.05:
             self.audio.volume = 0.5
 
-        announcement = self._announcement("powering_off")
         try:
-            audio_data, sample_rate = self.tts.synthesize(announcement)
-            with self._audio_lock:
-                self.led.set_state(LEDState.SPEAKING)
-                self.audio.play_audio(audio_data, sample_rate=sample_rate, blocking=True)
+            audio_data, sample_rate = self.tts.synthesize(self._announcement("powering_off"))
+            self._play_speech_audio(audio_data, sample_rate, blocking=True, cooldown_sec=0.0, force=True)
         except Exception as exc:
             print(f"Shutdown announcement error: {exc}")
         finally:
+            self.audio.volume = saved_volume
             self.led.set_state(LEDState.OFF)
 
         if not system_utils.trigger_host_shutdown():
@@ -885,7 +905,7 @@ class AlsaGeistAgent:
 
         # Escalate indeterminate prompts to custom LLM response if enabled
         if (
-            matched_intent == "fallback_unrecognized"
+            matched_intent in UNRECOGNIZED_INTENTS
             and self.llm_fallback_enabled
             and self.llm_fallback_service is not None
             and self.is_online
@@ -900,6 +920,45 @@ class AlsaGeistAgent:
                 print(f"  (LLM fallback fetch failed: {llm_exc}; using generic fallback)")
         return reply, matched_intent
 
+    def _discard_pending_audio(self) -> None:
+        """Drop buffered microphone audio and speech state so a finished turn cannot carry over."""
+        self.audio.drain_input_queue()
+        self.vad.reset()
+
+    def _log_turn(
+        self,
+        user_text: str,
+        reply: str,
+        matched_intent: str,
+        audio_dur: float,
+        audio_rms: float,
+        latencies_ms: dict,
+        status: str = "PROCESSED",
+        notes: str = "",
+    ) -> None:
+        """Record one turn in the interaction log."""
+        self.logger.log_interaction(
+            transcribed_text=user_text,
+            response_text=reply,
+            engine=self.args.engine,
+            matched_intent=matched_intent,
+            audio_duration_sec=audio_dur,
+            audio_rms=audio_rms,
+            latencies_ms=latencies_ms,
+            status=status,
+            notes=notes,
+        )
+
+    def _error_pause(self) -> None:
+        """Show the error LED, discard pending audio and pause before listening again."""
+        self.led.set_state(LEDState.ERROR)
+        self._discard_pending_audio()
+        time.sleep(ERROR_PAUSE_SEC)
+
+    def _say_or_hide(self, text: str) -> str:
+        """Return text for the console, or a placeholder when transcripts are not stored."""
+        return text if getattr(self.logger, "store_text", True) else "[TRANSCRIPT REDACTED]"
+
     def _handle_utterance(self, utterance_pcm) -> None:
         """Process completed user utterance through STT -> Brain -> TTS -> Playback."""
         t_start = time.time()
@@ -913,26 +972,20 @@ class AlsaGeistAgent:
 
         # 1. Speech-to-Text
         try:
-            user_text = self.stt.transcribe(utterance_pcm, offline=not self.is_online)
+            # Automatic offline mode uses the cloud when there is no offline model: the probe only
+            # shows that a few hosts are unreachable. A mode forced by command is honoured.
+            offline = not self.is_online and (self._mode_forced is not None or self.stt.offline_available)
+            user_text = self.stt.transcribe(utterance_pcm, offline=offline)
             self._check_network_if_cloud_stt_failed()
         except Exception as exc:
             self._check_network_if_cloud_stt_failed()
             print(f"STT Error: {exc}")
-            self.led.set_state(LEDState.ERROR)
-            self.logger.log_interaction(
-                transcribed_text="",
-                response_text="",
-                engine=self.args.engine,
-                matched_intent="stt_error",
-                audio_duration_sec=audio_dur,
-                audio_rms=audio_rms,
-                latencies_ms={"stt": int((time.time() - t_start) * 1000)},
-                status="ERROR",
-                notes=f"STT Exception: {exc}",
+            self._log_turn(
+                "", "", "stt_error", audio_dur, audio_rms,
+                {"stt": int((time.time() - t_start) * 1000)},
+                status="ERROR", notes=f"STT Exception: {exc}",
             )
-            self.audio.drain_input_queue()
-            self.vad.reset()
-            time.sleep(1.0)
+            self._error_pause()
             return
 
         t_stt = time.time()
@@ -953,22 +1006,13 @@ class AlsaGeistAgent:
             if filter_status == "FILTERED_SILENCE":
                 print("  (Silence / ambient noise filtered)")
             else:
-                if getattr(self.logger, "store_text", True):
-                    print(f"  (Filtered ambient background artifact / timecode: \"{user_text}\")")
-                else:
-                    print("  (Filtered ambient background artifact / timecode: [REDACTED])")
+                shown = f'"{user_text}"' if getattr(self.logger, "store_text", True) else "[REDACTED]"
+                print(f"  (Filtered ambient background artifact / timecode: {shown})")
             self.led.set_state(LEDState.IDLE)
-            self.audio.drain_input_queue()
-            self.vad.reset()
-            self.logger.log_interaction(
-                transcribed_text=user_text or "",
-                response_text="",
-                engine=self.args.engine,
-                matched_intent=matched_intent,
-                audio_duration_sec=audio_dur,
-                audio_rms=audio_rms,
-                latencies_ms={"stt": stt_ms},
-                status=filter_status,
+            self._discard_pending_audio()
+            self._log_turn(
+                user_text or "", "", matched_intent, audio_dur, audio_rms,
+                {"stt": stt_ms}, status=filter_status,
             )
             if backoff_sec > 0:
                 time.sleep(backoff_sec)
@@ -976,72 +1020,47 @@ class AlsaGeistAgent:
 
         self._consecutive_filtered_turns = 0
 
-        # Check turn deadline before proceeding to reasoning
-        if (time.time() - t_start) > 15.0:
+        if (time.time() - t_start) > TURN_DEADLINE_SEC:
             print("Warning: Utterance processing deadline exceeded; aborting turn.")
+            self._log_turn(
+                user_text, "", "turn_timeout", audio_dur, audio_rms,
+                {"stt": stt_ms}, status="TIMEOUT",
+                notes=f"Speech recognition took longer than {TURN_DEADLINE_SEC:.0f}s",
+            )
             self.led.set_state(LEDState.IDLE)
-            self.audio.drain_input_queue()
-            self.vad.reset()
+            self._discard_pending_audio()
             return
 
-        if getattr(self.logger, "store_text", True):
-            print(f"User: \"{user_text}\"  ({stt_ms}ms)")
-        else:
-            print(f"User: \"[TRANSCRIPT REDACTED]\"  ({stt_ms}ms)")
+        print(f"User: \"{self._say_or_hide(user_text)}\"  ({stt_ms}ms)")
 
         # 2. Dialogue Reasoning
         try:
             reply, matched_intent = self._resolve_dialogue_response(user_text)
         except Exception as exc:
             print(f"Dialogue Error: {exc}")
-            self.led.set_state(LEDState.ERROR)
-            self.logger.log_interaction(
-                transcribed_text=user_text,
-                response_text="",
-                engine=self.args.engine,
-                matched_intent="dialogue_error",
-                audio_duration_sec=audio_dur,
-                audio_rms=audio_rms,
-                latencies_ms={"stt": stt_ms, "dialogue": int((time.time() - t_stt) * 1000)},
-                status="ERROR",
-                notes=f"Dialogue Exception: {exc}",
+            self._log_turn(
+                user_text, "", "dialogue_error", audio_dur, audio_rms,
+                {"stt": stt_ms, "dialogue": int((time.time() - t_stt) * 1000)},
+                status="ERROR", notes=f"Dialogue Exception: {exc}",
             )
-            self.audio.drain_input_queue()
-            self.vad.reset()
-            time.sleep(1.0)
+            self._error_pause()
             return
 
         t_llm = time.time()
         llm_ms = int((t_llm - t_stt) * 1000)
-        if getattr(self.logger, "store_text", True):
-            print(f"{self.persona_name} ({matched_intent}): \"{reply}\"  ({llm_ms}ms)")
-        else:
-            print(f"{self.persona_name} ({matched_intent}): \"[TRANSCRIPT REDACTED]\"  ({llm_ms}ms)")
+        print(f"{self.persona_name} ({matched_intent}): \"{self._say_or_hide(reply)}\"  ({llm_ms}ms)")
 
         # 3. Local Piper TTS Synthesis in RAM
         try:
-            audio_data, sample_rate = self.tts.synthesize(reply, cache=matched_intent not in DYNAMIC_INTENTS)
+            audio_data, sample_rate = self.tts.synthesize(reply, cache=matched_intent not in UNCACHED_INTENTS)
         except Exception as exc:
             print(f"TTS Error: {exc}")
-            self.led.set_state(LEDState.ERROR)
-            self.logger.log_interaction(
-                transcribed_text=user_text,
-                response_text=reply,
-                engine=self.args.engine,
-                matched_intent=matched_intent,
-                audio_duration_sec=audio_dur,
-                audio_rms=audio_rms,
-                latencies_ms={
-                    "stt": stt_ms,
-                    "dialogue": llm_ms,
-                    "tts": int((time.time() - t_llm) * 1000),
-                },
-                status="ERROR",
-                notes=f"TTS Exception: {exc}",
+            self._log_turn(
+                user_text, reply, matched_intent, audio_dur, audio_rms,
+                {"stt": stt_ms, "dialogue": llm_ms, "tts": int((time.time() - t_llm) * 1000)},
+                status="ERROR", notes=f"TTS Exception: {exc}",
             )
-            self.audio.drain_input_queue()
-            self.vad.reset()
-            time.sleep(1.0)
+            self._error_pause()
             return
 
         t_tts = time.time()
@@ -1050,15 +1069,9 @@ class AlsaGeistAgent:
         print(f"[Total TTFB Latency: {total_latency_ms}ms] Playing response...")
 
         # 4. Log Interaction Record
-        self.logger.log_interaction(
-            transcribed_text=user_text,
-            response_text=reply,
-            engine=self.args.engine,
-            matched_intent=matched_intent,
-            audio_duration_sec=audio_dur,
-            audio_rms=audio_rms,
-            latencies_ms={"stt": stt_ms, "dialogue": llm_ms, "tts": tts_ms, "total": total_latency_ms},
-            status="PROCESSED",
+        self._log_turn(
+            user_text, reply, matched_intent, audio_dur, audio_rms,
+            {"stt": stt_ms, "dialogue": llm_ms, "tts": tts_ms, "total": total_latency_ms},
         )
 
         # 5. Audio Playback to Speaker (Mute mic capture to prevent self-triggering)
@@ -1066,10 +1079,7 @@ class AlsaGeistAgent:
             self._play_speech_audio(audio_data, sample_rate, blocking=True, cooldown_sec=0.25)
         except Exception as exc:  # audio device errors (unplugged, underrun) must not end the service
             print(f"Playback Error: {exc}")
-            self.led.set_state(LEDState.ERROR)
-            self.audio.drain_input_queue()
-            self.vad.reset()
-            time.sleep(1.0)
+            self._error_pause()
 
     def _play_startup_greeting(self) -> None:
         """Play an initial greeting announcement when the agent first wakes up."""

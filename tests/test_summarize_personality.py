@@ -8,9 +8,8 @@ import tempfile
 import pytest
 
 from core.intent_builder import CustomIntent, PersonalityProfile
+from core.intent_samples import clean_regex_pattern, extract_sample_questions
 from scripts.summarize_personality import (
-    clean_regex_pattern,
-    extract_sample_questions,
     categorize_intent,
     generate_markdown_summary,
     generate_text_summary,

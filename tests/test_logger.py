@@ -113,4 +113,4 @@ def test_logger_from_env(tmp_path, monkeypatch):
     assert (logger.max_bytes, logger.backup_count, logger.store_text) == (2 * 1024 * 1024, 5, False)
 
     monkeypatch.delenv("LOG_TRANSCRIPTS")
-    assert InteractionLogger.from_env(str(tmp_path)).store_text is True
+    assert InteractionLogger.from_env(str(tmp_path)).store_text is False  # transcripts are opt-in

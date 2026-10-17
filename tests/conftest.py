@@ -11,3 +11,10 @@ def _no_ambient_api_keys(monkeypatch):
     """
     for name in ("GROQ_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"):
         monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _weather_enabled(monkeypatch):
+    """Enable weather lookups (off by default without a location); tests mock the network."""
+    monkeypatch.setenv("WEATHER_ENABLED", "true")
+    monkeypatch.delenv("WEATHER_LOCATION", raising=False)

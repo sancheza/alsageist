@@ -58,7 +58,7 @@ class InteractionLogger:
         """Create a logger configured from the environment.
 
         Reads LOG_MAX_MB (default 5), LOG_BACKUPS (default 3) and LOG_TRANSCRIPTS
-        (default true; set false to stop storing what visitors and the persona say).
+        (default false; set true to store what visitors and the persona say).
 
         Args:
             log_dir: Directory where log files are stored.
@@ -67,7 +67,7 @@ class InteractionLogger:
         Returns:
             Configured InteractionLogger.
         """
-        store_text = env_bool("LOG_TRANSCRIPTS", True)
+        store_text = env_bool("LOG_TRANSCRIPTS", False)
         return cls(
             log_dir=log_dir,
             persona_name=persona_name,
