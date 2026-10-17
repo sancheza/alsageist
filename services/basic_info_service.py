@@ -5,9 +5,11 @@ spoken responses with caching and fallback.
 """
 
 import datetime
+import os
 import threading
 import time
 from typing import Dict, Optional
+import urllib.parse
 
 from core import http_client
 from core.intent_builder import PersonalityProfile
@@ -35,6 +37,8 @@ class BasicInfoService:
         self._profile = profile
         self._weather_cache: Optional[Dict[str, str]] = dict(cached_weather) if cached_weather else None
         self._weather_cache_time: float = cached_weather_time
+        self._last_fetch_attempt_time: float = 0.0
+        self._negative_cache_ttl_sec: float = 60.0
         self._lock = threading.Lock()
         self._fetch_thread: Optional[threading.Thread] = None
 
@@ -105,6 +109,7 @@ class BasicInfoService:
         with self._lock:
             cached = self._weather_cache
             age = time.time() - self._weather_cache_time
+            last_attempt_age = time.time() - self._last_fetch_attempt_time
         if cached is not None and age < self._cache_ttl_sec:
             return cached
         if not allow_network:
@@ -112,6 +117,8 @@ class BasicInfoService:
         if cached is not None:
             self.prefetch_weather()
             return cached
+        if last_attempt_age < self._negative_cache_ttl_sec:
+            return None
         return self._fetch_weather()
 
     def prefetch_weather(self) -> None:
@@ -126,9 +133,16 @@ class BasicInfoService:
 
     def _fetch_weather(self) -> Optional[Dict[str, str]]:
         """Fetch weather from wttr.in (short timeout) and update the cache."""
+        with self._lock:
+            self._last_fetch_attempt_time = time.time()
+
+        location = os.environ.get("WEATHER_LOCATION", "").strip()
+        loc_path = f"{urllib.parse.quote(location)}" if location else ""
+        url = f"https://wttr.in/{loc_path}?format=j1" if loc_path else "https://wttr.in/?format=j1"
+
         try:
             data = http_client.get_json(
-                "https://wttr.in/?format=j1",
+                url,
                 headers={"User-Agent": "curl/7.88.1"},
                 timeout=3.5,
             )

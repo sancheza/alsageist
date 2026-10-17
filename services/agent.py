@@ -469,6 +469,12 @@ class AlsaGeistAgent:
             and getattr(current, "noise_scale", None) == noise
         ):
             return current
+
+        # Release old TTS model before building new one to prevent dual-model memory peaks
+        import gc
+
+        self.tts = None
+        gc.collect()
         return self._build_tts(profile)
 
     def request_shutdown(self) -> None:

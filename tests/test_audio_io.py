@@ -158,3 +158,33 @@ def test_audio_io_lock_is_reentrant():
         audio.stop_capture()
         audio.drain_input_queue()
 
+
+def test_audio_io_input_queue_is_bounded():
+    """_input_queue has a maxsize and drops frames without raising when full."""
+    audio = AudioIO(sample_rate=16000, channels=1)
+    assert audio._input_queue.maxsize == 128
+    audio._is_capturing = True
+    frame = np.ones((480, 1), dtype=np.float32)
+    for _ in range(200):
+        audio._input_callback(frame, 480, {}, 0)
+    assert audio._input_queue.qsize() == 128
+
+
+def test_audio_io_failed_stream_closed_before_stereo_retry():
+    """When mono stream fails, it is closed before retrying stereo."""
+    from unittest.mock import MagicMock, patch
+
+    audio = AudioIO(sample_rate=16000, channels=1)
+    mock_mono_stream = MagicMock()
+    mock_mono_stream.start.side_effect = RuntimeError("Mono rejected")
+    mock_stereo_stream = MagicMock()
+
+    streams = [mock_mono_stream, mock_stereo_stream]
+
+    with patch("core.audio_io.sd.InputStream", side_effect=streams):
+        audio.start_capture()
+        mock_mono_stream.close.assert_called_once()
+        assert audio.channels == 2
+        mock_stereo_stream.start.assert_called_once()
+
+

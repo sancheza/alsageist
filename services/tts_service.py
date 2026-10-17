@@ -83,8 +83,9 @@ class PiperTTSService:
             os.makedirs(self.cache_dir, exist_ok=True)
         except OSError:
             pass
+        self._last_disk_prune_time: float = 0.0
         with self._lock:
-            self._prune_disk_cache()
+            self._prune_disk_cache(force=True)
 
         if not lazy_load:
             self._ensure_voice()
@@ -204,8 +205,12 @@ class PiperTTSService:
         while len(self._cache) > self.max_memory_entries:
             self._cache.popitem(last=False)
 
-    def _prune_disk_cache(self) -> None:
+    def _prune_disk_cache(self, force: bool = True) -> None:
         """Delete least recently used cache files until the cache fits its size limit."""
+        now = time.time()
+        if not force and now - self._last_disk_prune_time < 30.0:
+            return
+        self._last_disk_prune_time = now
         try:
             entries = []
             for entry in os.scandir(self.cache_dir):
@@ -244,6 +249,12 @@ class PiperTTSService:
             # 1. Check in-memory RAM cache
             if text in self._cache:
                 self._cache.move_to_end(text)
+                cache_path = self._get_cache_path(text)
+                if os.path.isfile(cache_path):
+                    try:
+                        os.utime(cache_path)
+                    except OSError:
+                        pass
                 return self._cache[text], self.sample_rate
 
             # 2. Check persistent disk cache
@@ -282,6 +293,6 @@ class PiperTTSService:
                 os.replace(tmp_path, cache_path)
             except OSError:
                 return audio, self.sample_rate
-            self._prune_disk_cache()
+            self._prune_disk_cache(force=False)
 
             return audio, self.sample_rate

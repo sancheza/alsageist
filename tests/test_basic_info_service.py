@@ -201,3 +201,36 @@ def test_grimjaw_profile_still_supplies_its_own_voice():
     assert "goosebumps" not in service.get_time_response(now=datetime.datetime(2026, 10, 11, 14, 30))
     with patch.object(service, "get_weather_data", return_value=None):
         assert "barometer" in service.get_weather_response().lower()
+
+
+def test_weather_negative_caching_avoids_repeated_blocking():
+    """A failed weather fetch is negatively cached to avoid repeated synchronous network attempts."""
+    service = BasicInfoService()
+    with patch("services.basic_info_service.http_client.get_json", side_effect=OSError("network down")) as mock_get:
+        res1 = service.get_weather_data()
+        assert res1 is None
+        assert mock_get.call_count == 1
+
+        # Second immediate call within negative TTL must return None without calling http_client
+        res2 = service.get_weather_data()
+        assert res2 is None
+        assert mock_get.call_count == 1
+
+
+def test_weather_location_env_var(monkeypatch):
+    """WEATHER_LOCATION environment variable configures the wttr.in target location."""
+    monkeypatch.setenv("WEATHER_LOCATION", "Austin,Texas")
+    service = BasicInfoService()
+    with patch(
+        "services.basic_info_service.http_client.get_json",
+        return_value={
+            "current_condition": [
+                {"temp_F": "75", "temp_C": "24", "weatherDesc": [{"value": "Sunny"}]}
+            ]
+        },
+    ) as mock_get:
+        service.get_weather_data()
+        assert mock_get.call_count == 1
+        url = mock_get.call_args[0][0]
+        assert "Austin%2CTexas" in url
+

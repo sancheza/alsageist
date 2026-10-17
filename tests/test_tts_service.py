@@ -284,3 +284,27 @@ def test_piper_cli_timeout_kills_process(tmp_path, monkeypatch):
             lazy._synthesize_chunk("hello")
         mock_proc.kill.assert_called_once()
 
+
+def test_tts_service_ram_cache_hit_updates_disk_mtime(tmp_path):
+    """Accessing an item from RAM cache updates its disk file mtime."""
+    import time
+
+    cache_dir = str(tmp_path / "cache")
+    tts = PiperTTSService(model_path=_model(tmp_path), cache_dir=cache_dir)
+    tts._synthesize_chunk = lambda text: np.full(100, 0.1, dtype=np.float32)
+
+    # First synthesis writes to disk and stores in RAM
+    tts.synthesize("hello world")
+    cache_path = tts._get_cache_path("hello world")
+    assert os.path.isfile(cache_path)
+
+    # Set old mtime on disk
+    old_time = time.time() - 3600
+    os.utime(cache_path, (old_time, old_time))
+    assert os.stat(cache_path).st_mtime < time.time() - 100
+
+    # RAM hit must update disk mtime
+    tts.synthesize("hello world")
+    assert os.stat(cache_path).st_mtime > time.time() - 10
+
+

@@ -43,7 +43,7 @@ class AudioIO:
         self.volume = min(1.0, max(0.0, float(volume)))
         self.mic_gain = max(0.1, float(mic_gain))
 
-        self._input_queue: queue.Queue = queue.Queue()
+        self._input_queue: queue.Queue = queue.Queue(maxsize=128)
         self._input_stream: Optional[sd.InputStream] = None
         self._is_capturing: bool = False
         self._is_muted: bool = False
@@ -96,12 +96,16 @@ class AudioIO:
                 mono = np.mean(indata, axis=1, dtype=np.float32)
                 if self.mic_gain != 1.0:
                     mono = np.clip(mono * self.mic_gain, -1.0, 1.0)
-                self._input_queue.put(mono)
+                frame = mono
             else:
                 flat = indata.flatten().astype(np.float32)
                 if self.mic_gain != 1.0:
                     flat = np.clip(flat * self.mic_gain, -1.0, 1.0)
-                self._input_queue.put(flat)
+                frame = flat
+            try:
+                self._input_queue.put_nowait(frame)
+            except queue.Full:
+                pass
 
     def start_capture(self) -> None:
         """Start non-blocking continuous microphone capture."""
@@ -123,6 +127,12 @@ class AudioIO:
                 )
                 self._input_stream.start()
             except Exception:
+                if self._input_stream is not None:
+                    try:
+                        self._input_stream.close()
+                    except Exception:
+                        pass
+                    self._input_stream = None
                 # If hardware rejects mono (e.g. Google AIY Voice HAT dual Knowles MEMS),
                 # retry with 2 channels stereo and downmix to mono in RAM
                 if self.channels == 1:
