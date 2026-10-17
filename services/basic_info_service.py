@@ -6,13 +6,40 @@ spoken responses with caching and fallback.
 
 import datetime
 import os
+import re
 import threading
 import time
 from typing import Dict, Optional
 import urllib.parse
 
 from core import http_client
+from core.env_utils import env_bool
 from core.intent_builder import PersonalityProfile
+
+INTENT_TIME = "time_and_clock"
+INTENT_WEATHER = "weather_and_temperature"
+
+# Phrases that ask for the time or the weather, for dialogue engines (the LLM) that have no
+# intent rules of their own.
+_TIME_QUESTION = re.compile(r"\bwhat('?s| is)? the time\b|\bwhat time\b|\bcurrent time\b|\btell me the time\b", re.IGNORECASE)
+_WEATHER_QUESTION = re.compile(r"\bweather\b|\btemperature\b|\bhow (cold|hot|warm)\b|\bis it (cold|hot|warm|raining|snowing)\b", re.IGNORECASE)
+
+
+def safe_format(template: str, fallback: str, **values: str) -> str:
+    """Fill a profile template, returning fallback when the template has unknown placeholders.
+
+    Args:
+        template: Text from a personality profile, with {name} placeholders.
+        fallback: Text returned when formatting fails.
+        **values: Placeholder values.
+
+    Returns:
+        The formatted template, or fallback.
+    """
+    try:
+        return template.format(**values)
+    except (KeyError, IndexError, ValueError):
+        return fallback
 
 
 class BasicInfoService:
@@ -39,6 +66,9 @@ class BasicInfoService:
         self._weather_cache_time: float = cached_weather_time
         self._last_fetch_attempt_time: float = 0.0
         self._negative_cache_ttl_sec: float = 60.0
+        # WEATHER_ENABLED=false stops all requests to wttr.in (which locates the device by IP address
+        # when WEATHER_LOCATION is unset)
+        self._enabled = env_bool("WEATHER_ENABLED", True)
         self._lock = threading.Lock()
         self._fetch_thread: Optional[threading.Thread] = None
 
@@ -53,6 +83,31 @@ class BasicInfoService:
         """Return the timestamp when the weather cache was last updated."""
         with self._lock:
             return self._weather_cache_time
+
+    @staticmethod
+    def match_intent(user_text: str) -> Optional[str]:
+        """Return INTENT_TIME or INTENT_WEATHER when the text asks for that, else None."""
+        if _TIME_QUESTION.search(user_text):
+            return INTENT_TIME
+        if _WEATHER_QUESTION.search(user_text):
+            return INTENT_WEATHER
+        return None
+
+    def respond(self, intent: str, allow_network: bool = True) -> Optional[str]:
+        """Return the live answer for a time or weather intent, or None for any other intent.
+
+        Args:
+            intent: Intent name.
+            allow_network: If False, weather is answered from cache only.
+
+        Returns:
+            Spoken answer, or None when this service does not handle the intent.
+        """
+        if intent == INTENT_TIME:
+            return self.get_time_response()
+        if intent == INTENT_WEATHER:
+            return self.get_weather_response(allow_network=allow_network)
+        return None
 
     def get_time_response(self, now: Optional[datetime.datetime] = None) -> str:
         """Generate a spoken response indicating the current local time.
@@ -84,14 +139,16 @@ class BasicInfoService:
         time_responses = self._profile.time_responses if self._profile else {}
         if is_past_bedtime:
             template = time_responses.get("bedtime")
+            default = f"It is currently {time_str}. It is late."
             if template:
-                return template.format(time=time_str)
-            return f"It is currently {time_str}. It is late."
+                return safe_format(template, default, time=time_str)
+            return default
 
         template = time_responses.get("standard")
+        default = f"It is {time_str}."
         if template:
-            return template.format(time=time_str)
-        return f"It is {time_str}."
+            return safe_format(template, default, time=time_str)
+        return default
 
     def get_weather_data(self, allow_network: bool = True) -> Optional[Dict[str, str]]:
         """Return current weather from the cache, fetching from wttr.in when needed.
@@ -112,7 +169,7 @@ class BasicInfoService:
             last_attempt_age = time.time() - self._last_fetch_attempt_time
         if cached is not None and age < self._cache_ttl_sec:
             return cached
-        if not allow_network:
+        if not allow_network or not self._enabled:
             return cached
         if cached is not None:
             self.prefetch_weather()
@@ -123,6 +180,8 @@ class BasicInfoService:
 
     def prefetch_weather(self) -> None:
         """Refresh the weather cache on a background thread, if no refresh is already running."""
+        if not self._enabled:
+            return
         with self._lock:
             if self._fetch_thread is not None and self._fetch_thread.is_alive():
                 return

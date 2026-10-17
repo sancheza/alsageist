@@ -9,9 +9,16 @@ import json
 import os
 from typing import Any, Dict
 
+from core.env_utils import env_bool, env_float, env_int
+
 DEFAULT_MAX_MB = 5.0
 DEFAULT_BACKUPS = 3
 REDACTED_TEXT = "[not stored]"
+
+
+def _one_line(text: str) -> str:
+    """Return text with line breaks and control characters escaped."""
+    return "".join(ch if ch.isprintable() else ch.encode("unicode_escape").decode("ascii") for ch in text)
 
 
 class InteractionLogger:
@@ -60,12 +67,12 @@ class InteractionLogger:
         Returns:
             Configured InteractionLogger.
         """
-        store_text = os.environ.get("LOG_TRANSCRIPTS", "true").strip().lower() not in ("false", "0", "no")
+        store_text = env_bool("LOG_TRANSCRIPTS", True)
         return cls(
             log_dir=log_dir,
             persona_name=persona_name,
-            max_bytes=int(float(os.environ.get("LOG_MAX_MB", DEFAULT_MAX_MB)) * 1024 * 1024),
-            backup_count=int(os.environ.get("LOG_BACKUPS", DEFAULT_BACKUPS)),
+            max_bytes=int(env_float("LOG_MAX_MB", DEFAULT_MAX_MB) * 1024 * 1024),
+            backup_count=env_int("LOG_BACKUPS", DEFAULT_BACKUPS),
             store_text=store_text,
         )
 
@@ -149,7 +156,10 @@ class InteractionLogger:
         except OSError as exc:
             print(f"[LOGGER ERROR] Failed writing JSONL: {exc}")
 
-        # Append to human-readable text log
+        # Append to human-readable text log (control characters escaped so a transcript
+        # cannot forge extra log lines)
+        transcribed_text = _one_line(transcribed_text)
+        response_text = _one_line(response_text)
         if status == "PROCESSED":
             line = (
                 f"[{timestamp}] [Turn {self._turn_id}] "

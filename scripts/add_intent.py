@@ -44,13 +44,8 @@ import argparse
 import os
 import sys
 
-from core.intent_builder import (
-    CustomIntent,
-    IntentCollisionError,
-    PersonalityProfile,
-    create_custom_intent,
-    find_personality_file,
-)
+from core.intent_authoring import IntentCollisionError, create_custom_intent
+from core.intent_builder import CustomIntent, PersonalityProfile, find_personality_file
 from core.system_utils import load_env_file
 
 VERSION = "1.1.0"

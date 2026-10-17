@@ -13,17 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libportaudio2 \
     libgpiod2 \
     gpiod \
-    systemd \
     dbus-bin \
-    curl \
-    unzip \
     ca-certificates \
-    gcc \
-    g++ \
-    libasound2-dev \
-    portaudio19-dev \
-    libgpiod-dev \
-    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -37,10 +28,15 @@ COPY data/personalities/ ./data.defaults/personalities/
 COPY docker/entrypoint.sh /entrypoint.sh
 
 # Install AlsaGeist and its dependencies (including Raspberry Pi GPIO libraries) in editable mode,
-# pinned to the versions in constraints.txt
-RUN chmod +x /entrypoint.sh && \
+# pinned to the versions in constraints.txt. The compilers and -dev packages exist only for this
+# step and are removed in the same layer, so they do not stay in the image.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc g++ libasound2-dev portaudio19-dev libgpiod-dev python3-dev && \
+    chmod +x /entrypoint.sh && \
     pip install --upgrade pip setuptools wheel && \
-    pip install -c constraints.txt -e ".[rpi]"
+    pip install -c constraints.txt -e ".[rpi]" && \
+    apt-get purge -y --auto-remove gcc g++ libasound2-dev portaudio19-dev libgpiod-dev python3-dev && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create non-root alsageist user and volume mount targets
 RUN groupadd -f -r gpio && \
@@ -58,6 +54,10 @@ ENV PERSONALITY=grimjaw \
     VAD_THRESHOLD=0.0035
 
 VOLUME ["/app/data", "/app/models", "/app/logs"]
+
+# Healthy while the daemon answers on its control socket
+HEALTHCHECK --interval=60s --timeout=10s --start-period=120s --retries=3 \
+    CMD python3 scripts/alsageist_ctl.py status --json > /dev/null || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python3", "main.py"]

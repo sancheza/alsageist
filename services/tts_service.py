@@ -16,6 +16,7 @@ from typing import Optional, Tuple
 import numpy as np
 
 from core import system_utils
+from core.env_utils import env_float
 
 
 DEFAULT_MEMORY_CACHE_ENTRIES = 128
@@ -27,6 +28,12 @@ PRONUNCIATION_RULES = [
     (re.compile(r"\bMwa+ha+ha+!*\b", re.IGNORECASE), "Ha ha ha ha ha!"),
     (re.compile(r"\bHasta\b", re.IGNORECASE), "Ahsta"),
 ]
+
+
+# Changes whenever the pronunciation rules change, so cached audio is regenerated with the new rules
+_RULES_FINGERPRINT = hashlib.sha256(
+    "|".join(f"{p.pattern}>{r}" for p, r in PRONUNCIATION_RULES).encode("utf-8")
+).hexdigest()[:8]
 
 
 class PiperTTSService:
@@ -94,7 +101,7 @@ class PiperTTSService:
         self._cache: "OrderedDict[str, np.ndarray]" = OrderedDict()
         self.max_memory_entries = max(1, int(max_memory_entries))
         if max_disk_cache_mb is None:
-            max_disk_cache_mb = float(os.environ.get("ALSAGEIST_CACHE_MAX_MB", DEFAULT_DISK_CACHE_MB))
+            max_disk_cache_mb = env_float("ALSAGEIST_CACHE_MAX_MB", DEFAULT_DISK_CACHE_MB)
         self.max_disk_cache_bytes = int(max_disk_cache_mb * 1024 * 1024)
         default_cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "models", "cache")
         self.cache_dir = cache_dir or os.environ.get("ALSAGEIST_CACHE_DIR", default_cache)
@@ -213,8 +220,20 @@ class PiperTTSService:
             Absolute path to .npy cache file.
         """
         voice = os.path.basename(self.model_path)
-        key = f"{voice}|{self.length_scale}|{self.noise_scale}|{text}"
+        try:
+            voice = f"{voice}:{os.path.getsize(self.model_path)}"
+        except OSError:
+            pass
+        key = f"{voice}|{self.length_scale}|{self.noise_scale}|{_RULES_FINGERPRINT}|{text}"
         return os.path.join(self.cache_dir, f"{hashlib.sha256(key.encode('utf-8')).hexdigest()}.npy")
+
+    def cache_path(self, text: str) -> str:
+        """Return the disk cache file path for a phrase (public form of the cache key)."""
+        return self._get_cache_path(text)
+
+    def is_cached(self, text: str) -> bool:
+        """Return True if a phrase is already in the memory or disk cache."""
+        return text in self._cache or os.path.isfile(self._get_cache_path(text))
 
     def _remember(self, text: str, audio: np.ndarray) -> None:
         """Store audio in the RAM cache, evicting the least recently used phrase when full."""
@@ -248,11 +267,13 @@ class PiperTTSService:
             except OSError:
                 pass
 
-    def synthesize(self, text: str) -> Tuple[np.ndarray, int]:
+    def synthesize(self, text: str, cache: bool = True) -> Tuple[np.ndarray, int]:
         """Synthesize text into in-memory audio array, inserting pauses at ellipsis breaks.
 
         Args:
             text: Text to speak.
+            cache: If False, the result is not stored. Used for one-off lines such as the time
+                or weather, which would otherwise fill the memory and SD-card caches.
 
         Returns:
             Tuple of (1D float32 numpy audio array, sample_rate).
@@ -302,6 +323,9 @@ class PiperTTSService:
                         audio_parts.append(pause_samples)
 
                 audio = np.concatenate(audio_parts)
+
+            if not cache:
+                return audio, self.sample_rate
 
             # Store in RAM and disk cache
             self._remember(text, audio)

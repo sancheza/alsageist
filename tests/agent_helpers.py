@@ -57,6 +57,9 @@ def make_bare_agent(**overrides) -> AlsaGeistAgent:
     agent._switch_lock = threading.Lock()
     agent._playback_generation = 0
     agent._mic_lock = threading.Lock()
+    agent._user_muted = False
+    agent._net_lock = threading.Lock()
+    agent._net_check_result = None
     agent._last_activity_time = time.time()
     agent._idle_reset_done = False
     agent._mode_forced = None
@@ -75,6 +78,8 @@ def make_bare_agent(**overrides) -> AlsaGeistAgent:
     agent.tts.synthesize.return_value = (b"\x00" * 3200, 16000)
     agent.logger = MagicMock()
     agent.basic_info = MagicMock()
+    agent.basic_info.match_intent.return_value = None
+    agent.basic_info.respond.return_value = None
     agent.dialogue_engine = MagicMock()
     agent.led = ConsoleLEDController(verbose=False)
 

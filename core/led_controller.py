@@ -7,11 +7,12 @@ and reads arcade button trigger events.
 from abc import ABC, abstractmethod
 import enum
 import math
-import os
 import sys
 import threading
 import time
 from typing import Callable, Optional, Tuple
+
+from core.env_utils import env_float, env_int
 
 
 class LEDState(enum.Enum):
@@ -506,13 +507,13 @@ def create_led_controller(
         otherwise ConsoleLEDController.
     """
     if led_pin is None:
-        led_pin = int(os.environ.get("LED_PIN", 25))
+        led_pin = env_int("LED_PIN", 25)
     if button_pin is None:
-        button_pin = int(os.environ.get("BUTTON_PIN", 23))
+        button_pin = env_int("BUTTON_PIN", 23)
     if hold_time_sec is None:
-        hold_time_sec = float(os.environ.get("BUTTON_HOLD_SEC", 5.0))
+        hold_time_sec = env_float("BUTTON_HOLD_SEC", 5.0)
     if long_hold_time_sec is None:
-        long_hold_time_sec = float(os.environ.get("BUTTON_SHUTDOWN_SEC", 10.0))
+        long_hold_time_sec = env_float("BUTTON_SHUTDOWN_SEC", 10.0)
 
     is_pi = False
     # Check Linux device-tree model (standard on Raspberry Pi OS 64-bit Bookworm/Bullseye)

@@ -14,8 +14,11 @@ Usage:
     # Query or change volume:
     ./scripts/alsageist_ctl.py volume
     ./scripts/alsageist_ctl.py volume 75
-    ./scripts/alsageist_ctl.py volume +10
+    ./scripts/alsageist_ctl.py volume +10   # +10 percentage points
     ./scripts/alsageist_ctl.py volume -10
+
+    # Power off the host (requires confirmation):
+    ./scripts/alsageist_ctl.py shutdown --yes
 
     # Microphone and display controls:
     ./scripts/alsageist_ctl.py mute
@@ -264,6 +267,11 @@ COMMON USAGE EXAMPLES:
         help="Seconds to wait for the daemon's reply (default: 3, 60 for say, 120 for personality).",
     )
     parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Confirm a host shutdown (required for shutdown and poweroff).",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Output raw JSON response from daemon.",
@@ -296,6 +304,12 @@ def main() -> int:
     if socket_path is None:
         from core import control_server
         socket_path = control_server.default_socket_path()
+
+    if cmd in ("shutdown", "poweroff"):
+        if not args.yes and not args.dry_run:
+            print(f"Error: '{cmd}' powers off the host. Re-run with --yes to confirm.", file=sys.stderr)
+            return 1
+        val = "confirm"
 
     if args.dry_run:
         print(f"[DRY RUN] Would send command '{cmd}' with value '{val}' to {socket_path}.")

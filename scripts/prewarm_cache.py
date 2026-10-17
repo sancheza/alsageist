@@ -21,7 +21,12 @@ import sys
 import time
 from typing import List
 
-from core.intent_builder import resolve_voice_settings
+from core.env_utils import env_float
+from core.intent_builder import (
+    DEFAULT_ANNOUNCEMENTS,
+    DEFAULT_GREETING_TEMPLATE,
+    resolve_voice_settings,
+)
 from core.system_utils import load_env_file, resolve_piper_model_path
 from services.intent_service import PersonaIntentEngine
 from services.tts_service import PiperTTSService
@@ -54,13 +59,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--tempo",
         type=float,
-        default=float(os.environ["TEMPO"]) if "TEMPO" in os.environ else None,
+        default=env_float("TEMPO", None),
         help="Piper phoneme length scale / tempo (default: from personality profile or $TEMPO).",
     )
     parser.add_argument(
         "--noise",
         type=float,
-        default=float(os.environ["NOISE"]) if "NOISE" in os.environ else None,
+        default=env_float("NOISE", None),
         help="Piper generator noise level (default: from personality profile or $NOISE).",
     )
     parser.add_argument(
@@ -101,39 +106,38 @@ def collect_phrases_to_prewarm(engine: PersonaIntentEngine, warm_all: bool, limi
     if profile and getattr(profile, "startup_greeting", None):
         phrases.append(profile.startup_greeting)
     elif profile and getattr(profile, "display_name", None):
-        phrases.append(f"I am {profile.display_name}. System online and ready.")
+        phrases.append(DEFAULT_GREETING_TEMPLATE.format(name=profile.display_name))
 
     # 2. System lifecycle & mode announcements
     announcements = dict(getattr(profile, "system_announcements", {})) if profile else {}
-    phrases.append(announcements.get("offline_mode", "NOW IN OFFLINE MODE"))
-    phrases.append(announcements.get("online_mode", "NOW IN ONLINE MODE"))
-    phrases.append(announcements.get("powering_off", "Powering off."))
+    for key in ("offline_mode", "online_mode", "powering_off"):
+        phrases.append(announcements.get(key) or DEFAULT_ANNOUNCEMENTS[key])
 
     # 2b. Spoken low-power lines
     phrases.extend(getattr(profile, "low_power_lines", []) if profile else [])
 
     # 3. Volume step announcements
-    volume_template = announcements.get("volume_template", "Volume {percent} percent.")
+    volume_template = announcements.get("volume_template") or DEFAULT_ANNOUNCEMENTS["volume_template"]
     for p in range(0, 101, 10):
         phrases.append(volume_template.format(percent=p))
 
     # 4. Fallbacks, escalations & costume inquiry prompts from personality profile
-    phrases.extend(getattr(engine, "_fallbacks", []))
-    phrases.extend(getattr(engine, "_escalation_lines", []))
-    phrases.extend(getattr(engine, "_costume_prompts", []))
+    phrases.extend(engine.fallbacks)
+    phrases.extend(engine.escalation_lines)
+    phrases.extend(engine.costume_prompts)
 
     # 5. Intent responses
     if warm_all:
-        for _, _, responses in engine._intent_rules:
+        for _, _, responses in engine.intent_rules:
             phrases.extend(responses)
     else:
         priority_intents = list(getattr(profile, "priority_intents", [])) if profile else []
         if priority_intents:
-            for intent_name, _, responses in engine._intent_rules:
+            for intent_name, _, responses in engine.intent_rules:
                 if intent_name in priority_intents:
                     phrases.extend(responses)
         else:
-            for _, _, responses in engine._intent_rules:
+            for _, _, responses in engine.intent_rules:
                 phrases.extend(responses)
                 if len(phrases) >= limit:
                     break
@@ -210,7 +214,7 @@ def main() -> int:
     t0 = time.time()
 
     for idx, phrase in enumerate(unique_phrases, start=1):
-        cache_path = tts._get_cache_path(phrase)
+        cache_path = tts.cache_path(phrase)
         if os.path.isfile(cache_path):
             cached_count += 1
             print(f"[{idx}/{len(unique_phrases)}] (Cached) \"{phrase[:50]}...\"")

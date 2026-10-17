@@ -377,7 +377,7 @@ def test_dispatch_shutdown(server_and_agent, monkeypatch):
     server, agent = server_and_agent
     agent._on_button_long_hold = MagicMock()
 
-    resp = server.dispatch_command("shutdown")
+    resp = server.dispatch_command("shutdown", "confirm")
     assert resp["status"] == "ok"
     assert "shutdown initiated" in resp["message"]
 

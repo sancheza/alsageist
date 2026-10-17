@@ -12,9 +12,11 @@ import wave
 import numpy as np
 
 from core import cloud_api
+from core import env_utils
 
 GEMINI_TIMEOUT_SEC = 4.0
 GROQ_TIMEOUT_SEC = 10.0
+MAX_NORMALIZE_GAIN = 8.0
 MAX_TRANSCRIPT_TOKENS = 256  # an 8 s utterance is about 30 words; leave headroom
 
 
@@ -40,10 +42,8 @@ class SpeechToTextService:
             groq_model: Optional Groq STT model name (default: $GROQ_STT_MODEL or whisper-large-v3).
             gemini_model: Optional Gemini model name override (default: $GEMINI_STT_MODEL).
         """
-        self.groq_api_key = groq_api_key or os.environ.get("GROQ_API_KEY")
-        self.gemini_api_key = (
-            gemini_api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        )
+        self.groq_api_key = env_utils.groq_api_key(groq_api_key)
+        self.gemini_api_key = env_utils.gemini_api_key(gemini_api_key)
         self.groq_model = groq_model or os.environ.get("GROQ_STT_MODEL", "whisper-large-v3")
         self.gemini_model = gemini_model or os.environ.get("GEMINI_STT_MODEL")
         self.sample_rate = sample_rate
@@ -90,8 +90,9 @@ class SpeechToTextService:
 
         peak = float(np.max(np.abs(samples))) if len(samples) > 0 else 0.0
         if peak > 0.0005:
-            # Normalize to 0.85 peak for high-clarity speech recognition
-            samples = samples * (0.85 / peak)
+            # Normalize toward 0.85 peak for clarity, with a gain cap so quiet room noise is not
+            # amplified to full scale (which makes the recognizer hallucinate words)
+            samples = samples * min(0.85 / peak, MAX_NORMALIZE_GAIN)
 
         clipped = np.clip(samples, -1.0, 1.0)
         int16_samples = (clipped * 32767.0).astype(np.int16)

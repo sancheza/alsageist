@@ -7,14 +7,8 @@ import tempfile
 from unittest.mock import MagicMock, patch
 import pytest
 
-from core.intent_builder import (
-    CustomIntent,
-    IntentCollisionError,
-    IntentParser,
-    PersonalityProfile,
-    create_custom_intent,
-    find_personality_file,
-)
+from core.intent_authoring import IntentCollisionError, IntentParser, create_custom_intent
+from core.intent_builder import CustomIntent, PersonalityProfile, find_personality_file
 
 
 
@@ -431,11 +425,10 @@ def test_resolve_voice_settings_precedence():
 
 def test_intent_parser_groq_uses_shared_model_and_params(monkeypatch):
     """The intent parser asks Groq for the shared default model with its reasoning setting."""
-    from core.intent_builder import IntentParser
 
     monkeypatch.delenv("GROQ_LLM_MODEL", raising=False)
     parser = IntentParser(groq_api_key="g")
-    with patch("core.intent_builder.cloud_api.groq_chat", return_value="{}") as chat:
+    with patch("core.intent_authoring.cloud_api.groq_chat", return_value="{}") as chat:
         parser._call_groq("expand this")
     payload = chat.call_args.args[1]
     assert payload["model"] == "openai/gpt-oss-120b"

@@ -8,27 +8,9 @@ import argparse
 import os
 from typing import List, Optional
 
+from core.env_utils import env_bool, env_float, env_int
+
 VERSION = "1.0.0"
-
-
-def _safe_env_float(name: str, default: Optional[float] = None) -> Optional[float]:
-    val = os.environ.get(name)
-    if val is None or not val.strip():
-        return default
-    try:
-        return float(val.strip())
-    except ValueError:
-        return default
-
-
-def _safe_env_int(name: str, default: int) -> int:
-    val = os.environ.get(name)
-    if val is None or not val.strip():
-        return default
-    try:
-        return int(val.strip())
-    except ValueError:
-        return default
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -46,7 +28,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="version",
         version=f"%(prog)s {VERSION}",
     )
-    env_llm_fallback = os.environ.get("LLM_FALLBACK", "false").strip().lower() in ("true", "1", "yes")
+    env_llm_fallback = env_bool("LLM_FALLBACK", False)
     parser.add_argument(
         "--llm-fallback",
         action="store_true",
@@ -88,19 +70,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--threshold",
         type=float,
-        default=_safe_env_float("VAD_THRESHOLD", 0.0035),
+        default=env_float("VAD_THRESHOLD", 0.0035),
         help="Minimum audio RMS energy threshold for speech detection (default: 0.0035 or $VAD_THRESHOLD). Increase if false-triggering in loud rooms.",
     )
     parser.add_argument(
         "--volume",
         type=float,
-        default=_safe_env_float("VOLUME", 0.5),
+        default=env_float("VOLUME", 0.5),
         help="Playback audio output volume multiplier between 0.0 and 1.0 (default: 0.5 or $VOLUME).",
     )
     parser.add_argument(
         "--mic-gain",
         type=float,
-        default=_safe_env_float("MIC_GAIN", 1.5),
+        default=env_float("MIC_GAIN", 1.5),
         help="Microphone digital input gain multiplier (default: 1.5 or $MIC_GAIN).",
     )
     parser.add_argument(
@@ -118,37 +100,37 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--tempo",
         type=float,
-        default=_safe_env_float("TEMPO", None),
+        default=env_float("TEMPO", None),
         help="Piper phoneme length scale / tempo (default: from personality profile or 1.15).",
     )
     parser.add_argument(
         "--noise",
         type=float,
-        default=_safe_env_float("NOISE", None),
+        default=env_float("NOISE", None),
         help="Piper generator noise level (default: from personality profile or 0.85).",
     )
     parser.add_argument(
         "--led-pin",
         type=int,
-        default=_safe_env_int("LED_PIN", 25),
+        default=env_int("LED_PIN", 25),
         help="Raspberry Pi GPIO pin number for status LED (default: 25 or $LED_PIN).",
     )
     parser.add_argument(
         "--button-pin",
         type=int,
-        default=_safe_env_int("BUTTON_PIN", 23),
+        default=env_int("BUTTON_PIN", 23),
         help="Raspberry Pi GPIO pin number for push button (default: 23 or $BUTTON_PIN).",
     )
     parser.add_argument(
         "--button-hold-sec",
         type=float,
-        default=_safe_env_float("BUTTON_HOLD_SEC", 5.0),
+        default=env_float("BUTTON_HOLD_SEC", 5.0),
         help="Push button hold duration in seconds to trigger sleep mode (default: 5.0s or $BUTTON_HOLD_SEC).",
     )
     parser.add_argument(
         "--button-shutdown-sec",
         type=float,
-        default=_safe_env_float("BUTTON_SHUTDOWN_SEC", 10.0),
+        default=env_float("BUTTON_SHUTDOWN_SEC", 10.0),
         help="Push button long-hold duration in seconds to trigger system shutdown (default: 10.0s or $BUTTON_SHUTDOWN_SEC).",
     )
     parser.add_argument(

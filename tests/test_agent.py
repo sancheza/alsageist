@@ -280,7 +280,7 @@ def test_weather_intent_uses_cache_only_when_offline():
     agent = make_bare_agent(is_online=False)
     agent.dialogue_engine.classify_and_respond.return_value = ("canned", "weather_and_temperature")
     agent._resolve_dialogue_response("what's the weather")
-    agent.basic_info.get_weather_response.assert_called_once_with(allow_network=False)
+    agent.basic_info.respond.assert_called_once_with("weather_and_temperature", allow_network=False)
 
 
 def test_idle_reset_fires_once_after_idle_period():

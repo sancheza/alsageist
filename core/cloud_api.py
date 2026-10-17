@@ -5,7 +5,9 @@ core.http_client so callers pass a payload and receive text or parts.
 """
 
 import os
+import threading
 from typing import Any, Dict, List, Optional
+import urllib.error
 
 from core import http_client
 
@@ -17,16 +19,29 @@ GEMINI_DEFAULT_LLM_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5
 GEMINI_DEFAULT_STT_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
 
 
+# Models the API reported as not found (retired or misspelled). They are skipped for the rest of
+# the process so every request does not pay a round trip to rediscover it.
+_unavailable_models: set = set()
+_unavailable_lock = threading.Lock()
+
+
+def _usable(models: List[str]) -> List[str]:
+    """Drop models already known to be unavailable; keep all if that would leave none."""
+    with _unavailable_lock:
+        remaining = [m for m in models if m not in _unavailable_models]
+    return remaining or models
+
+
 def gemini_llm_models(override: Optional[str] = None) -> List[str]:
     """Return prioritized candidate models for Gemini text generation."""
     explicit = override or os.environ.get("GEMINI_LLM_MODEL")
-    return [explicit] if explicit else list(GEMINI_DEFAULT_LLM_MODELS)
+    return [explicit] if explicit else _usable(list(GEMINI_DEFAULT_LLM_MODELS))
 
 
 def gemini_stt_models(override: Optional[str] = None) -> List[str]:
     """Return prioritized candidate models for Gemini audio transcription."""
     explicit = override or os.environ.get("GEMINI_STT_MODEL")
-    return [explicit] if explicit else list(GEMINI_DEFAULT_STT_MODELS)
+    return [explicit] if explicit else _usable(list(GEMINI_DEFAULT_STT_MODELS))
 
 
 def groq_llm_model() -> str:
@@ -68,12 +83,18 @@ def gemini_generate_parts(
     Returns:
         Content parts of the first candidate, or an empty list when there is none.
     """
-    result = http_client.post_json(
-        GEMINI_URL.format(model=model),
-        payload,
-        headers={"x-goog-api-key": str(api_key)},
-        timeout=timeout,
-    )
+    try:
+        result = http_client.post_json(
+            GEMINI_URL.format(model=model),
+            payload,
+            headers={"x-goog-api-key": str(api_key)},
+            timeout=timeout,
+        )
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            with _unavailable_lock:
+                _unavailable_models.add(model)
+        raise
     candidates = result.get("candidates", [])
     if not candidates:
         return []

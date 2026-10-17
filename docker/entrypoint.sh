@@ -37,7 +37,10 @@ VOSK_DIR="${MODELS_DIR}/vosk-model-small-en-us-0.15"
 if [[ ! -d "${VOSK_DIR}" ]]; then
     echo "[AlsaGeist Bootstrap] Offline Vosk model missing in ${MODELS_DIR}."
     echo "[AlsaGeist Bootstrap] Downloading Vosk speech recognition model..."
-    python3 /app/scripts/download_model.py --vosk
+    # Offline speech recognition is optional when a cloud key is configured, so a failed
+    # download does not stop the service from starting.
+    python3 /app/scripts/download_model.py --vosk || \
+        echo "[AlsaGeist Bootstrap] WARNING: Vosk download failed; offline speech recognition is unavailable."
 fi
 
 # 5. Display diagnostic sound hardware status

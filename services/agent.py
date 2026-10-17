@@ -8,7 +8,6 @@ control server. Entry points (main.py) only parse arguments and call start().
 import argparse
 import os
 import random
-import re
 import threading
 import time
 from typing import Optional, Tuple
@@ -16,12 +15,21 @@ from typing import Optional, Tuple
 from core import system_utils
 from core.audio_io import AudioIO
 from core.control_server import ControlServer
-from core.intent_builder import PersonalityProfile, load_personality, resolve_voice_settings
+from core.dialogue_interface import DialogueEngine
+from core.env_utils import env_bool
+from core.intent_builder import (
+    DEFAULT_ANNOUNCEMENTS,
+    DEFAULT_GREETING_TEMPLATE,
+    PersonalityProfile,
+    load_personality,
+    resolve_voice_settings,
+)
 from core.led_controller import LEDState, create_led_controller
 from core.logger import InteractionLogger
 from core.power_monitor import PowerMonitor
+from core.utterance_filter import classify_utterance
 from core.vad import VoiceActivityDetector
-from services.basic_info_service import BasicInfoService
+from services.basic_info_service import INTENT_TIME, INTENT_WEATHER, BasicInfoService, safe_format
 from services.intent_service import PersonaIntentEngine
 from services.llm_service import ConversationalLLMService
 from services.stt_service import SpeechToTextService
@@ -30,6 +38,9 @@ from services.tts_service import PiperTTSService
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IDLE_RESET_SEC = 10.0  # silence after which the next visitor starts a fresh conversation
 LOW_POWER_QUIET_SEC = 10.0  # no spoken low-power line within this time of a conversation
+DYNAMIC_INTENTS = (INTENT_TIME, INTENT_WEATHER)  # one-off answers: their audio is not cached
+LOOP_ERROR_PAUSE_SEC = 1.0
+MAX_ADAPTED_NOISE_FLOOR = 0.02
 DEFAULT_LOW_POWER_LINE = "My power supply is too weak. Please check the power adapter."
 
 
@@ -51,6 +62,7 @@ class AlsaGeistAgent:
         self._switch_lock = threading.Lock()
         self._playback_generation = 0
         self._mic_lock = threading.Lock()  # guards only the short mute/unmute decisions, never playback
+        self._user_muted = False  # set by the mute command; playback never unmutes over it
         self._last_activity_time = time.time()
         self._idle_reset_done = False
         self._mode_forced: Optional[bool] = None
@@ -87,10 +99,12 @@ class AlsaGeistAgent:
         self.net_check_interval = 15.0 * 60.0  # 15 minutes
         self._net_check_thread: Optional[threading.Thread] = None
         self._net_check_result: Optional[bool] = None
+        self._net_lock = threading.Lock()  # guards _net_check_result
         self._net_check_thread = threading.Thread(
             target=self._probe_network, daemon=True, name="AlsaGeist-NetCheck"
         )
         self._net_check_thread.start()
+        self.last_net_check_time = time.time()  # the probe above is the first periodic check
 
         self.led.set_button_callbacks(
             on_press=self._on_button_press,
@@ -176,7 +190,7 @@ class AlsaGeistAgent:
         self,
         profile: Optional[PersonalityProfile],
         personality: str,
-    ) -> Tuple[object, Optional[ConversationalLLMService]]:
+    ) -> Tuple[DialogueEngine, Optional[ConversationalLLMService]]:
         """Create the dialogue engine and optional LLM fallback for a persona.
 
         Args:
@@ -220,8 +234,10 @@ class AlsaGeistAgent:
                     system_prompt=profile.build_system_prompt(),
                     fallback_response=fallback,
                 )
-            except Exception:
-                pass
+            except ValueError:
+                raise  # no API key configured: the default service would fail the same way
+            except Exception as exc:
+                print(f"Warning: Could not build the persona LLM prompt ({exc}); using the default prompt.")
         return ConversationalLLMService()
 
     def _tts_settings(self, profile: Optional[PersonalityProfile]) -> Tuple[str, float, float]:
@@ -284,10 +300,10 @@ class AlsaGeistAgent:
             return profile.display_name
         return getattr(self.args, "personality", "AlsaGeist")
 
-    def _announcement(self, key: str, default: str) -> str:
-        """Return a system announcement for the active persona."""
+    def _announcement(self, key: str) -> str:
+        """Return a system announcement for the active persona (profile text, else the shared default)."""
         profile = self.active_profile
-        return profile.announcement(key, default) if profile else default
+        return profile.announcement(key) if profile else DEFAULT_ANNOUNCEMENTS[key]
 
     def _announce_low_power(self, status) -> bool:
         """Say an in-character line about the weak power supply, if nobody is talking to the agent.
@@ -344,11 +360,16 @@ class AlsaGeistAgent:
         return getattr(state, "name", "UNKNOWN") if state is not None else "UNKNOWN"
 
     def set_mic_muted(self, muted: bool) -> None:
-        """Mute or unmute microphone capture."""
-        if muted:
-            self.audio.mute_capture()
-        else:
-            self.audio.unmute_capture()
+        """Mute or unmute microphone capture.
+
+        A mute set here stays in force through speech playback and sleep/wake until unmuted here.
+        """
+        with self._mic_lock:
+            self._user_muted = muted
+            if muted:
+                self.audio.mute_capture()
+            elif not self.is_disabled:
+                self.audio.unmute_capture()
 
     @property
     def mode_forced(self) -> bool:
@@ -374,9 +395,10 @@ class AlsaGeistAgent:
     def disable(self) -> None:
         """Enter sleep mode: stop playback, mute the microphone, turn the LED off."""
         with self._state_lock:
-            self.is_disabled = True
+            with self._mic_lock:
+                self.is_disabled = True
+                self.audio.mute_capture()
             self.audio.stop_playback()
-            self.audio.mute_capture()
             self.reset_dialogue()
             self.vad.reset()
             self.led.set_state(LEDState.OFF)
@@ -384,8 +406,10 @@ class AlsaGeistAgent:
     def enable(self) -> None:
         """Leave sleep mode: unmute the microphone and resume the idle LED."""
         with self._state_lock:
-            self.is_disabled = False
-            self.audio.unmute_capture()
+            with self._mic_lock:
+                self.is_disabled = False
+                if not self._user_muted:
+                    self.audio.unmute_capture()
             self.vad.reset()
             self.led.set_state(LEDState.IDLE)
 
@@ -404,10 +428,7 @@ class AlsaGeistAgent:
 
     def reset_dialogue(self) -> None:
         """Reset conversational context for the next visitor."""
-        if hasattr(self.dialogue_engine, "reset_conversation"):
-            self.dialogue_engine.reset_conversation()
-        elif hasattr(self.dialogue_engine, "reset_history"):
-            self.dialogue_engine.reset_history()
+        self.dialogue_engine.reset_conversation()
         if getattr(self, "llm_fallback_service", None) is not None:
             self.llm_fallback_service.reset_conversation()
 
@@ -469,11 +490,8 @@ class AlsaGeistAgent:
         ):
             return current
 
-        # Release old TTS model before building new one to prevent dual-model memory peaks
-        import gc
-
-        self.tts = None
-        gc.collect()
+        # The running voice stays installed until the new one has loaded, so a failed load
+        # (missing model file, out of memory) leaves the agent able to speak.
         return self._build_tts(profile)
 
     def request_shutdown(self) -> None:
@@ -531,7 +549,8 @@ class AlsaGeistAgent:
                     time.sleep(cooldown_sec)
                 with self._mic_lock:
                     if generation == self._playback_generation and not self.is_disabled:
-                        self.audio.unmute_capture()
+                        if not self._user_muted:
+                            self.audio.unmute_capture()
                         self.vad.reset()
                         self.led.set_state(LEDState.IDLE)
 
@@ -564,9 +583,9 @@ class AlsaGeistAgent:
     def _announce_mode(self, online: bool) -> None:
         """Announce current online or offline operational mode."""
         if online:
-            msg = self._announcement("online_mode", "NOW IN ONLINE MODE")
+            msg = self._announcement("online_mode")
         else:
-            msg = self._announcement("offline_mode", "NOW IN OFFLINE MODE")
+            msg = self._announcement("offline_mode")
         print(f"\n{self.persona_name} (network): \"{msg}\"")
         self.speak(msg, blocking=True, cooldown_sec=0.0)
 
@@ -599,10 +618,7 @@ class AlsaGeistAgent:
         if profile and getattr(profile, "system_announcements", None):
             tmpl = profile.system_announcements.get("volume_template")
             if tmpl:
-                try:
-                    vol_msg = tmpl.format(percent=pct)
-                except Exception:
-                    pass
+                vol_msg = safe_format(tmpl, vol_msg, percent=pct)
         self.speak(vol_msg, blocking=True, cooldown_sec=0.0)
 
     def _on_button_hold(self) -> None:
@@ -615,6 +631,9 @@ class AlsaGeistAgent:
 
     def _on_button_long_hold(self) -> None:
         """Handle 10-second arcade button hold: announce Powering Off and shutdown the pi."""
+        if not env_bool("BUTTON_SHUTDOWN_ENABLED", True):
+            print("\n[BUTTON] Long hold detected; button shutdown is disabled (BUTTON_SHUTDOWN_ENABLED=false).")
+            return
         print("\n[BUTTON] 10-second hold detected: Announcing shutdown and powering off...")
         self.audio.stop_playback()
         self.reset_dialogue()
@@ -625,7 +644,7 @@ class AlsaGeistAgent:
         if self.audio.volume <= 0.05:
             self.audio.volume = 0.5
 
-        announcement = self._announcement("powering_off", "Powering off.")
+        announcement = self._announcement("powering_off")
         try:
             audio_data, sample_rate = self.tts.synthesize(announcement)
             with self._audio_lock:
@@ -687,39 +706,58 @@ class AlsaGeistAgent:
 
         try:
             while self.running:
-                if self.is_disabled:
-                    time.sleep(0.05)
-                    self._note_activity()
-                    continue
-
-                now = time.time()
-                self._poll_network(now)
-                self._reset_if_idle(now)
-
-                frame = self.audio.read_frame(timeout=0.05)
-                if frame is None:
-                    continue
-
-                is_speech, completed, utterance = self.vad.process_frame(frame)
-
-                if self.vad.is_speaking:
-                    self._note_activity()
-                    if self.led.current_state != LEDState.LISTENING:
-                        self.led.set_state(LEDState.LISTENING)
-                elif self.led.current_state == LEDState.LISTENING and not completed:
-                    self.led.set_state(LEDState.IDLE)
-
-                if completed and utterance is not None:
-                    self._note_activity()
-                    self._handle_utterance(utterance)
-                    self._note_activity()  # idle time counts from the end of the reply
-                    if not self.is_disabled:
-                        self.led.set_state(LEDState.IDLE)
-
+                try:
+                    self._loop_once()
+                except Exception as exc:  # isolation point: one bad turn must not stop the service
+                    self._recover_from_loop_error(exc)
         except KeyboardInterrupt:
             print("\nShutting down AlsaGeist...")
         finally:
             self.stop()
+
+    def _loop_once(self) -> None:
+        """Run one pass of the main loop: poll the network, read a frame, handle any utterance."""
+        if self.is_disabled:
+            time.sleep(0.05)
+            self._note_activity()
+            return
+
+        now = time.time()
+        self._poll_network(now)
+        self._reset_if_idle(now)
+
+        frame = self.audio.read_frame(timeout=0.05)
+        if frame is None:
+            return
+
+        _is_speech, completed, utterance = self.vad.process_frame(frame)
+
+        if self.vad.is_speaking:
+            self._note_activity()
+            if self.led.current_state != LEDState.LISTENING:
+                self.led.set_state(LEDState.LISTENING)
+        elif self.led.current_state == LEDState.LISTENING and not completed:
+            self.led.set_state(LEDState.IDLE)
+
+        if completed and utterance is not None:
+            self._note_activity()
+            self._handle_utterance(utterance)
+            self._note_activity()  # idle time counts from the end of the reply
+            if not self.is_disabled:
+                self.led.set_state(LEDState.IDLE)
+
+    def _recover_from_loop_error(self, exc: Exception) -> None:
+        """Report an unexpected error from the main loop and get ready for the next turn."""
+        print(f"Unexpected error in main loop: {type(exc).__name__}: {exc}")
+        try:
+            self.led.set_state(LEDState.ERROR)
+            self.audio.drain_input_queue()
+            self.vad.reset()
+        except Exception as cleanup_exc:  # isolation point: cleanup must not end the loop either
+            print(f"  (recovery cleanup failed: {cleanup_exc})")
+        time.sleep(LOOP_ERROR_PAUSE_SEC)
+        if not self.is_disabled:
+            self.led.set_state(LEDState.IDLE)
 
     def _note_activity(self) -> None:
         """Record visitor activity and re-arm the idle conversation reset."""
@@ -771,7 +809,8 @@ class AlsaGeistAgent:
         Args:
             now: Current time in seconds since the epoch.
         """
-        result, self._net_check_result = self._net_check_result, None
+        with self._net_lock:
+            result, self._net_check_result = self._net_check_result, None
         if self._mode_forced is not None:
             return
         if result is not None and result != self.is_online:
@@ -788,7 +827,9 @@ class AlsaGeistAgent:
 
     def _probe_network(self) -> None:
         """Probe connectivity and publish the result for the main loop."""
-        self._net_check_result = self._check_internet()
+        reachable = self._check_internet()
+        with self._net_lock:
+            self._net_check_result = reachable
 
     def _filter_utterance(
         self, user_text: Optional[str], audio_rms: float
@@ -802,18 +843,7 @@ class AlsaGeistAgent:
         Returns:
             Tuple of (should_filter, matched_intent, filter_status).
         """
-        if not user_text or len(user_text.strip()) < 2:
-            return True, "empty_silence", "FILTERED_SILENCE"
-
-        clean_test = user_text.strip().lower().rstrip(".,!?")
-        is_timecode = bool(re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", clean_test))
-        if (
-            (clean_test in ["you", "thank you", "shh", "the", "a", "subtitles by", "bye", "uh", "um", ""] and audio_rms < 0.010)
-            or is_timecode
-        ):
-            return True, "artifact_filter", "FILTERED_ARTIFACT"
-
-        return False, "", ""
+        return classify_utterance(user_text, audio_rms)
 
     def _resolve_dialogue_response(self, user_text: str) -> Tuple[str, str]:
         """Resolve persona reply and matched intent from dialogue engine.
@@ -824,32 +854,35 @@ class AlsaGeistAgent:
         Returns:
             Tuple of (response_text, matched_intent).
         """
-        if hasattr(self.dialogue_engine, "classify_and_respond"):
-            reply, matched_intent = self.dialogue_engine.classify_and_respond(user_text)
+        # An engine with no intent rules (the LLM) cannot know the time or weather, so those
+        # questions are answered from live data before it is asked.
+        if self.args.engine != "intent":
+            live_intent = self.basic_info.match_intent(user_text)
+            if live_intent is not None:
+                return self.basic_info.respond(live_intent, allow_network=self.is_online), live_intent
 
-            # Dynamic basic info handlers: Time and Weather
-            if matched_intent == "time_and_clock":
-                reply = self.basic_info.get_time_response()
-            elif matched_intent == "weather_and_temperature":
-                reply = self.basic_info.get_weather_response(allow_network=self.is_online)
-            # Escalate indeterminate prompts to custom LLM response if enabled
-            elif (
-                matched_intent == "fallback_unrecognized"
-                and self.llm_fallback_enabled
-                and self.llm_fallback_service is not None
-                and self.is_online
-            ):
-                try:
-                    print(f"{self.persona_name}: Indeterminate prompt, fetching custom LLM response...")
-                    custom_reply = self.llm_fallback_service.generate_response(user_text)
-                    if custom_reply and custom_reply.strip():
-                        reply = custom_reply.strip()
-                        matched_intent = "llm_fallback_custom"
-                except Exception as llm_exc:
-                    print(f"  (LLM fallback fetch failed: {llm_exc}; using generic fallback)")
-            return reply, matched_intent
-        else:
-            return self.dialogue_engine.generate_response(user_text), "llm_generated"
+        reply, matched_intent = self.dialogue_engine.classify_and_respond(user_text)
+
+        live_reply = self.basic_info.respond(matched_intent, allow_network=self.is_online)
+        if live_reply is not None:
+            return live_reply, matched_intent
+
+        # Escalate indeterminate prompts to custom LLM response if enabled
+        if (
+            matched_intent == "fallback_unrecognized"
+            and self.llm_fallback_enabled
+            and self.llm_fallback_service is not None
+            and self.is_online
+        ):
+            try:
+                print(f"{self.persona_name}: Indeterminate prompt, fetching custom LLM response...")
+                custom_reply = self.llm_fallback_service.generate_response(user_text)
+                if custom_reply and custom_reply.strip():
+                    reply = custom_reply.strip()
+                    matched_intent = "llm_fallback_custom"
+            except Exception as llm_exc:
+                print(f"  (LLM fallback fetch failed: {llm_exc}; using generic fallback)")
+        return reply, matched_intent
 
     def _handle_utterance(self, utterance_pcm) -> None:
         """Process completed user utterance through STT -> Brain -> TTS -> Playback."""
@@ -894,7 +927,9 @@ class AlsaGeistAgent:
             self._consecutive_filtered_turns += 1
             if self._consecutive_filtered_turns >= 2:
                 # Ambient noise is false-triggering utterances: adapt noise floor upward
-                self.vad.noise_floor = max(self.vad.noise_floor, audio_rms)
+                # Half the clip's RMS, capped: the clip may contain speech, and a high floor would
+                # leave the microphone deaf until it decays
+                self.vad.noise_floor = max(self.vad.noise_floor, min(audio_rms * 0.5, MAX_ADAPTED_NOISE_FLOOR))
                 backoff_sec = min(2.0, 0.5 * (self._consecutive_filtered_turns - 1))
             else:
                 backoff_sec = 0.0
@@ -969,7 +1004,7 @@ class AlsaGeistAgent:
 
         # 3. Local Piper TTS Synthesis in RAM
         try:
-            audio_data, sample_rate = self.tts.synthesize(reply)
+            audio_data, sample_rate = self.tts.synthesize(reply, cache=matched_intent not in DYNAMIC_INTENTS)
         except Exception as exc:
             print(f"TTS Error: {exc}")
             self.led.set_state(LEDState.ERROR)
@@ -1011,7 +1046,14 @@ class AlsaGeistAgent:
         )
 
         # 5. Audio Playback to Speaker (Mute mic capture to prevent self-triggering)
-        self._play_speech_audio(audio_data, sample_rate, blocking=True, cooldown_sec=0.25)
+        try:
+            self._play_speech_audio(audio_data, sample_rate, blocking=True, cooldown_sec=0.25)
+        except Exception as exc:  # audio device errors (unplugged, underrun) must not end the service
+            print(f"Playback Error: {exc}")
+            self.led.set_state(LEDState.ERROR)
+            self.audio.drain_input_queue()
+            self.vad.reset()
+            time.sleep(1.0)
 
     def _play_startup_greeting(self) -> None:
         """Play an initial greeting announcement when the agent first wakes up."""
@@ -1019,7 +1061,7 @@ class AlsaGeistAgent:
         if profile and profile.startup_greeting:
             greeting_text = profile.startup_greeting
         else:
-            greeting_text = f"I am {self.persona_name}. System online and ready."
+            greeting_text = DEFAULT_GREETING_TEMPLATE.format(name=self.persona_name)
 
         print(f"\n{self.persona_name} (startup): \"{greeting_text}\"")
         self.speak(greeting_text, blocking=True, cooldown_sec=0.0)

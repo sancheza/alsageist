@@ -204,7 +204,7 @@ def test_agent_llm_fallback_custom_response():
     agent.llm_fallback_service.generate_response.assert_called_once_with(
         "What is the airspeed velocity of an unladen swallow?"
     )
-    agent.tts.synthesize.assert_called_once_with("African or European swallow, meatbag?!")
+    agent.tts.synthesize.assert_called_once_with("African or European swallow, meatbag?!", cache=True)
     assert agent.logger.log_interaction.call_args[1]["matched_intent"] == "llm_fallback_custom"
 
 
@@ -238,7 +238,7 @@ def test_agent_llm_fallback_disabled_uses_generic():
 
     # LLM service should not be called when fallback is disabled
     agent.llm_fallback_service.generate_response.assert_not_called()
-    agent.tts.synthesize.assert_called_once_with("Generic fallback joke")
+    agent.tts.synthesize.assert_called_once_with("Generic fallback joke", cache=True)
     assert agent.logger.log_interaction.call_args[1]["matched_intent"] == "fallback_unrecognized"
 
 
@@ -272,7 +272,7 @@ def test_agent_llm_fallback_offline_degradation():
 
     # When offline, LLM should not be called and generic fallback is used
     agent.llm_fallback_service.generate_response.assert_not_called()
-    agent.tts.synthesize.assert_called_once_with("Offline fallback line")
+    agent.tts.synthesize.assert_called_once_with("Offline fallback line", cache=True)
 
 
 def test_agent_llm_fallback_error_degradation():
@@ -305,7 +305,7 @@ def test_agent_llm_fallback_error_degradation():
     agent._handle_utterance(utterance)
 
     # When LLM throws error, degrades gracefully to generic fallback
-    agent.tts.synthesize.assert_called_once_with("Safe fallback line")
+    agent.tts.synthesize.assert_called_once_with("Safe fallback line", cache=True)
     assert agent.logger.log_interaction.call_args[1]["matched_intent"] == "fallback_unrecognized"
 
 

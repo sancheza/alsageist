@@ -12,6 +12,11 @@ WorkingDirectory={{ALSAGEIST_DIR}}
 ExecStart={{ALSAGEIST_DIR}}/venv/bin/python3 {{ALSAGEIST_DIR}}/main.py
 Restart=always
 RestartSec=3
+# Hardening that does not interfere with the control socket, GPIO, audio, or the sudo-based poweroff
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+RestrictNamespaces=yes
+LockPersonality=yes
 
 [Install]
 WantedBy=multi-user.target

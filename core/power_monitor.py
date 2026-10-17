@@ -18,6 +18,8 @@ import threading
 import time
 from typing import Callable, List, Optional
 
+from core.env_utils import env_float
+
 DEFAULT_CHECK_SEC = 60.0
 DEFAULT_WARN_SEC = 900.0
 DEFAULT_CLEAR_SEC = 300.0
@@ -224,10 +226,10 @@ class PowerMonitor:
         """
         return cls(
             log=log,
-            check_interval_sec=float(os.environ.get("THROTTLE_CHECK_SEC", DEFAULT_CHECK_SEC)),
-            warn_interval_sec=float(os.environ.get("THROTTLE_WARN_SEC", DEFAULT_WARN_SEC)),
+            check_interval_sec=env_float("THROTTLE_CHECK_SEC", DEFAULT_CHECK_SEC),
+            warn_interval_sec=env_float("THROTTLE_WARN_SEC", DEFAULT_WARN_SEC),
             announce=announce,
-            announce_interval_sec=float(os.environ.get("LOW_POWER_ANNOUNCE_SEC", DEFAULT_ANNOUNCE_SEC)),
+            announce_interval_sec=env_float("LOW_POWER_ANNOUNCE_SEC", DEFAULT_ANNOUNCE_SEC),
         )
 
     def check(self) -> Optional[PowerStatus]:

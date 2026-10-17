@@ -1,15 +1,17 @@
 services:
   alsageist:
-    image: ghcr.io/sancheza/alsageist:latest
+    image: ghcr.io/sancheza/alsageist:${ALSAGEIST_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
     container_name: alsageist
     restart: unless-stopped
     network_mode: host
+    # Numeric host group IDs, so the container user can open the host's device files.
+    # scripts/setup_docker.sh writes AUDIO_GID and GPIO_GID to .env.
     group_add:
-      - audio
-      - gpio
+      - "${AUDIO_GID:-29}"
+      - "${GPIO_GID:-997}"
     env_file:
       - .env
     volumes:
@@ -17,6 +19,8 @@ services:
       - ./models:/app/models
       - ./logs:/app/logs
       - /etc/asound.conf:/etc/asound.conf:ro
+      - /etc/localtime:/etc/localtime:ro
       - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
     devices:
       - /dev/snd:/dev/snd
+      - /dev/gpiochip0:/dev/gpiochip0

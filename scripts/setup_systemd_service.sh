@@ -153,9 +153,11 @@ if [[ ! -f "$TEMPLATE_PATH" ]]; then
 fi
 
 # Render template content
+# Escape the characters sed treats specially in a replacement (\\, &, and the | delimiter)
+sed_escape() { printf '%s' "$1" | sed -e 's/[\\&|]/\\&/g'; }
 RENDERED_CONTENT=$(sed \
-    -e "s|{{ALSAGEIST_USER}}|${TARGET_USER}|g" \
-    -e "s|{{ALSAGEIST_DIR}}|${TARGET_DIR}|g" \
+    -e "s|{{ALSAGEIST_USER}}|$(sed_escape "$TARGET_USER")|g" \
+    -e "s|{{ALSAGEIST_DIR}}|$(sed_escape "$TARGET_DIR")|g" \
     "$TEMPLATE_PATH")
 
 echo "======================================================================"
@@ -213,16 +215,17 @@ if [[ "$ASSUME_YES" != true ]]; then
     fi
 fi
 
-# Write target service unit
+# Write target service unit (owned by root, mode 644, so no unprivileged user can edit a unit that runs at boot)
 TMP_UNIT="$(mktemp)"
+trap 'rm -f "$TMP_UNIT"' EXIT
 echo "$RENDERED_CONTENT" > "$TMP_UNIT"
 
-if [[ -w "$(dirname "$OUTPUT_PATH")" ]]; then
-    mv "$TMP_UNIT" "$OUTPUT_PATH"
-elif [[ $EUID -eq 0 ]]; then
-    mv "$TMP_UNIT" "$OUTPUT_PATH"
+if [[ $EUID -eq 0 ]]; then
+    install -m 644 -o root -g root "$TMP_UNIT" "$OUTPUT_PATH"
+elif [[ -w "$(dirname "$OUTPUT_PATH")" ]]; then
+    install -m 644 "$TMP_UNIT" "$OUTPUT_PATH"
 else
-    sudo mv "$TMP_UNIT" "$OUTPUT_PATH"
+    sudo install -m 644 -o root -g root "$TMP_UNIT" "$OUTPUT_PATH"
 fi
 
 echo "  Successfully installed service unit to ${OUTPUT_PATH}."

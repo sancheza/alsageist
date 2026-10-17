@@ -216,7 +216,7 @@ Expected output:
 
 To initiate an orderly host shutdown from the CLI:
 ```bash
-docker exec alsageist python3 scripts/alsageist_ctl.py shutdown
+docker exec alsageist python3 scripts/alsageist_ctl.py shutdown --yes
 ```
 
 ---

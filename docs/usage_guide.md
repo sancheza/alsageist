@@ -296,7 +296,7 @@ Switched personality to 'grimjaw' (Grimjaw the Skeleton).
 #### Objective: Orderly poweroff the Raspberry Pi host.
 
 ```bash
-python3 scripts/alsageist_ctl.py shutdown
+python3 scripts/alsageist_ctl.py shutdown --yes
 ```
 
 Expected output:

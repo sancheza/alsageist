@@ -9,11 +9,28 @@ from dataclasses import asdict, dataclass, field
 import json
 import os
 import re
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from core import cloud_api
 
-INTENT_API_TIMEOUT_SEC = 6.0
+# Spoken-dialogue rules shared by every LLM system prompt
+PROMPT_RULES = (
+    "Rules you must strictly obey:\n"
+    "1. Keep every response under 2 sentences maximum.\n"
+    "2. Be witty, dry, and stay in character.\n"
+    "3. Never output emojis, markdown formatting, asterisks, stage directions, or sound effect tags "
+    "(like *laughs* or [cackles]).\n"
+    "4. Return plain spoken dialogue only."
+)
+
+# System announcements used when a profile does not define the key. The runtime and the
+# cache pre-warmer both read these, so the pre-warmed audio always matches what is spoken.
+DEFAULT_ANNOUNCEMENTS = {
+    "online_mode": "NOW IN ONLINE MODE",
+    "offline_mode": "NOW IN OFFLINE MODE",
+    "powering_off": "Powering off.",
+    "volume_template": "Volume {percent} percent.",
+}
+DEFAULT_GREETING_TEMPLATE = "I am {name}. System online and ready."
 
 
 @dataclass
@@ -100,16 +117,9 @@ class PersonalityProfile:
         Returns:
             System prompt string naming the persona and the spoken-dialogue rules.
         """
-        return (
-            f"You are {self.display_name}. {self.description}\n"
-            "Rules you must strictly obey:\n"
-            "1. Keep every response under 2 sentences maximum.\n"
-            "2. Be witty, dry, and stay in character.\n"
-            "3. Never output emojis, markdown formatting, asterisks, or sound effect tags.\n"
-            "4. Return plain spoken dialogue only."
-        )
+        return f"You are {self.display_name}. {self.description}\n{PROMPT_RULES}"
 
-    def announcement(self, key: str, default: str) -> str:
+    def announcement(self, key: str, default: Optional[str] = None) -> str:
         """Return a spoken system announcement, falling back to a default.
 
         Args:
@@ -119,7 +129,7 @@ class PersonalityProfile:
         Returns:
             Announcement text.
         """
-        return self.system_announcements.get(key) or default
+        return self.system_announcements.get(key) or default or DEFAULT_ANNOUNCEMENTS.get(key, "")
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize personality profile to JSON-compatible dictionary."""
@@ -202,10 +212,21 @@ class PersonalityProfile:
         Args:
             file_path: Target JSON file path.
         """
-        os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
-            f.write("\n")
+        directory = os.path.dirname(os.path.abspath(file_path))
+        os.makedirs(directory, exist_ok=True)
+        # Write to a temporary file and rename, so a power loss mid-save cannot leave a
+        # truncated profile behind.
+        tmp_path = f"{file_path}.tmp.{os.getpid()}"
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
+                f.write("\n")
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, file_path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
     def add_intent(self, intent: CustomIntent, overwrite: bool = True, prepend: bool = True) -> None:
         """Add or update an intent in the personality profile.
@@ -319,267 +340,6 @@ class PersonalityProfile:
         return [(intent.name, intent.patterns, intent.responses) for intent in self.intents]
 
 
-class IntentCollisionError(Exception):
-    """Raised when an input query conflicts with an existing intent."""
-
-    def __init__(self, query: str, existing_intent: CustomIntent, matched_pattern: str) -> None:
-        """Initialize intent collision error with conflict details."""
-        super().__init__(
-            f"Query '{query}' conflicts with existing intent '{existing_intent.name}' "
-            f"via pattern: '{matched_pattern}'"
-        )
-        self.query = query
-        self.existing_intent = existing_intent
-        self.matched_pattern = matched_pattern
-
-
-class IntentParser:
-    """Hybrid intent parser combining LLM-assisted pattern expansion and offline regex synthesis."""
-
-    def __init__(
-        self,
-        gemini_api_key: Optional[str] = None,
-        groq_api_key: Optional[str] = None,
-    ) -> None:
-        """Initialize the intent parser.
-
-        Args:
-            gemini_api_key: Optional Gemini API key (defaults to $GEMINI_API_KEY).
-            groq_api_key: Optional Groq API key (defaults to $GROQ_API_KEY).
-        """
-        self.gemini_api_key = (
-            gemini_api_key
-            or os.environ.get("GEMINI_API_KEY")
-            or os.environ.get("GOOGLE_API_KEY")
-        )
-        self.groq_api_key = groq_api_key or os.environ.get("GROQ_API_KEY")
-
-    def parse(
-        self,
-        text: str,
-        responses: Optional[List[str]] = None,
-        name: Optional[str] = None,
-        persona: Optional[PersonalityProfile] = None,
-        use_llm: bool = True,
-    ) -> CustomIntent:
-        """Parse user query text and responses into a validated CustomIntent.
-
-        Uses LLM expansion if available and requested, otherwise falls back to deterministic
-        offline rule-based parsing.
-
-        Args:
-            text: Trigger phrase, sample question, or intent description.
-            responses: Optional candidate response strings.
-            name: Optional explicit intent name.
-            persona: Optional personality context for tailoring responses.
-            use_llm: Whether to attempt LLM-assisted parsing.
-
-        Returns:
-            Validated CustomIntent.
-        """
-        cleaned_input = text.strip()
-        if not cleaned_input:
-            raise ValueError("Input text cannot be empty.")
-
-        response_list = [r.strip() for r in (responses or []) if r and r.strip()]
-
-        if use_llm and (self.gemini_api_key or self.groq_api_key):
-            try:
-                llm_intent = self._parse_with_llm(
-                    text=cleaned_input,
-                    responses=response_list,
-                    name=name,
-                    persona=persona,
-                )
-                if llm_intent and llm_intent.patterns and llm_intent.responses:
-                    return llm_intent
-            except Exception:
-                # Graceful fallback to offline deterministic parser on network or API failure
-                pass
-
-        return self._parse_rule_based(
-            text=cleaned_input,
-            responses=response_list,
-            name=name,
-        )
-
-    def _parse_with_llm(
-        self,
-        text: str,
-        responses: List[str],
-        name: Optional[str],
-        persona: Optional[PersonalityProfile],
-    ) -> Optional[CustomIntent]:
-        """Query LLM to generate regex patterns and responses."""
-        persona_desc = (
-            f"Persona: {persona.display_name} ({persona.description})"
-            if persona
-            else "Persona: Witty, conversational voice assistant"
-        )
-
-        prompt = (
-            f"{persona_desc}\n"
-            f"User Prompt / Sample Query: \"{text}\"\n"
-        )
-        if name:
-            prompt += f"Required Intent Name: \"{name}\"\n"
-        if responses:
-            prompt += f"User-Provided Responses:\n" + "\n".join(f"- {r}" for r in responses) + "\n"
-
-        prompt += (
-            "\nTask:\n"
-            "1. Generate a concise snake_case intent name (if not provided).\n"
-            "2. Generate 3 to 6 high-precision Python regular expression patterns matching this intent.\n"
-            "   - Use word boundaries (\\b) on all keywords.\n"
-            "   - Cover common phrasing variations, contractions (what's/what is), and pronouns (you/he/she).\n"
-            "   - Ensure valid regex syntax without syntax errors.\n"
-            "3. Generate 2 to 4 witty, conversational responses in persona (or refine/keep the provided responses).\n"
-            "Return ONLY a raw JSON object with keys: 'name', 'patterns', and 'responses'."
-        )
-
-        raw_json_str = ""
-        if self.gemini_api_key:
-            raw_json_str = self._call_gemini(prompt)
-        elif self.groq_api_key:
-            raw_json_str = self._call_groq(prompt)
-
-        if not raw_json_str:
-            return None
-
-        # Clean JSON markdown if wrapped in ```json ... ```
-        clean_json = re.sub(r"^```(?:json)?\s*", "", raw_json_str.strip(), flags=re.IGNORECASE)
-        clean_json = re.sub(r"\s*```$", "", clean_json.strip())
-
-        data = json.loads(clean_json)
-        intent_name = name or data.get("name", "")
-        intent_patterns = data.get("patterns", [])
-        intent_responses = responses if responses else data.get("responses", [])
-
-        # Validate patterns
-        valid_patterns = []
-        for pat in intent_patterns:
-            try:
-                re.compile(pat, re.IGNORECASE)
-                valid_patterns.append(pat)
-            except re.error:
-                continue
-
-        if not valid_patterns:
-            return None
-
-        return CustomIntent(
-            name=intent_name or self._derive_snake_name(text),
-            patterns=valid_patterns,
-            responses=intent_responses or [f"I heard you ask about {text}!"],
-            metadata={"source": "llm_expanded"},
-        )
-
-    def _call_gemini(self, prompt: str) -> str:
-        """Call Gemini API for intent expansion."""
-        models = cloud_api.gemini_llm_models()
-        payload = {
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": 0.3,
-                "responseMimeType": "application/json",
-            },
-        }
-
-        for model in models:
-            try:
-                parts = cloud_api.gemini_generate_parts(
-                    self.gemini_api_key, model, payload, timeout=INTENT_API_TIMEOUT_SEC
-                )
-                if parts:
-                    return parts[0].get("text", "").strip()
-            except Exception:
-                continue
-        return ""
-
-    def _call_groq(self, prompt: str) -> str:
-        """Call Groq API for intent expansion."""
-        model = cloud_api.groq_llm_model()
-        payload = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": "You are a regex intent parser. Output valid JSON only."},
-                {"role": "user", "content": prompt},
-            ],
-            "response_format": {"type": "json_object"},
-            "temperature": 0.2,
-            **cloud_api.groq_model_params(model),
-        }
-        try:
-            return cloud_api.groq_chat(self.groq_api_key, payload, timeout=INTENT_API_TIMEOUT_SEC)
-        except Exception:
-            return ""
-
-    @staticmethod
-    def _derive_snake_name(text: str) -> str:
-        """Derive a clean snake_case intent name from sample text."""
-        # Strip common leading question words
-        clean = re.sub(
-            r"^(what('s| is)|who('s| is)|where('s| is)|when('s| is)|how('s| is)|do you|can you|tell me|give me)\s+",
-            "",
-            text.lower().strip(),
-        )
-        words = re.findall(r"[a-z0-9]+", clean)
-        # Drop trivial stop words
-        stop_words = {"a", "an", "the", "about", "your", "my", "some", "of", "to", "in", "for"}
-        filtered = [w for w in words if w not in stop_words]
-        chosen = filtered[:4] if filtered else words[:3]
-        name = "_".join(chosen) if chosen else "custom_intent"
-        return name
-
-    def _parse_rule_based(
-        self,
-        text: str,
-        responses: List[str],
-        name: Optional[str],
-    ) -> CustomIntent:
-        """Deterministic rule-based pattern generator when LLM is unavailable."""
-        intent_name = name or self._derive_snake_name(text)
-        normalized = re.sub(r"[^\w\s\']", " ", text.lower()).strip()
-        tokens = [t for t in normalized.split() if t]
-
-        patterns: List[str] = []
-
-        # 1. Exact phrase with word boundaries
-        exact_clean = " ".join(tokens)
-        if exact_clean:
-            patterns.append(rf"\b{re.escape(exact_clean)}\b")
-
-        # 2. Key content words joined with wildcards
-        stop_words = {"what", "whats", "who", "where", "when", "how", "is", "are", "do", "you", "a", "an", "the", "your", "my"}
-        content_tokens = [t for t in tokens if t not in stop_words]
-        if len(content_tokens) >= 2:
-            patterns.append(r"\b" + r"\b.*\b".join(re.escape(t) for t in content_tokens) + r"\b")
-
-        # 3. Question phrasing with contractions if applicable
-        if any(w in tokens for w in ["favorite", "best", "like"]):
-            subject_tokens = [t for t in content_tokens if t not in ("favorite", "best", "like")]
-            key_subject = " ".join(subject_tokens) if subject_tokens else (content_tokens[-1] if content_tokens else "it")
-            patterns.append(rf"\b(favorite|best|like)\b.*\b{re.escape(key_subject)}\b")
-            patterns.append(rf"\bwhat('s| is) (your|his) favorite {re.escape(key_subject)}\b")
-
-        if not patterns:
-            patterns.append(rf"\b{re.escape(text.strip().lower())}\b")
-
-        # Unique ordered patterns
-        unique_patterns = list(dict.fromkeys(patterns))
-
-        default_responses = responses if responses else [
-            f"You asked about {exact_clean}! That's quite a curious question."
-        ]
-
-        return CustomIntent(
-            name=intent_name,
-            patterns=unique_patterns,
-            responses=default_responses,
-            metadata={"source": "rule_based"},
-        )
-
-
 def find_personality_file(
     personality_name_or_path: str = "grimjaw",
     search_dirs: Optional[List[str]] = None,
@@ -654,102 +414,3 @@ def resolve_voice_settings(
         tempo if tempo is not None else settings.get("tempo", 1.15),
         noise if noise is not None else settings.get("noise", 0.85),
     )
-
-
-def create_custom_intent(
-    query_or_text: str,
-    responses: Optional[List[str]] = None,
-    personality_name_or_path: str = "grimjaw",
-    name: Optional[str] = None,
-    prewarm: bool = False,
-    dry_run: bool = False,
-    use_llm: bool = True,
-    check_collision: bool = True,
-    collision_action: str = "raise",
-    prewarm_fn: Optional[Callable[[List[str], PersonalityProfile], None]] = None,
-) -> Tuple[CustomIntent, PersonalityProfile]:
-    """Universal function to create, parse, and attach a custom intent to a personality.
-
-    Can be reused across voice assist projects.
-
-    Args:
-        query_or_text: Sample user query, prompt description, or phrase.
-        responses: List of character responses.
-        personality_name_or_path: Target personality profile identifier or path.
-        name: Optional explicit intent name.
-        prewarm: Whether to synthesize response audio into the local cache.
-        dry_run: If True, parses intent without saving to disk.
-        use_llm: Whether to attempt LLM-assisted pattern and response expansion.
-        check_collision: Whether to check if query already matches an existing intent.
-        collision_action: Action when collision occurs: 'raise', 'append', 'overwrite', or 'force'.
-        prewarm_fn: Optional callback `(responses, profile) -> None` to synthesize phrases into cache.
-
-    Returns:
-        Tuple of (CustomIntent, PersonalityProfile).
-
-    Raises:
-        IntentCollisionError: If query conflicts with an existing intent and collision_action is 'raise'.
-    """
-    profile_path = find_personality_file(personality_name_or_path)
-
-    if os.path.isfile(profile_path):
-        profile = PersonalityProfile.load_from_file(profile_path)
-    else:
-        # Create brand new personality profile
-        profile = PersonalityProfile(
-            personality=os.path.splitext(os.path.basename(profile_path))[0],
-            display_name=personality_name_or_path.capitalize(),
-            description=f"Custom voice assistant personality for {personality_name_or_path}.",
-        )
-
-    def _execute_prewarm(phrases: List[str], target_profile: PersonalityProfile) -> None:
-        if not prewarm or not phrases:
-            return
-        if prewarm_fn is not None:
-            prewarm_fn(phrases, target_profile)
-            return
-        # Fallback when prewarm_fn is omitted
-        try:
-            import importlib
-            tts_module = importlib.import_module("services.tts_service")
-            from core.system_utils import resolve_piper_model_path
-            tempo, noise = resolve_voice_settings(target_profile)
-            v_path = resolve_piper_model_path(voice_name=target_profile.voice if target_profile else None)
-            tts = tts_module.PiperTTSService(model_path=v_path, length_scale=tempo, noise_scale=noise)
-            for resp in phrases:
-                tts.synthesize(resp)
-        except Exception as tts_err:
-            print(f"Warning: Pre-warm audio synthesis skipped: {tts_err}")
-
-    # 1. Collision check against existing intent patterns
-    if check_collision:
-        collision = profile.check_query(query_or_text)
-        if collision is not None:
-            existing_intent, matched_pat = collision
-            if collision_action == "raise":
-                raise IntentCollisionError(query_or_text, existing_intent, matched_pat)
-            elif collision_action == "append":
-                if responses:
-                    profile.append_responses(existing_intent.name, responses)
-                if not dry_run:
-                    profile.save_to_file(profile_path)
-                    _execute_prewarm(responses or [], profile)
-                return existing_intent, profile
-            elif collision_action == "overwrite":
-                name = existing_intent.name  # Overwrite with matching name
-
-    parser = IntentParser()
-    intent = parser.parse(
-        text=query_or_text,
-        responses=responses,
-        name=name,
-        persona=profile,
-        use_llm=use_llm,
-    )
-
-    if not dry_run:
-        profile.add_intent(intent, overwrite=True, prepend=True)
-        profile.save_to_file(profile_path)
-        _execute_prewarm(intent.responses, profile)
-
-    return intent, profile

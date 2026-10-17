@@ -157,6 +157,28 @@ for grp in audio gpio; do
     fi
 done
 
+# Run a command as root (directly, or through sudo)
+run_priv() {
+    if [[ $EUID -eq 0 ]]; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
+
+# Keep one copy of a system file as it was before this script first changed it
+backup_file() {
+    local target="$1"
+    if [[ -f "$target" && ! -f "${target}.alsageist.bak" ]]; then
+        if [[ -w "$(dirname "$target")" ]]; then
+            cp -p "$target" "${target}.alsageist.bak"
+        else
+            run_priv cp -p "$target" "${target}.alsageist.bak"
+        fi
+        echo "  Backed up ${target} to ${target}.alsageist.bak"
+    fi
+}
+
 # Portable file write helpers
 safe_write() {
     local content="$1"
@@ -205,21 +227,9 @@ dtoverlay=googlevoicehat-soundcard
         # Disable default Broadcom audio if set to on
         if grep -q "^dtparam=audio=on" "$CONFIG_PATH" 2>/dev/null; then
             echo "  Disabling onboard Broadcom audio (dtparam=audio=on -> off)..."
-            TMP_FILE="${CONFIG_PATH}.tmp.$$"
-            while IFS= read -r line || [[ -n "$line" ]]; do
-                if [[ "$line" =~ ^dtparam=audio=on ]]; then
-                    echo "dtparam=audio=off"
-                else
-                    echo "$line"
-                fi
-            done < "$CONFIG_PATH" > "$TMP_FILE"
-            if [[ -w "$CONFIG_PATH" ]]; then
-                mv "$TMP_FILE" "$CONFIG_PATH"
-            elif [[ $EUID -eq 0 ]]; then
-                mv "$TMP_FILE" "$CONFIG_PATH"
-            else
-                sudo mv "$TMP_FILE" "$CONFIG_PATH"
-            fi
+            backup_file "$CONFIG_PATH"
+            UPDATED_CONFIG="$(sed 's/^dtparam=audio=on/dtparam=audio=off/' "$CONFIG_PATH")"
+            safe_write "$UPDATED_CONFIG" "$CONFIG_PATH"
         fi
 
         # Append overlay configuration if not already present
@@ -227,6 +237,7 @@ dtoverlay=googlevoicehat-soundcard
             echo "  Voice HAT overlay 'googlevoicehat-soundcard' is already present in ${CONFIG_PATH}."
         else
             echo "  Appending Voice HAT overlay to ${CONFIG_PATH}..."
+            backup_file "$CONFIG_PATH"
             safe_append "$AIY_CONFIG_BLOCK" "$CONFIG_PATH"
             echo "  Voice HAT configuration appended."
         fi
@@ -262,6 +273,7 @@ ctl.!default {
         echo "  [DRY RUN] Would write full-duplex ALSA routing configuration to ${ASOUND_PATH}:"
         echo "$ASOUND_CONTENT"
     else
+        backup_file "$ASOUND_PATH"
         echo "  Writing ALSA full-duplex configuration to ${ASOUND_PATH}..."
         safe_write "$ASOUND_CONTENT" "$ASOUND_PATH"
         echo "  ALSA configuration written successfully."

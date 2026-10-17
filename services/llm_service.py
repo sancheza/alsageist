@@ -1,25 +1,28 @@
 """Conversational LLM service managing persona dialogue reasoning.
 
 Generates terse, character-accurate banter in response to visitors
-using Groq Llama 3.3 or Gemini Flash.
+using Groq (default model gpt-oss) or Gemini Flash.
 """
 
 import os
+import re
+import threading
+import time
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
-from core import cloud_api
+from core import cloud_api, env_utils
+from core.intent_builder import PROMPT_RULES
 
 
-DEFAULT_SYSTEM_PROMPT = (
-    "You are a witty, dry-humored conversational voice assistant. "
-    "Rules you must strictly obey:\n"
-    "1. Keep every response under 2 sentences maximum.\n"
-    "2. Be witty, dry, and stay in character.\n"
-    "3. Never output emojis, markdown formatting, asterisks, stage directions, or sound effect tags (like *laughs* or [cackles]).\n"
-    "4. Return plain spoken dialogue only."
-)
+DEFAULT_SYSTEM_PROMPT = f"You are a witty, dry-humored conversational voice assistant. {PROMPT_RULES}"
 GEMINI_TIMEOUT_SEC = 6.0
 GROQ_TIMEOUT_SEC = 8.0
+TOTAL_TIMEOUT_SEC = 12.0  # all backends together; a visitor should not wait longer for a reply
+MAX_REPLY_CHARS = 300
+_STAGE_DIRECTION = re.compile(r"\[[^\]]*\]|\([^)]*\)")
+_NON_SPEECH = re.compile(
+    "[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U0000FE00-\U0000FE0F\U0000200D]"
+)
 DEFAULT_FALLBACK_RESPONSE = "Sorry, I lost my train of thought. Please ask me again."
 
 
@@ -48,10 +51,8 @@ class ConversationalLLMService:
             fallback_response: Optional dialogue string, or a function returning one, spoken when
                 every backend fails (default: $LLM_FALLBACK_RESPONSE or a neutral apology).
         """
-        self.groq_api_key = groq_api_key or os.environ.get("GROQ_API_KEY")
-        self.gemini_api_key = (
-            gemini_api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        )
+        self.groq_api_key = env_utils.groq_api_key(groq_api_key)
+        self.gemini_api_key = env_utils.gemini_api_key(gemini_api_key)
         self.system_prompt = system_prompt
         self.max_history_turns = max_history_turns
         self.groq_model = groq_model or cloud_api.groq_llm_model()
@@ -62,6 +63,7 @@ class ConversationalLLMService:
             or DEFAULT_FALLBACK_RESPONSE
         )
         self.history: List[Dict[str, str]] = []
+        self._history_lock = threading.Lock()
 
         if not self.groq_api_key and not self.gemini_api_key:
             raise ValueError(
@@ -86,44 +88,43 @@ class ConversationalLLMService:
         if not user_text or not user_text.strip():
             return ""
 
+        deadline = time.monotonic() + TOTAL_TIMEOUT_SEC
         reply = ""
+        backends = []
         if self.groq_api_key:
+            backends.append(("Groq", self._generate_groq))
+        if self.gemini_api_key:
+            backends.append(("Gemini", self._generate_gemini))
+        for name, generate in backends:
+            if time.monotonic() >= deadline:
+                print(f"  (LLM {name} skipped: reply deadline of {TOTAL_TIMEOUT_SEC:.0f}s used up)")
+                break
             try:
-                reply = self._generate_groq(user_text)
-                if not reply:
-                    raise RuntimeError("Groq returned an empty reply")
-            except Exception:
-                if self.gemini_api_key:
-                    try:
-                        reply = self._generate_gemini(user_text)
-                    except Exception:
-                        reply = ""
-                else:
-                    reply = ""
-        else:
-            try:
-                reply = self._generate_gemini(user_text)
-            except Exception:
-                reply = ""
+                reply = generate(user_text, deadline)
+            except Exception as exc:
+                print(f"  (LLM backend {name} failed: {exc})")
+                continue
+            if reply:
+                break
+            print(f"  (LLM backend {name} returned an empty reply)")
 
         if not reply:
             # Every backend failed or answered with nothing: speak the canned line,
             # and keep it out of the conversation history.
             return self.fallback_response
 
-        # Update history
-        self.history.append({"role": "user", "content": user_text})
-        self.history.append({"role": "assistant", "content": reply})
-
-        # Trim history
-        if len(self.history) > self.max_history_turns * 2:
-            self.history = self.history[-(self.max_history_turns * 2):]
+        with self._history_lock:
+            self.history.append({"role": "user", "content": user_text})
+            self.history.append({"role": "assistant", "content": reply})
+            if len(self.history) > self.max_history_turns * 2:
+                self.history = self.history[-(self.max_history_turns * 2):]
 
         return reply
 
     def reset_history(self) -> None:
         """Clear conversation history for the next visitor."""
-        self.history.clear()
+        with self._history_lock:
+            self.history.clear()
 
     def reset_conversation(self) -> None:
         """Reset conversation history for the next visitor (implements DialogueEngine)."""
@@ -140,7 +141,7 @@ class ConversationalLLMService:
         """
         return self.generate_response(user_text), "llm_generated"
 
-    def _generate_gemini(self, user_text: str) -> str:
+    def _generate_gemini(self, user_text: str, deadline: Optional[float] = None) -> str:
         """Generate reply using fast Gemini Flash text API.
 
         Returns:
@@ -148,8 +149,10 @@ class ConversationalLLMService:
         """
         models_to_try = cloud_api.gemini_llm_models(self.gemini_model)
 
+        with self._history_lock:
+            history = list(self.history)
         contents = []
-        for msg in self.history:
+        for msg in history:
             role = "user" if msg["role"] == "user" else "model"
             contents.append({"role": role, "parts": [{"text": msg["content"]}]})
         contents.append({"role": "user", "parts": [{"text": user_text}]})
@@ -160,44 +163,78 @@ class ConversationalLLMService:
             "generationConfig": {
                 "temperature": 0.8,
                 "thinkingConfig": {"thinkingBudget": 0},
-                "maxOutputTokens": 80,
+                "maxOutputTokens": 120,
             },
         }
 
+        last_error: Optional[Exception] = None
         for model in models_to_try:
+            timeout = self._timeout(GEMINI_TIMEOUT_SEC, deadline)
+            if timeout <= 0:
+                break
             try:
                 parts = cloud_api.gemini_generate_parts(
-                    self.gemini_api_key, model, payload, timeout=GEMINI_TIMEOUT_SEC
+                    self.gemini_api_key, model, payload, timeout=timeout
                 )
                 if not parts:
                     continue
                 cleaned = self._clean_reply(parts[0].get("text", ""))
                 if cleaned:
                     return cleaned
-            except Exception:
-                continue
+            except Exception as exc:
+                last_error = exc
+                print(f"  (Gemini model {model} failed: {exc})")
 
+        if last_error is not None:
+            raise RuntimeError(f"all Gemini models failed: {last_error}") from last_error
         return ""
 
-    def _generate_groq(self, user_text: str) -> str:
+    def _generate_groq(self, user_text: str, deadline: Optional[float] = None) -> str:
         """Generate reply using Groq Llama endpoint."""
         messages = [{"role": "system", "content": self.system_prompt}]
-        for msg in self.history:
-            messages.append(msg)
+        with self._history_lock:
+            messages.extend(dict(msg) for msg in self.history)
         messages.append({"role": "user", "content": user_text})
 
         payload = {
             "model": self.groq_model,
             "messages": messages,
             "temperature": 0.8,
-            "max_tokens": 100,
+            "max_tokens": 150,
             **cloud_api.groq_model_params(self.groq_model),
         }
 
-        text = cloud_api.groq_chat(self.groq_api_key, payload, timeout=GROQ_TIMEOUT_SEC)
+        text = cloud_api.groq_chat(
+            self.groq_api_key, payload, timeout=max(0.5, self._timeout(GROQ_TIMEOUT_SEC, deadline))
+        )
         return self._clean_reply(text)
 
     @staticmethod
+    def _timeout(default_sec: float, deadline: Optional[float]) -> float:
+        """Return the per-request timeout, shortened to what is left of the reply deadline."""
+        if deadline is None:
+            return default_sec
+        return min(default_sec, deadline - time.monotonic())
+
+    @staticmethod
     def _clean_reply(text: str) -> str:
-        """Strip markdown asterisks and line breaks so the reply is plain spoken text."""
-        return text.strip().replace("*", "").replace("\n", " ").strip()
+        """Reduce a model reply to plain spoken text.
+
+        Removes markdown asterisks, bracketed stage directions, emoji and line breaks, caps the
+        length, and drops a trailing unfinished sentence when a complete one precedes it.
+
+        Args:
+            text: Raw model output.
+
+        Returns:
+            Cleaned reply, or an empty string if nothing speakable remains.
+        """
+        cleaned = _NON_SPEECH.sub("", _STAGE_DIRECTION.sub(" ", text))
+        cleaned = " ".join(cleaned.replace("*", "").split())
+        if len(cleaned) > MAX_REPLY_CHARS:
+            cleaned = cleaned[:MAX_REPLY_CHARS]
+        if cleaned and cleaned[-1] not in ".!?\"'":
+            last_end = max(cleaned.rfind(mark) for mark in ".!?")
+            if last_end > 0:
+                cleaned = cleaned[: last_end + 1]
+        return cleaned.strip()

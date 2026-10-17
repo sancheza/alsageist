@@ -40,16 +40,11 @@ class PersonaIntentEngine:
         self._fallbacks = list(self.profile.fallbacks)
         self._escalation_lines = list(self.profile.escalation_lines)
         self._intent_rules = self.profile.compile_rules()
-        self._compiled_intent_rules: List[Tuple[str, List[re.Pattern], List[str]]] = []
-        for name, patterns, responses in self._intent_rules:
-            compiled = []
-            for pat in patterns:
-                if pat and pat.strip():
-                    try:
-                        compiled.append(re.compile(pat, re.IGNORECASE))
-                    except re.error:
-                        pass
-            self._compiled_intent_rules.append((name, compiled, responses))
+        # Patterns were validated when the profile was loaded (CustomIntent rejects bad regexes)
+        self._compiled_intent_rules: List[Tuple[str, List[re.Pattern], List[str]]] = [
+            (name, [re.compile(pat, re.IGNORECASE) for pat in patterns if pat and pat.strip()], responses)
+            for name, patterns, responses in self._intent_rules
+        ]
 
         # Compile a curated pool of quotes, songs, jokes, and lore (excluding costume feedback)
         self._random_content_pool: List[str] = []
@@ -59,6 +54,26 @@ class PersonaIntentEngine:
             for r in responses:
                 if r and r not in self._random_content_pool:
                     self._random_content_pool.append(r)
+
+    @property
+    def intent_rules(self) -> List[Tuple[str, List[str], List[str]]]:
+        """Return the (name, patterns, responses) rules in match order."""
+        return self._intent_rules
+
+    @property
+    def fallbacks(self) -> List[str]:
+        """Return the fallback lines for unrecognized phrases."""
+        return self._fallbacks
+
+    @property
+    def escalation_lines(self) -> List[str]:
+        """Return the lines spoken to visitors who linger."""
+        return self._escalation_lines
+
+    @property
+    def costume_prompts(self) -> List[str]:
+        """Return the lines that ask a visitor about their costume."""
+        return self._costume_prompts
 
     def reset_conversation(self) -> None:
         """Reset turn counter and costume inquiry state for a new visitor."""

@@ -288,6 +288,21 @@ EOF
     fi
 fi
 
+# Host group IDs for docker-compose.yml (device files are opened by numeric group ID)
+if [[ "$DRY_RUN" == true ]]; then
+    echo "  [DRY RUN] Would record AUDIO_GID and GPIO_GID from the host in ${ENV_FILE}"
+else
+    for pair in "AUDIO_GID:audio" "GPIO_GID:gpio"; do
+        var="${pair%%:*}"
+        grp="${pair##*:}"
+        gid="$(getent group "$grp" | cut -d: -f3 || true)"
+        if [[ -n "$gid" ]] && ! grep -q "^${var}=" "$ENV_FILE" 2>/dev/null; then
+            echo "${var}=${gid}" >> "$ENV_FILE"
+            echo "  Recorded ${var}=${gid} in ${ENV_FILE}."
+        fi
+    done
+fi
+
 # Optional Dialogue Speech Cache Pre-Warming
 DO_PREWARM=false
 if [[ "$PREWARM" == true ]]; then

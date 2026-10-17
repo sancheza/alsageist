@@ -22,6 +22,7 @@ import sys
 from typing import Iterator, List, Tuple
 
 from core.audio_io import AudioIO
+from core.env_utils import env_float
 from core.intent_builder import load_personality, resolve_voice_settings
 from core.system_utils import load_env_file, resolve_piper_model_path
 from services.tts_service import PiperTTSService
@@ -169,7 +170,7 @@ def main() -> int:
                 repo_root=repo_root,
             )
             tempo, noise = resolve_voice_settings(profile, args.tempo)
-            vol = args.volume if args.volume is not None else float(os.environ.get("VOLUME", "0.5"))
+            vol = args.volume if args.volume is not None else env_float("VOLUME", 0.5)
 
         if args.dry_run:
             print(f"[DRY-RUN] {display_name} speaking (volume={vol}): \"{args.text}\"")
@@ -182,7 +183,7 @@ def main() -> int:
         tts = PiperTTSService(model_path=model_path, length_scale=tempo, noise_scale=noise, lazy_load=True)
 
         print(f"{display_name} speaking (volume={vol}): \"{args.text}\"")
-        cached = os.path.isfile(tts._get_cache_path(args.text))  # pylint: disable=protected-access
+        cached = os.path.isfile(tts.cache_path(args.text))
         started = time.perf_counter()
         try:
             samples, sr = tts.synthesize(args.text)

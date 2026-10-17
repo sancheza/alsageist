@@ -16,6 +16,9 @@ import time
 from typing import Any, Dict, Optional
 
 MAX_REQUEST_BYTES = 64 * 1024
+REQUEST_DEADLINE_SEC = 3.0  # total time a client has to send its request
+MAX_SAY_CHARS = 500
+SHUTDOWN_CONFIRMATION = "confirm"
 
 
 class ControlSocketError(RuntimeError):
@@ -237,9 +240,15 @@ class ControlServer:
     def _handle_client(self, conn: socket.socket) -> None:
         """Read command from client, dispatch to agent, and send JSON response."""
         try:
-            conn.settimeout(3.0)
             data = b""
+            deadline = time.monotonic() + REQUEST_DEADLINE_SEC
             while not data.endswith(b"\n"):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    conn.settimeout(1.0)
+                    conn.sendall((json.dumps({"status": "error", "message": "Request timed out."}) + "\n").encode("utf-8"))
+                    return
+                conn.settimeout(remaining)
                 chunk = conn.recv(1024)
                 if not chunk:
                     break
@@ -256,10 +265,13 @@ class ControlServer:
                 payload = json.loads(req_str)
             except json.JSONDecodeError:
                 payload = {"cmd": req_str}
+            if not isinstance(payload, dict) or not isinstance(payload.get("cmd", ""), str):
+                return self._reply(conn, {"status": "error", "message": "Request must be a JSON object with a string 'cmd'."})
 
             cmd = payload.get("cmd", "").strip().lower()
             val = payload.get("value")
 
+            conn.settimeout(3.0)
             response = self.dispatch_command(cmd, val)
             resp_bytes = (json.dumps(response) + "\n").encode("utf-8")
             conn.sendall(resp_bytes)
@@ -275,6 +287,11 @@ class ControlServer:
             except Exception:
                 pass
             self._client_semaphore.release()
+
+    @staticmethod
+    def _reply(conn: socket.socket, response: Dict[str, Any]) -> None:
+        """Send one JSON response line."""
+        conn.sendall((json.dumps(response) + "\n").encode("utf-8"))
 
     def dispatch_command(self, cmd: str, value: Any = None) -> Dict[str, Any]:
         """Dispatch command to the AlsaGeist agent and return response dict.
@@ -351,6 +368,8 @@ class ControlServer:
             phrase = str(value).strip() if value else ""
             if not phrase:
                 return {"status": "error", "message": "No phrase provided to speak."}
+            if len(phrase) > MAX_SAY_CHARS:
+                return {"status": "error", "message": f"Phrase is too long ({len(phrase)} characters; limit {MAX_SAY_CHARS})."}
             if agent.is_disabled:
                 return {"status": "error", "message": "Display is disabled (sleep mode); enable it first."}
             if not agent.speak(phrase):
@@ -358,6 +377,11 @@ class ControlServer:
             return {"status": "ok", "message": f"Spoke: \"{phrase}\"", "spoken": phrase}
 
         elif cmd in ("shutdown", "poweroff"):
+            if str(value) != SHUTDOWN_CONFIRMATION:
+                return {
+                    "status": "error",
+                    "message": f"Shutdown powers off the host. Send value '{SHUTDOWN_CONFIRMATION}' to confirm.",
+                }
             agent.request_shutdown()
             return {"status": "ok", "message": "Host system shutdown initiated. If the host stays up, see the daemon log."}
 
@@ -404,17 +428,16 @@ class ControlServer:
         val_str = str(value).strip()
         current_vol = agent.volume
 
+        # A leading + or - is a change in percentage points ("+1" is one point, not 100%)
         if val_str.startswith("+"):
             try:
-                delta = float(val_str[1:])
-                delta = delta / 100.0 if delta > 1.0 else delta
+                delta = float(val_str[1:]) / 100.0
                 new_vol = min(1.0, current_vol + delta)
             except ValueError:
                 return {"status": "error", "message": f"Invalid volume increment '{val_str}'"}
         elif val_str.startswith("-"):
             try:
-                delta = float(val_str[1:])
-                delta = delta / 100.0 if delta > 1.0 else delta
+                delta = float(val_str[1:]) / 100.0
                 new_vol = max(0.0, current_vol - delta)
             except ValueError:
                 return {"status": "error", "message": f"Invalid volume decrement '{val_str}'"}

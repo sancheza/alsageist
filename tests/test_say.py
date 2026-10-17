@@ -89,7 +89,7 @@ def test_phase_timer_context_manager_measures_elapsed_time():
 
 def _run_main(monkeypatch, argv, tts_side_effect=None, voice_loaded=False, voice_load_sec=0.0):
     tts = MagicMock()
-    tts._get_cache_path.return_value = "/nonexistent/cache.npy"
+    tts.cache_path.return_value = "/nonexistent/cache.npy"
     tts.voice_loaded = voice_loaded
     tts.voice_load_sec = voice_load_sec
     if tts_side_effect:
@@ -167,7 +167,7 @@ def test_say_debug_separates_voice_load_from_synthesis(monkeypatch, capsys):
         return np.zeros(22050, dtype=np.float32), 22050
 
     tts = MagicMock()
-    tts._get_cache_path.return_value = "/nonexistent/cache.npy"
+    tts.cache_path.return_value = "/nonexistent/cache.npy"
     tts.voice_loaded = True
     tts.voice_load_sec = 0.25
     tts.synthesize.side_effect = slow_synth
