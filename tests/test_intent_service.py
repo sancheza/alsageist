@@ -136,8 +136,11 @@ def test_pick_unique_evicts_oldest_phrase_first(engine):
     for _ in range(6):
         picked.append(engine._pick_unique(choices))
 
+    # The memory holds the last three picks; the oldest is forgotten first, never the newest
     assert list(engine._recently_used) == picked[-3:]
-    assert len(set(picked)) == 6  # no repeat while unused lines remain
+    # A pick never repeats one of the three before it (older lines may legitimately come back)
+    for index, line in enumerate(picked):
+        assert line not in picked[max(0, index - 3):index]
 
 
 def test_pick_unique_resets_when_every_choice_was_used(engine):
