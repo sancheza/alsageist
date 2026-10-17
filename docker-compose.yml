@@ -7,7 +7,9 @@ services:
     container_name: alsageist
     restart: unless-stopped
     network_mode: host
-    privileged: true
+    group_add:
+      - audio
+      - gpio
     env_file:
       - .env
     volumes:
@@ -15,7 +17,6 @@ services:
       - ./models:/app/models
       - ./logs:/app/logs
       - /etc/asound.conf:/etc/asound.conf:ro
-      - /run/systemd/system:/run/systemd/system
       - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
     devices:
       - /dev/snd:/dev/snd

@@ -145,3 +145,16 @@ def test_audio_io_drain_input_queue():
 
     audio.drain_input_queue()
     assert audio.read_frame(timeout=0.01) is None
+
+
+def test_audio_io_lock_is_reentrant():
+    """AudioIO._lock is re-entrant to prevent signal-handler deadlocks."""
+    import threading
+
+    audio = AudioIO(sample_rate=16000, channels=1)
+    assert isinstance(audio._lock, type(threading.RLock()))
+    with audio._lock:
+        # Re-entering while holding the lock must not deadlock
+        audio.stop_capture()
+        audio.drain_input_queue()
+

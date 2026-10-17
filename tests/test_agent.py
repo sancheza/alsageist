@@ -790,3 +790,37 @@ def test_power_monitor_starts_after_the_startup_greeting():
     assert order == ["greeting", "monitor"]
     # and the quiet period has just been restarted, so the monitor's first check would not speak
     assert time.time() - agent._last_activity_time < 5
+
+
+def test_agent_stop_is_idempotent():
+    """Calling stop() multiple times cleans up exactly once and does not raise."""
+    agent = make_bare_agent()
+    agent.running = True
+    agent.power_monitor = MagicMock()
+    agent.control_server = MagicMock()
+
+    agent.stop()
+    assert agent.running is False
+    assert agent._stopped is True
+    assert agent.audio.stop_playback.call_count == 1
+    assert agent.audio.stop_capture.call_count == 1
+
+    # Second call must be a no-op
+    agent.stop()
+    assert agent.audio.stop_playback.call_count == 1
+    assert agent.audio.stop_capture.call_count == 1
+
+
+def test_agent_redacts_transcripts_when_logging_disabled(capsys):
+    """When store_text is False, plain transcripts are redacted from stdout."""
+    agent = _agent_with_failed_cloud_stt()
+    agent.logger.store_text = False
+    agent.stt.transcribe.return_value = "secret visitor question"
+    agent.dialogue_engine.classify_and_respond.return_value = ("secret persona answer", "test_intent")
+
+    agent._handle_utterance(np.zeros(16000, dtype=np.float32))
+    captured = capsys.readouterr().out
+    assert "secret visitor question" not in captured
+    assert "secret persona answer" not in captured
+    assert "[TRANSCRIPT REDACTED]" in captured
+

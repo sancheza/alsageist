@@ -257,14 +257,18 @@ if [[ "$SKIP_ENV_PROMPT" == false ]]; then
         echo "  AlsaGeist runs 100% offline by default with local intent matching and Piper TTS."
         echo "  You can optionally configure cloud STT (Whisper) or Gemini LLM fallback:"
         echo ""
-        read -r -p "  Enter Groq API Key [leave empty for offline STT]: " GROQ_KEY
-        read -r -p "  Enter Gemini API Key [leave empty for offline fallback]: " GEMINI_KEY
+        read -s -r -p "  Enter Groq API Key [leave empty for offline STT]: " GROQ_KEY
+        echo ""
+        read -s -r -p "  Enter Gemini API Key [leave empty for offline fallback]: " GEMINI_KEY
+        echo ""
     fi
 
     if [[ "$DRY_RUN" == true ]]; then
         echo "  [DRY RUN] Would generate .env file with PERSONALITY=grimjaw, VOLUME=0.5, MIC_GAIN=1.5"
     else
-        cat << EOF > "$ENV_FILE"
+        (
+            umask 077
+            cat << EOF > "$ENV_FILE"
 # ==============================================================================
 # AlsaGeist Runtime Configuration
 # ==============================================================================
@@ -278,6 +282,7 @@ VOLUME=0.5
 MIC_GAIN=1.5
 VAD_THRESHOLD=0.0035
 EOF
+        )
         chmod 600 "$ENV_FILE"
         echo "  Configured ${ENV_FILE} (mode 600)."
     fi

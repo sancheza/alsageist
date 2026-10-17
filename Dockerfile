@@ -42,8 +42,14 @@ RUN chmod +x /entrypoint.sh && \
     pip install --upgrade pip setuptools wheel && \
     pip install -c constraints.txt -e ".[rpi]"
 
-# Create volume mount targets
-RUN mkdir -p /app/data /app/models /app/logs
+# Create non-root alsageist user and volume mount targets
+RUN groupadd -f -r gpio && \
+    groupadd -g 1000 alsageist && \
+    useradd -u 1000 -g alsageist -G audio,gpio -m alsageist && \
+    mkdir -p /app/data /app/models /app/logs && \
+    chown -R alsageist:alsageist /app
+
+USER alsageist
 
 # Runtime environment defaults
 ENV PERSONALITY=grimjaw \

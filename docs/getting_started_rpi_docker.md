@@ -15,8 +15,8 @@ AlsaGeist runs as an isolated, containerized application with direct hardware ac
 | **Telemetry** | `/app/logs` | `./logs` | Turn interaction logs (`interactions.jsonl`, `conversations.log`) |
 | **Configuration** | `/app/.env` | `./.env` | Audio calibration and optional cloud STT/LLM API keys |
 
-> [!WARNING]
-> The container runs as root with `privileged: true`, host networking, and the host system D-Bus socket mounted. These settings give it GPIO access and the ability to power off the host. Run it only on a dedicated device.
+> [!NOTE]
+> The container runs as non-root user `alsageist` with host networking, `/dev/snd` device access, and the host system D-Bus socket mounted for clean system poweroff.
 
 ---
 
@@ -273,10 +273,8 @@ A clock of `1200000000` and a value of `0x0` mean the supply is not the cause. O
 
 ### Problem: Arcade button or LED does not respond.
 
-Ensure the target user is a member of the `gpio` group and the container runs in privileged mode:
+Ensure the target user is a member of the `gpio` group on the host:
 
 ```bash
 groups $USER | grep gpio
 ```
-
-In `docker-compose.yml`, verify `privileged: true` is configured.

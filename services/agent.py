@@ -879,7 +879,10 @@ class AlsaGeistAgent:
             if filter_status == "FILTERED_SILENCE":
                 print("  (Silence / ambient noise filtered)")
             else:
-                print(f"  (Filtered ambient background artifact / timecode: \"{user_text}\")")
+                if getattr(self.logger, "store_text", True):
+                    print(f"  (Filtered ambient background artifact / timecode: \"{user_text}\")")
+                else:
+                    print("  (Filtered ambient background artifact / timecode: [REDACTED])")
             self.led.set_state(LEDState.IDLE)
             self.audio.drain_input_queue()
             self.vad.reset()
@@ -895,7 +898,10 @@ class AlsaGeistAgent:
             )
             return
 
-        print(f"User: \"{user_text}\"  ({stt_ms}ms)")
+        if getattr(self.logger, "store_text", True):
+            print(f"User: \"{user_text}\"  ({stt_ms}ms)")
+        else:
+            print(f"User: \"[TRANSCRIPT REDACTED]\"  ({stt_ms}ms)")
 
         # 2. Dialogue Reasoning
         try:
@@ -910,7 +916,10 @@ class AlsaGeistAgent:
 
         t_llm = time.time()
         llm_ms = int((t_llm - t_stt) * 1000)
-        print(f"{self.persona_name} ({matched_intent}): \"{reply}\"  ({llm_ms}ms)")
+        if getattr(self.logger, "store_text", True):
+            print(f"{self.persona_name} ({matched_intent}): \"{reply}\"  ({llm_ms}ms)")
+        else:
+            print(f"{self.persona_name} ({matched_intent}): \"[TRANSCRIPT REDACTED]\"  ({llm_ms}ms)")
 
         # 3. Local Piper TTS Synthesis in RAM
         try:
@@ -956,15 +965,19 @@ class AlsaGeistAgent:
 
     def stop(self) -> None:
         """Clean up all audio streams, control server, and LED threads."""
-        self.running = False
-        if getattr(self, "power_monitor", None) is not None:
-            self.power_monitor.stop()
-        if hasattr(self, "control_server"):
-            try:
-                self.control_server.stop()
-            except Exception:
-                pass
-        self.audio.stop_playback()
-        self.audio.stop_capture()
-        self.led.stop()
-        print("AlsaGeist terminated cleanly.")
+        with self._state_lock:
+            if getattr(self, "_stopped", False):
+                return
+            self._stopped = True
+            self.running = False
+            if getattr(self, "power_monitor", None) is not None:
+                self.power_monitor.stop()
+            if hasattr(self, "control_server"):
+                try:
+                    self.control_server.stop()
+                except Exception:
+                    pass
+            self.audio.stop_playback()
+            self.audio.stop_capture()
+            self.led.stop()
+            print("AlsaGeist terminated cleanly.")

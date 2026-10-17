@@ -47,7 +47,7 @@ class AudioIO:
         self._input_stream: Optional[sd.InputStream] = None
         self._is_capturing: bool = False
         self._is_muted: bool = False
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         # Output rates the hardware rejected, mapped to the rate that worked (e.g. 22050 -> 44100)
         self._output_rate_fallbacks: Dict[int, int] = {}
 
