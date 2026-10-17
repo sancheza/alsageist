@@ -20,6 +20,7 @@ from typing import Callable, List, Optional
 
 DEFAULT_CHECK_SEC = 60.0
 DEFAULT_WARN_SEC = 900.0
+DEFAULT_CLEAR_SEC = 300.0
 
 # Bit meanings from the Raspberry Pi firmware documentation for get_throttled.
 FLAGS_NOW = {
@@ -112,7 +113,12 @@ def read_status() -> Optional[PowerStatus]:
 
 
 class PowerMonitor:
-    """Logs a warning while the CPU is throttled, and a notice when it clears."""
+    """Logs a warning while the CPU is throttled, and a notice once it has stayed clear.
+
+    A supply that keeps dipping is one ongoing problem, not many: warnings are limited to one
+    per warn_interval_sec, and the recovery notice is logged only after the CPU has been clear
+    for clear_after_sec.
+    """
 
     def __init__(
         self,
@@ -121,6 +127,7 @@ class PowerMonitor:
         check_interval_sec: float = DEFAULT_CHECK_SEC,
         warn_interval_sec: float = DEFAULT_WARN_SEC,
         clock: Callable[[], float] = time.monotonic,
+        clear_after_sec: float = DEFAULT_CLEAR_SEC,
     ) -> None:
         """Create a monitor.
 
@@ -130,14 +137,17 @@ class PowerMonitor:
             check_interval_sec: Seconds between checks; 0 or less disables the monitor.
             warn_interval_sec: Minimum seconds between repeated warnings while throttling persists.
             clock: Monotonic time source in seconds.
+            clear_after_sec: Seconds the CPU must stay clear before the recovery notice is logged.
         """
         self._log = log
         self._reader = reader
         self.check_interval_sec = check_interval_sec
         self.warn_interval_sec = warn_interval_sec
         self._clock = clock
+        self.clear_after_sec = clear_after_sec
         self._last_warning: Optional[float] = None
         self._was_active = False
+        self._clear_since: Optional[float] = None
         self._reported_occurred: set = set()
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -179,13 +189,18 @@ class PowerMonitor:
                     f"Warning: CPU throttling: {', '.join(status.active)}{temp}. {self._advice(status)}"
                 )
             self._was_active = True
+            self._clear_since = None
             self._reported_occurred.update(status.occurred)
             return status
 
         if self._was_active:
-            self._was_active = False
-            self._last_warning = None
-            self._log(f"CPU is no longer throttled{temp}.")
+            if self._clear_since is None:
+                self._clear_since = now
+            if now - self._clear_since >= self.clear_after_sec:
+                self._was_active = False
+                self._clear_since = None
+                self._last_warning = None
+                self._log(f"CPU is no longer throttled{temp}.")
 
         new = [text for text in status.occurred if text not in self._reported_occurred]
         if new:

@@ -29,7 +29,7 @@ AlsaGeist runs an autonomous conversational character driven by pluggable person
 * Raspberry Pi 3 Model B, 3B+, 4, or 5
 * Google AIY Voice Kit V1 (2017 Voice HAT with stereo microphone daughterboard, 3-inch speaker, and arcade button)
 * Raspberry Pi OS Lite (64-bit)
-* 5V 2.5A+ power supply
+* 5V 2.5A+ power supply (an inadequate supply throttles the CPU and slows every response; see [Under-Voltage and CPU Throttling](docs/usage_guide.md#55-under-voltage-and-cpu-throttling-raspberry-pi))
 
 ---
 
@@ -244,7 +244,7 @@ pytest tests/
 
 Expected output:
 ```text
-============================= 305 passed in 15.91s =============================
+============================= 319 passed in 16.84s =============================
 ```
 
 ---

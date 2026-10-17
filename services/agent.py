@@ -52,6 +52,7 @@ class AlsaGeistAgent:
         self._last_activity_time = time.time()
         self._idle_reset_done = False
         self._mode_forced: Optional[bool] = None
+        self._last_check_request = 0.0
 
         print(f"Initializing AlsaGeist subsystems (Dialogue Engine: {args.engine.upper()})...")
 
@@ -658,6 +659,32 @@ class AlsaGeistAgent:
             self.reset_dialogue()
             self._idle_reset_done = True
 
+    def _check_network_if_cloud_stt_failed(self) -> None:
+        """Ask for an immediate connectivity probe when every cloud STT backend just failed.
+
+        The probe, not the error, decides whether to go offline: if only the cloud service
+        is down while the network is up, the mode stays online.
+        """
+        if self.stt.last_cloud_failed is True:
+            self._request_network_check()
+
+    def _request_network_check(self, min_interval: float = 30.0) -> None:
+        """Make the main loop probe connectivity now instead of waiting for the next interval.
+
+        Does nothing when the mode is forced or the agent is already offline (the periodic
+        check brings it back online), and at most one request per min_interval seconds.
+
+        Args:
+            min_interval: Minimum seconds between requests.
+        """
+        if self._mode_forced is not None or not self.is_online:
+            return
+        now = time.time()
+        if now - self._last_check_request < min_interval:
+            return
+        self._last_check_request = now
+        self.last_net_check_time = 0.0
+
     def _poll_network(self, now: float) -> None:
         """Switch between online and offline modes without blocking the audio loop.
 
@@ -761,7 +788,9 @@ class AlsaGeistAgent:
         # 1. Speech-to-Text
         try:
             user_text = self.stt.transcribe(utterance_pcm, offline=not self.is_online)
+            self._check_network_if_cloud_stt_failed()
         except Exception as exc:
+            self._check_network_if_cloud_stt_failed()
             print(f"STT Error: {exc}")
             self.led.set_state(LEDState.ERROR)
             self.logger.log_interaction(

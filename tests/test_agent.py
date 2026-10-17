@@ -4,6 +4,7 @@ import threading
 import time
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 from core.intent_builder import PersonalityProfile, find_personality_file
@@ -555,3 +556,98 @@ def test_disabled_agent_is_not_unmuted_after_playback():
     agent._play_speech_audio(b"", 22050, cooldown_sec=0.0)
 
     agent.audio.unmute_capture.assert_not_called()
+
+
+# ---- go offline promptly when cloud speech recognition fails ----
+
+def _agent_with_failed_cloud_stt(**overrides):
+    agent = _agent_for_network_polling()
+    for name, value in overrides.items():
+        setattr(agent, name, value)
+    agent.last_net_check_time = 1000.0
+    agent.stt.transcribe.return_value = "what time is it"
+    agent.stt.last_cloud_failed = True
+    agent.vad.calculate_rms.return_value = 0.05
+    agent.dialogue_engine.classify_and_respond.return_value = ("reply", "greeting")
+    agent.tts.synthesize.return_value = (np.zeros(100, dtype=np.float32), 22050)
+    return agent
+
+
+def test_failed_cloud_stt_requests_an_immediate_connectivity_check():
+    """When every cloud STT backend failed the next loop pass probes the network right away."""
+    agent = _agent_with_failed_cloud_stt()
+    agent._handle_utterance(np.zeros(16000, dtype=np.float32))
+    assert agent.last_net_check_time == 0.0
+
+
+def test_healthy_cloud_stt_does_not_request_a_check():
+    """Normal operation leaves the 15-minute schedule alone."""
+    agent = _agent_with_failed_cloud_stt()
+    agent.stt.last_cloud_failed = False
+    agent._handle_utterance(np.zeros(16000, dtype=np.float32))
+    assert agent.last_net_check_time == 1000.0
+
+
+def test_stt_total_failure_also_requests_a_check():
+    """A transcription that raises after cloud attempts still asks for a probe."""
+    agent = _agent_with_failed_cloud_stt()
+    agent.stt.transcribe.side_effect = RuntimeError("All transcription backends failed")
+    with patch("services.agent.time.sleep"):
+        agent._handle_utterance(np.zeros(16000, dtype=np.float32))
+    assert agent.last_net_check_time == 0.0
+
+
+def test_check_not_requested_when_mode_is_forced_or_already_offline():
+    """A forced mode is respected, and an offline agent waits for the periodic check to come back."""
+    forced = _agent_with_failed_cloud_stt(_mode_forced=True)
+    forced._request_network_check()
+    assert forced.last_net_check_time == 1000.0
+
+    offline = _agent_with_failed_cloud_stt(is_online=False)
+    offline._request_network_check()
+    assert offline.last_net_check_time == 1000.0
+
+
+def test_check_requests_are_rate_limited():
+    """Repeated failures inside 30 seconds do not keep re-triggering probes."""
+    agent = _agent_with_failed_cloud_stt()
+    agent._request_network_check()
+    assert agent.last_net_check_time == 0.0
+
+    agent.last_net_check_time = 5000.0       # the probe ran and updated the time
+    agent._request_network_check()           # a second failure right after
+    assert agent.last_net_check_time == 5000.0
+
+    agent._last_check_request -= 31          # 31 seconds later a new request is allowed
+    agent._request_network_check()
+    assert agent.last_net_check_time == 0.0
+
+
+def test_cloud_failure_with_network_down_goes_offline_and_announces():
+    """End to end: failed cloud STT, probe finds no network, mode flips offline once."""
+    agent = _agent_with_failed_cloud_stt()
+    agent._announce_mode = MagicMock()
+    agent._handle_utterance(np.zeros(16000, dtype=np.float32))
+
+    with patch.object(AlsaGeistAgent, "_check_internet", return_value=False):
+        agent._poll_network(now=time.time())          # the loop starts the probe
+        agent._net_check_thread.join(timeout=2)
+        agent._poll_network(now=time.time())          # the next pass applies the result
+
+    assert agent.is_online is False
+    agent._announce_mode.assert_called_once_with(online=False)
+
+
+def test_cloud_failure_with_network_up_stays_online():
+    """If only the cloud API is down (probe succeeds) the agent does not go offline."""
+    agent = _agent_with_failed_cloud_stt()
+    agent._announce_mode = MagicMock()
+    agent._handle_utterance(np.zeros(16000, dtype=np.float32))
+
+    with patch.object(AlsaGeistAgent, "_check_internet", return_value=True):
+        agent._poll_network(now=time.time())
+        agent._net_check_thread.join(timeout=2)
+        agent._poll_network(now=time.time())
+
+    assert agent.is_online is True
+    agent._announce_mode.assert_not_called()

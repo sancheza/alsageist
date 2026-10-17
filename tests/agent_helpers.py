@@ -60,6 +60,7 @@ def make_bare_agent(**overrides) -> AlsaGeistAgent:
     agent._last_activity_time = time.time()
     agent._idle_reset_done = False
     agent._mode_forced = None
+    agent._last_check_request = 0.0
 
     agent.audio = MagicMock()
     agent.audio.volume = 0.5
@@ -69,6 +70,7 @@ def make_bare_agent(**overrides) -> AlsaGeistAgent:
     agent.audio.unmute_capture.side_effect = lambda: setattr(agent.audio, "is_muted", False)
     agent.vad = MagicMock()
     agent.stt = MagicMock()
+    agent.stt.last_cloud_failed = False
     agent.tts = MagicMock()
     agent.tts.synthesize.return_value = (b"\x00" * 3200, 16000)
     agent.logger = MagicMock()

@@ -24,6 +24,7 @@ Native bare-metal deployment executes AlsaGeist directly on the host operating s
 * Raspberry Pi 3 Model B, 3B+, 4, or 5 running **Raspberry Pi OS Lite (64-bit)** (Debian 12 Bookworm).
 * Google AIY Voice HAT V1 or compatible USB speakerphone connected to the board.
 * Network access and active SSH session to the Raspberry Pi.
+* A power supply rated for the board (Raspberry Pi 3 Model B: 5 V, 2.5 A). An inadequate supply throttles the CPU and slows every step; see [Under-Voltage and CPU Throttling](usage_guide.md#55-under-voltage-and-cpu-throttling-raspberry-pi).
 * Operating system flashed and verified (see [AlsaGeist Project & Hardware Overview](overview.md)).
 
 ---
@@ -470,6 +471,21 @@ Verify internet connectivity to cloud APIs:
 curl -I https://api.groq.com
 curl -I https://generativelanguage.googleapis.com
 ```
+
+### Problem: Startup, replies, or `say.py` take tens of seconds
+The CPU is probably throttled by an inadequate power supply. Check the clock and the throttle flags:
+```bash
+vcgencmd measure_clock arm
+vcgencmd get_throttled
+```
+
+Expected output when throttled:
+```text
+frequency(48)=600000000
+throttled=0x50005
+```
+
+A clock of `1200000000` and a value of `0x0` mean the supply is not the cause. Otherwise see [Under-Voltage and CPU Throttling](usage_guide.md#55-under-voltage-and-cpu-throttling-raspberry-pi).
 
 ### Problem: `alsamixer: This sound device does not have any controls`
 This is expected behavior for the Google AIY Voice HAT V1 because it uses a fixed-gain I2S codec. Test speaker output directly:

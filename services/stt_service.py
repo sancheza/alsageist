@@ -47,6 +47,8 @@ class SpeechToTextService:
         self.groq_model = groq_model or os.environ.get("GROQ_STT_MODEL", "whisper-large-v3")
         self.gemini_model = gemini_model or os.environ.get("GEMINI_STT_MODEL")
         self.sample_rate = sample_rate
+        # True when the last transcribe() call tried at least one cloud backend and every one failed
+        self.last_cloud_failed = False
 
         # Initialize offline Vosk model if available
         self._vosk_model = None
@@ -138,7 +140,11 @@ class SpeechToTextService:
 
         Raises:
             RuntimeError: If transcription fails.
+
+        After the call, last_cloud_failed tells whether the cloud backends were tried and
+        all failed, so a caller can check whether the network is down.
         """
+        self.last_cloud_failed = False
         if offline:
             return self.transcribe_offline(audio_array)
 
@@ -155,12 +161,20 @@ class SpeechToTextService:
             raise RuntimeError("No transcription backend available.")
 
         errors = []
+        cloud_attempts = 0
         for name, run in backends:
+            is_cloud = name != "Vosk"
+            cloud_attempts += is_cloud
             try:
-                return run()
+                text = run()
             except Exception as exc:
                 errors.append(f"{name}: {exc}")
                 print(f"  (STT backend {name} failed: {exc})")
+                continue
+            # Reaching Vosk with cloud backends configured means each of them failed first
+            self.last_cloud_failed = (not is_cloud) and cloud_attempts > 0
+            return text
+        self.last_cloud_failed = cloud_attempts > 0
         raise RuntimeError("All transcription backends failed: " + "; ".join(errors))
 
     def _transcribe_gemini(self, wav_bytes: bytes) -> str:

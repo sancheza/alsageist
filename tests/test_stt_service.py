@@ -118,3 +118,87 @@ def test_stt_error_lists_every_failed_backend():
             stt.transcribe(_audio())
     assert "Groq Whisper: groq down" in str(exc.value)
     assert "Gemini" in str(exc.value)
+
+
+# ---- last_cloud_failed: lets the agent notice a dead network ----
+
+def _stt_with(groq=False, gemini=False, vosk=False):
+    from unittest.mock import MagicMock
+
+    stt = SpeechToTextService(groq_api_key="placeholder", gemini_api_key="placeholder",
+                              vosk_model_path="/nonexistent")
+    stt.groq_api_key = "g" if groq else None
+    stt.gemini_api_key = "k" if gemini else None
+    stt._vosk_model = MagicMock() if vosk else None
+    return stt
+
+
+def test_cloud_success_is_not_a_cloud_failure():
+    """A cloud backend that answers leaves last_cloud_failed False."""
+    from unittest.mock import patch
+
+    stt = _stt_with(groq=True, gemini=True, vosk=True)
+    with patch("services.stt_service.cloud_api.groq_transcribe", return_value="hi"):
+        stt.transcribe(_audio())
+    assert stt.last_cloud_failed is False
+
+
+def test_fallback_to_second_cloud_backend_is_not_a_total_cloud_failure():
+    """Groq failing while Gemini answers means the network is up."""
+    from unittest.mock import patch
+
+    stt = _stt_with(groq=True, gemini=True, vosk=True)
+    with patch("services.stt_service.cloud_api.groq_transcribe", side_effect=OSError("403")), \
+         patch("services.stt_service.cloud_api.gemini_generate_parts", return_value=[{"text": "hi"}]):
+        assert stt.transcribe(_audio()) == "hi"
+    assert stt.last_cloud_failed is False
+
+
+def test_vosk_rescue_after_every_cloud_backend_failed_is_flagged():
+    """Reaching Vosk after all cloud backends failed sets last_cloud_failed."""
+    from unittest.mock import patch
+
+    stt = _stt_with(groq=True, gemini=True, vosk=True)
+    with patch("services.stt_service.cloud_api.groq_transcribe", side_effect=OSError("down")), \
+         patch("services.stt_service.cloud_api.gemini_generate_parts", side_effect=OSError("down")), \
+         patch.object(stt, "transcribe_offline", return_value="offline words"):
+        assert stt.transcribe(_audio()) == "offline words"
+    assert stt.last_cloud_failed is True
+
+
+def test_single_cloud_backend_failure_with_vosk_rescue_is_flagged():
+    """With only one cloud backend configured, its failure followed by Vosk is still flagged."""
+    from unittest.mock import patch
+
+    stt = _stt_with(groq=True, vosk=True)
+    with patch("services.stt_service.cloud_api.groq_transcribe", side_effect=OSError("down")), \
+         patch.object(stt, "transcribe_offline", return_value="offline words"):
+        stt.transcribe(_audio())
+    assert stt.last_cloud_failed is True
+
+
+def test_total_failure_with_cloud_attempts_is_flagged():
+    """When every backend fails and cloud was tried, the flag is set even though the call raises."""
+    from unittest.mock import patch
+
+    stt = _stt_with(gemini=True)
+    with patch("services.stt_service.cloud_api.gemini_generate_parts", side_effect=OSError("down")):
+        with pytest.raises(RuntimeError):
+            stt.transcribe(_audio())
+    assert stt.last_cloud_failed is True
+
+
+def test_offline_only_use_is_never_a_cloud_failure():
+    """No cloud keys, or an explicit offline request, never sets the flag."""
+    from unittest.mock import patch
+
+    stt = _stt_with(vosk=True)
+    with patch.object(stt, "transcribe_offline", return_value="words"):
+        stt.transcribe(_audio())
+        assert stt.last_cloud_failed is False
+
+    stt = _stt_with(groq=True, vosk=True)
+    stt.last_cloud_failed = True  # stale value from an earlier call
+    with patch.object(stt, "transcribe_offline", return_value="words"):
+        stt.transcribe(_audio(), offline=True)
+    assert stt.last_cloud_failed is False

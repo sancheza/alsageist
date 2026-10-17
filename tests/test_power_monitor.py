@@ -60,27 +60,46 @@ def test_warnings_are_rate_limited_while_throttling_continues():
     assert len(messages) == 2
 
 
-def test_recovery_is_logged_once_and_rearms_the_warning():
-    """When throttling ends a notice is logged, and a new episode warns immediately."""
+def test_recovery_is_logged_once_after_staying_clear_and_rearms_the_warning():
+    """The recovery notice waits for the CPU to stay clear, then a new episode warns at once."""
     # The firmware sets the "since boot" bits together with the "now" bits, so a real episode reads 0x50005
     episode = PowerStatus(0x50005)
-    monitor, messages, clock = _monitor([
-        episode,
-        PowerStatus(0x50000),           # clear now; the since-boot flags were reported with the warning
-        PowerStatus(0x50000),
-        episode,
-    ])
-    monitor.check()
-    clock["now"] = 60
-    monitor.check()
-    clock["now"] = 120
-    monitor.check()
-    clock["now"] = 180
-    monitor.check()
+    clear = PowerStatus(0x50000)   # nothing happening now; the since-boot flags were reported with the warning
+    monitor, messages, clock = _monitor([episode, clear, clear, clear, episode])
+    monitor.clear_after_sec = 300
 
-    assert messages[0].startswith("Warning: CPU throttling")
+    monitor.check()                 # t=0: warning
+    clock["now"] = 60
+    monitor.check()                 # clear for the first time: too early to call it recovered
+    clock["now"] = 200
+    monitor.check()                 # still under the 300 s debounce
+    assert len(messages) == 1
+
+    clock["now"] = 361
+    monitor.check()                 # clear for 301 s: recovery notice
     assert messages[1].startswith("CPU is no longer throttled")
-    assert messages[2].startswith("Warning: CPU throttling")  # new episode, not rate limited
+
+    clock["now"] = 420
+    monitor.check()                 # a new episode warns immediately, not rate limited
+    assert messages[2].startswith("Warning: CPU throttling")
+    assert len(messages) == 3
+
+
+def test_flapping_supply_is_one_ongoing_problem():
+    """A supply that dips every minute produces warnings at the warn interval and no recovery notices."""
+    episode = PowerStatus(0x50005)
+    clear = PowerStatus(0x50000)
+    readings = [episode if minute % 2 == 0 else clear for minute in range(40)]   # 40 minutes of flapping
+    monitor, messages, clock = _monitor(readings, warn_interval=900)
+    monitor.clear_after_sec = 300
+
+    for minute in range(40):
+        clock["now"] = minute * 60
+        monitor.check()
+
+    warnings = [m for m in messages if m.startswith("Warning: CPU throttling")]
+    assert not any("no longer throttled" in m for m in messages)
+    assert len(warnings) == 3, messages          # t=0, t=900, t=1800
     assert len(messages) == 3
 
 

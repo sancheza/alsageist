@@ -351,7 +351,7 @@ In Pure Offline Mode, AlsaGeist operates with **zero internet connection**:
 When internet access and API keys are present, AlsaGeist enables cloud acceleration:
 * **Cloud STT:** Uses Groq Whisper Large v3 (sub-second audio transcription) or Google Gemini Flash STT.
 * **Dynamic LLM Fallback:** When a visitor asks an unfamiliar question not covered by the 150+ offline intents, Grimjaw queries an LLM to generate a witty, in-character response under 2 sentences.
-* **Automatic Resilience:** If the Wi-Fi connection drops or an API times out, AlsaGeist drops back to offline mode and plays a local fallback line without crashing.
+* **Automatic Resilience:** If every cloud transcription service fails, the local Vosk model answers that question and AlsaGeist probes the network immediately (at most once every 30 seconds). If the network is down it switches to offline mode, announces "NOW IN OFFLINE MODE", and later questions skip the cloud entirely. If only a cloud service is down while the network is up, it stays online and tries the next service. Connectivity is also probed every 15 minutes, which brings it back online and announces "NOW IN ONLINE MODE". A mode set with `alsageist_ctl.py mode online` or `mode offline` is never changed automatically.
 
 ### 5.3 Configuring Operational Parameters in `.env`
 
@@ -385,9 +385,86 @@ VAD_THRESHOLD=0.0035
 * Log files are readable only by the user running AlsaGeist (mode 0600).
 * In online mode each utterance is sent to the configured cloud service (Groq or Google) for transcription, and unrecognized questions go to the LLM. In offline mode audio stays on the device.
 
-### 5.5 Power & Thermal Warnings (Raspberry Pi)
+### 5.5 Under-Voltage and CPU Throttling (Raspberry Pi)
 
-The service checks the firmware throttle flags once a minute and logs a warning while the CPU is throttled or the supply voltage is low. A throttled CPU runs CPU-bound work, such as loading the voice model, at about half speed.
+#### Objective: Recognize a weak power supply, understand its effect on response speed, and find the cause.
+
+> [!IMPORTANT]
+> When the power supply cannot hold the Raspberry Pi's voltage, the firmware throttles the CPU. Every CPU-bound step then runs slower: loading the voice model, synthesizing a new line, offline speech recognition, and starting playback. Nothing fails and no error appears; replies are only slower.
+
+**Effect on a Raspberry Pi 3 Model B:**
+
+| Condition | ARM clock |
+| :--- | :--- |
+| Normal | 1200 MHz |
+| Throttled by under-voltage | 600 MHz |
+
+Timings measured on a Raspberry Pi 3 Model B while it was throttled to 600 MHz:
+
+| Step | Time |
+| :--- | :--- |
+| Loading the Piper voice model (`say.py` with a new phrase) | about 35 s |
+| Synthesizing a new sentence | 11 to 13 s |
+| Offline (Vosk) recognition of a short question | about 7 s |
+
+#### Detect throttling
+
+| Method | Command | What it shows |
+| :--- | :--- | :--- |
+| Service log (automatic) | `journalctl -u alsageist.service \| grep -i throttl` | Warnings written by the service (see below) |
+| Firmware flags | `vcgencmd get_throttled` | Bit field; values and bits are listed below |
+| Actual CPU clock | `vcgencmd measure_clock arm` | `600000000` when throttled, `1200000000` at full speed on a Raspberry Pi 3 Model B |
+| Kernel log | `journalctl -k \| grep -i voltage` | Timestamped `Undervoltage detected!` and `Voltage normalised` events |
+| Live alarm | `cat /sys/class/hwmon/hwmon*/in0_lcrit_alarm 2>/dev/null` | `1` while the supply is under-voltage, `0` otherwise |
+
+Expected output on a throttled Raspberry Pi:
+```text
+$ vcgencmd get_throttled
+throttled=0x50005
+$ vcgencmd measure_clock arm
+frequency(48)=600000000
+$ journalctl -k | grep -i voltage
+Oct 17 11:03:51 raspberrypi kernel: hwmon hwmon1: Undervoltage detected!
+Oct 17 11:03:57 raspberrypi kernel: hwmon hwmon1: Voltage normalised
+```
+
+Values of `vcgencmd get_throttled`:
+
+| Value | Meaning |
+| :--- | :--- |
+| `0x0` | No under-voltage or throttling since boot |
+| `0x50000` | Under-voltage and throttling happened earlier since boot; not happening now |
+| `0x50005` | Under-voltage and throttling are happening now, and have happened since boot |
+
+Each bit:
+
+| Bit | Value | Meaning |
+| :--- | :--- | :--- |
+| 0 | `0x1` | Under-voltage detected now |
+| 1 | `0x2` | ARM frequency capped now |
+| 2 | `0x4` | Currently throttled |
+| 3 | `0x8` | Soft temperature limit active now |
+| 16 | `0x10000` | Under-voltage has occurred since boot |
+| 17 | `0x20000` | ARM frequency capping has occurred since boot |
+| 18 | `0x40000` | Throttling has occurred since boot |
+| 19 | `0x80000` | Soft temperature limit has occurred since boot |
+
+> [!NOTE]
+> `/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq` can report the maximum clock while the firmware has the CPU at half speed. Use `vcgencmd measure_clock arm` to read the real clock.
+
+> [!NOTE]
+> In the Docker deployment, run these commands on the host. The container image does not include `vcgencmd`.
+
+#### Fix under-voltage
+
+1. Use a power supply rated for the board (Raspberry Pi 3 Model B: 5 V, 2.5 A; see the [hardware overview](overview.md)).
+2. Use a short, thick power cable, and power the board from a wall adapter, not a computer or hub port.
+3. Disconnect USB devices that are not needed.
+4. Reboot, then check `vcgencmd get_throttled` while the service is working, for example while it answers a question. Bits 16 to 19 stay set until the next boot, so `0x0` after a reboot under load confirms the fix.
+
+#### Service warnings
+
+The service checks the firmware flags once a minute. While the CPU is throttled or under-voltage it logs a warning at most every 15 minutes, even when the supply keeps dipping and recovering. After the CPU has stayed clear for 5 minutes it logs a notice, and the next problem warns immediately. A condition that happened earlier since boot is logged once.
 
 | Setting | Default | Effect |
 | :--- | :--- | :--- |
@@ -401,8 +478,7 @@ CPU is no longer throttled, CPU 55.0C.
 Warning: since boot the CPU reported: under-voltage has occurred, throttling has occurred, CPU 55.0C. Check the power supply and USB cable (the Pi 3 needs a solid 5 V, 2.5 A).
 ```
 
-* The monitor reads `vcgencmd get_throttled`, falling back to the kernel's under-voltage alarm. On other machines and in containers it does nothing.
-* To read the flags directly: `vcgencmd get_throttled`. A value of `0x0` means no throttling has occurred since boot.
+* The monitor reads `vcgencmd get_throttled`, falling back to the kernel's under-voltage alarm. On machines with neither it does nothing.
 
 ---
 

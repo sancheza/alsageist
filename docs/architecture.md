@@ -176,9 +176,12 @@ stateDiagram-v2
         OfflineAnnounce: Spoken 'NOW IN OFFLINE MODE'
     }
     
-    OnlineMode --> OfflineMode: 15-Minute Probe Fails OR API Timeout
+    OnlineMode --> OfflineMode: Probe Fails (15-Minute Check OR Immediate Check After All Cloud STT Failed)
     OfflineMode --> OnlineMode: 15-Minute Probe Succeeds
 ```
+
+* **Immediate check:** when every cloud STT backend fails and Vosk answers, the next loop pass runs a connectivity probe on a background thread instead of waiting for the 15-minute interval. The probe decides the mode, so an outage of one cloud service with the network up does not switch to offline. Requests are limited to one per 30 seconds, and are ignored while the mode is forced or already offline.
+* **Forced mode:** `mode online` and `mode offline` (see `alsageist_ctl.py`) suspend all automatic switching until `mode auto`.
 
 ---
 

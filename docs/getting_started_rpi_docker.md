@@ -25,6 +25,7 @@ AlsaGeist runs as an isolated, containerized application with direct hardware ac
 * Raspberry Pi 3 Model B, 3B+, 4, or 5 running **Raspberry Pi OS Lite (64-bit)** (Debian 12 Bookworm).
 * Google AIY Voice HAT V1 (or compatible USB soundcard/speakerphone).
 * Network connection for initial image pull and voice model download.
+* A power supply rated for the board (Raspberry Pi 3 Model B: 5 V, 2.5 A). An inadequate supply throttles the CPU and slows every step; see [Under-Voltage and CPU Throttling](usage_guide.md#55-under-voltage-and-cpu-throttling-raspberry-pi).
 
 ---
 
@@ -252,6 +253,23 @@ dtparam=audio=off
 dtparam=i2s=on
 dtoverlay=googlevoicehat-soundcard
 ```
+
+### Problem: Startup or replies take tens of seconds.
+
+The CPU is probably throttled by an inadequate power supply. Run these commands on the host, not in the container:
+
+```bash
+vcgencmd measure_clock arm
+vcgencmd get_throttled
+```
+
+Expected output when throttled:
+```text
+frequency(48)=600000000
+throttled=0x50005
+```
+
+A clock of `1200000000` and a value of `0x0` mean the supply is not the cause. Otherwise see [Under-Voltage and CPU Throttling](usage_guide.md#55-under-voltage-and-cpu-throttling-raspberry-pi).
 
 ### Problem: Arcade button or LED does not respond.
 
