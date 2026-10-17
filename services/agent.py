@@ -18,6 +18,7 @@ from core.control_server import ControlServer
 from core.intent_builder import PersonalityProfile, load_personality, resolve_voice_settings
 from core.led_controller import LEDState, create_led_controller
 from core.logger import InteractionLogger
+from core.power_monitor import PowerMonitor
 from core.vad import VoiceActivityDetector
 from services.basic_info_service import BasicInfoService
 from services.intent_service import PersonaIntentEngine
@@ -88,6 +89,7 @@ class AlsaGeistAgent:
         )
 
         self.control_server = ControlServer(agent=self)
+        self.power_monitor = PowerMonitor.from_env()
 
     # ------------------------------------------------------------------
     # Construction helpers
@@ -555,6 +557,8 @@ class AlsaGeistAgent:
         self.led.set_state(LEDState.IDLE)
         if hasattr(self, "control_server"):
             self.control_server.start()
+        if getattr(self, "power_monitor", None) is not None:
+            self.power_monitor.start()
         if self.is_online:
             self.basic_info.prefetch_weather()
         self._note_activity()
@@ -833,6 +837,8 @@ class AlsaGeistAgent:
     def stop(self) -> None:
         """Clean up all audio streams, control server, and LED threads."""
         self.running = False
+        if getattr(self, "power_monitor", None) is not None:
+            self.power_monitor.stop()
         if hasattr(self, "control_server"):
             try:
                 self.control_server.stop()

@@ -193,3 +193,76 @@ def test_piper_command_failure_includes_stderr(tmp_path):
     with patch("services.tts_service.subprocess.Popen", return_value=process):
         with pytest.raises(RuntimeError, match=r"exit code 2\): Error: invalid model config"):
             tts._synthesize_chunk("hello")
+
+
+# ---- lazy voice loading ----
+
+import sys
+import types
+
+
+@pytest.fixture
+def fake_piper(monkeypatch):
+    """Install a fake piper module and return its PiperVoice.load mock."""
+    module = types.ModuleType("piper")
+    module.PiperVoice = MagicMock()
+    module.PiperVoice.load.return_value.synthesize.return_value = []
+    module.SynthesisConfig = MagicMock()
+    monkeypatch.setitem(sys.modules, "piper", module)
+    return module.PiperVoice.load
+
+
+def _model(tmp_path):
+    model = tmp_path / "voice.onnx"
+    model.write_text("model")
+    return str(model)
+
+
+def test_eager_loading_is_the_default(fake_piper, tmp_path):
+    """The default constructor loads the voice immediately, as the service needs."""
+    tts = PiperTTSService(model_path=_model(tmp_path), cache_dir=str(tmp_path / "c"))
+    fake_piper.assert_called_once()
+    assert tts.voice_loaded is True
+
+
+def test_lazy_loading_defers_the_voice_until_a_cache_miss(fake_piper, tmp_path):
+    """A lazy service loads nothing at construction and nothing for a cached phrase."""
+    cache_dir = str(tmp_path / "c")
+    warm = PiperTTSService(model_path=_model(tmp_path), cache_dir=cache_dir)
+    warm._synthesize_chunk = lambda text: np.full(100, 0.1, dtype=np.float32)
+    warm.synthesize("cached phrase")
+    fake_piper.reset_mock()
+
+    lazy = PiperTTSService(model_path=_model(tmp_path), cache_dir=cache_dir, lazy_load=True)
+    assert lazy.voice_loaded is False
+    audio, _ = lazy.synthesize("cached phrase")
+
+    assert len(audio) == 100
+    fake_piper.assert_not_called()
+    assert lazy.voice_loaded is False and lazy.voice_load_sec == 0.0
+
+
+def test_lazy_loading_loads_once_on_first_uncached_phrase(fake_piper, tmp_path):
+    """The first uncached phrase loads the voice; later phrases reuse it."""
+    lazy = PiperTTSService(model_path=_model(tmp_path), cache_dir=str(tmp_path / "c"), lazy_load=True)
+    fake_piper.assert_not_called()
+
+    lazy.synthesize("first new phrase")
+    lazy.synthesize("second new phrase")
+
+    fake_piper.assert_called_once()
+    assert lazy.voice_loaded is True
+    assert lazy.voice_load_sec > 0.0
+
+
+def test_lazy_load_failure_falls_back_to_command_once(tmp_path, monkeypatch, capsys):
+    """A voice that cannot load is reported once and the piper command is used."""
+    monkeypatch.setitem(sys.modules, "piper", None)  # `import piper` raises ImportError
+    lazy = PiperTTSService(model_path=_model(tmp_path), cache_dir=str(tmp_path / "c"), lazy_load=True)
+    assert capsys.readouterr().out == ""  # nothing printed until the voice is needed
+
+    with patch("services.tts_service.subprocess.Popen", side_effect=FileNotFoundError("piper")):
+        for _ in range(2):
+            with pytest.raises(RuntimeError):
+                lazy._synthesize_chunk("hello")
+    assert capsys.readouterr().out.count("could not load") == 1

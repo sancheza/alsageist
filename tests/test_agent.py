@@ -412,3 +412,27 @@ def test_personality_switch_builds_new_voice_when_settings_differ():
 
     agent._build_tts.assert_called_once()
     assert agent.tts is new_tts
+
+
+def test_agent_starts_and_stops_power_monitor():
+    """The power monitor runs for the life of the agent loop and is stopped on shutdown."""
+    agent = make_bare_agent()
+    agent.power_monitor = MagicMock()
+    agent.audio.read_frame.return_value = None
+    agent.logger.jsonl_path = "unused"
+    agent.last_net_check_time = time.time()
+    agent.net_check_interval = 3600.0
+    agent._net_check_thread = None
+    agent._net_check_result = None
+
+    runner = threading.Thread(target=agent.start, daemon=True)
+    runner.start()
+    for _ in range(100):
+        if agent.power_monitor.start.called:
+            break
+        time.sleep(0.02)
+    agent.running = False
+    runner.join(timeout=3)
+
+    agent.power_monitor.start.assert_called_once()
+    agent.power_monitor.stop.assert_called_once()

@@ -17,7 +17,6 @@ _PROCESS_START = time.perf_counter()  # taken before the heavy imports below so 
 
 import argparse
 from contextlib import contextmanager
-import importlib
 import os
 import sys
 from typing import Iterator, List, Tuple
@@ -166,23 +165,24 @@ def main() -> int:
             tempo, noise = resolve_voice_settings(profile, args.tempo)
             vol = args.volume if args.volume is not None else float(os.environ.get("VOLUME", "0.5"))
 
-        if args.debug:
-            # Import Piper separately so its cost is not hidden inside "load voice model"
-            with timer.phase("import piper/onnxruntime"):
-                try:
-                    importlib.import_module("piper")
-                except ImportError:
-                    pass
-
-        with timer.phase("load voice model", os.path.basename(model_path)):
-            tts = PiperTTSService(model_path=model_path, length_scale=tempo, noise_scale=noise)
         with timer.phase("init audio"):
             audio = AudioIO(volume=vol)
+        # The voice model (tens of seconds on a Raspberry Pi) loads only if the phrase is not cached
+        tts = PiperTTSService(model_path=model_path, length_scale=tempo, noise_scale=noise, lazy_load=True)
 
         print(f"{display_name} speaking (volume={vol}): \"{args.text}\"")
         cached = os.path.isfile(tts._get_cache_path(args.text))  # pylint: disable=protected-access
-        with timer.phase("synthesize", "disk cache hit" if cached else "synthesized (cache miss)"):
+        started = time.perf_counter()
+        try:
             samples, sr = tts.synthesize(args.text)
+        finally:
+            elapsed = time.perf_counter() - started
+            load_sec = tts.voice_load_sec
+            if tts.voice_loaded:
+                timer.add("load voice model", load_sec, os.path.basename(model_path))
+            else:
+                timer.add("load voice model", 0.0, "skipped (phrase was cached)")
+            timer.add("synthesize", max(elapsed - load_sec, 0.0), "disk cache hit" if cached else "synthesized (cache miss)")
         with timer.phase("playback", f"{len(samples) / sr:.2f} s of audio"):
             audio.play_audio(samples, sample_rate=sr, blocking=True)
         return 0

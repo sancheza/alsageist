@@ -9,6 +9,8 @@ import hashlib
 import os
 import re
 import subprocess
+import threading
+import time
 from typing import Optional, Tuple
 import numpy as np
 
@@ -32,6 +34,7 @@ class PiperTTSService:
         cache_dir: Optional[str] = None,
         max_memory_entries: int = DEFAULT_MEMORY_CACHE_ENTRIES,
         max_disk_cache_mb: Optional[float] = None,
+        lazy_load: bool = False,
     ) -> None:
         """Initialize the Piper TTS service.
 
@@ -45,6 +48,10 @@ class PiperTTSService:
             max_memory_entries: Most recently used phrases kept in RAM.
             max_disk_cache_mb: Disk cache size limit in MB; least recently used files are deleted
                 beyond it (default: $ALSAGEIST_CACHE_MAX_MB or 1024).
+            lazy_load: If True, load the voice model on the first phrase that is not already
+                cached instead of at construction. Loading takes tens of seconds on a
+                Raspberry Pi, so short-lived tools use this; a long-running service keeps
+                the default so its first uncached reply is not delayed.
         """
         self.model_path = system_utils.resolve_piper_model_path(model_path=model_path)
         self.sample_rate = sample_rate
@@ -61,6 +68,9 @@ class PiperTTSService:
         self._voice = None
         self._load_error: Optional[Exception] = None
         self._syn_config = None
+        self._voice_loaded = False
+        self._load_lock = threading.Lock()
+        self.voice_load_sec = 0.0  # time spent loading the voice model so far
         self._cache: "OrderedDict[str, np.ndarray]" = OrderedDict()
         self.max_memory_entries = max(1, int(max_memory_entries))
         if max_disk_cache_mb is None:
@@ -74,20 +84,39 @@ class PiperTTSService:
             pass
         self._prune_disk_cache()
 
-        try:
-            import piper
-            self._voice = piper.PiperVoice.load(self.model_path)
-            self._syn_config = piper.SynthesisConfig(
-                length_scale=self.length_scale,
-                noise_scale=self.noise_scale,
-            )
-        except Exception as exc:
-            self._voice = None
-            self._load_error = exc
-            print(
-                f"Warning: Piper could not load '{self.model_path}' in-process ({exc}); "
-                "falling back to the 'piper' command."
-            )
+        if not lazy_load:
+            self._ensure_voice()
+
+    @property
+    def voice_loaded(self) -> bool:
+        """Return True once loading the in-process voice has been attempted."""
+        return self._voice_loaded
+
+    def _ensure_voice(self) -> None:
+        """Load the Piper voice in-process once; on failure fall back to the piper command."""
+        if self._voice_loaded:
+            return
+        with self._load_lock:
+            if self._voice_loaded:
+                return
+            started = time.perf_counter()
+            try:
+                import piper
+                self._voice = piper.PiperVoice.load(self.model_path)
+                self._syn_config = piper.SynthesisConfig(
+                    length_scale=self.length_scale,
+                    noise_scale=self.noise_scale,
+                )
+            except Exception as exc:
+                self._voice = None
+                self._load_error = exc
+                print(
+                    f"Warning: Piper could not load '{self.model_path}' in-process ({exc}); "
+                    "falling back to the 'piper' command."
+                )
+            finally:
+                self.voice_load_sec += time.perf_counter() - started
+                self._voice_loaded = True
 
     def _synthesize_chunk(self, chunk_text: str) -> np.ndarray:
         """Synthesize a single text chunk into raw PCM numpy array.
@@ -104,6 +133,7 @@ class PiperTTSService:
         normalized_text = re.sub(r"\bMwa+ha+ha+!*\b", "Ha ha ha ha ha!", normalized_text, flags=re.IGNORECASE)
         normalized_text = re.sub(r"\bHasta\b", "Ahsta", normalized_text, flags=re.IGNORECASE)
 
+        self._ensure_voice()
         if self._voice is not None:
             chunks = list(self._voice.synthesize(normalized_text, syn_config=self._syn_config))
             if chunks:

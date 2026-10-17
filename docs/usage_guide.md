@@ -385,6 +385,25 @@ VAD_THRESHOLD=0.0035
 * Log files are readable only by the user running AlsaGeist (mode 0600).
 * In online mode each utterance is sent to the configured cloud service (Groq or Google) for transcription, and unrecognized questions go to the LLM. In offline mode audio stays on the device.
 
+### 5.5 Power & Thermal Warnings (Raspberry Pi)
+
+The service checks the firmware throttle flags once a minute and logs a warning while the CPU is throttled or the supply voltage is low. A throttled CPU runs CPU-bound work, such as loading the voice model, at about half speed.
+
+| Setting | Default | Effect |
+| :--- | :--- | :--- |
+| `THROTTLE_CHECK_SEC` | `60` | Seconds between checks; `0` disables the monitor |
+| `THROTTLE_WARN_SEC` | `900` | Minimum seconds between repeated warnings while throttling continues |
+
+Example log lines (`journalctl -u alsageist.service`):
+```text
+Warning: CPU throttling: under-voltage detected, currently throttled, CPU 61.2C. Check the power supply and USB cable (the Pi 3 needs a solid 5 V, 2.5 A).
+CPU is no longer throttled, CPU 55.0C.
+Warning: since boot the CPU reported: under-voltage has occurred, throttling has occurred, CPU 55.0C. Check the power supply and USB cable (the Pi 3 needs a solid 5 V, 2.5 A).
+```
+
+* The monitor reads `vcgencmd get_throttled`, falling back to the kernel's under-voltage alarm. On other machines and in containers it does nothing.
+* To read the flags directly: `vcgencmd get_throttled`. A value of `0x0` means no throttling has occurred since boot.
+
 ---
 
 ## 6. Audio Calibration & Noise Tuning
@@ -552,6 +571,12 @@ Expected output:
 
 #### Objective: Test local Piper neural voice output directly through the speaker.
 
+| Goal | Command |
+| :--- | :--- |
+| Speak a line through the running service (fastest; reuses its loaded voice) | `python3 scripts/alsageist_ctl.py say "Testing."` |
+| Preview a voice, personality, tempo, or volume without touching the service | `python3 scripts/say.py "Testing." --tempo 1.3` |
+| Speak when the service is not running (for example on a development machine) | `python3 scripts/say.py "Testing."` |
+
 ```bash
 python3 scripts/say.py "Halt! Who dares disturb the crypt?"
 ```
@@ -566,32 +591,35 @@ Show how long each phase took:
 python3 scripts/say.py "Testing speed." --debug
 ```
 
-Expected output (Raspberry Pi 3):
+Expected output when the phrase is already in the audio cache (Raspberry Pi 3):
 ```text
 Grimjaw the Crypt Skeleton speaking (volume=0.4): "Testing speed."
 Timing (--debug):
-  python imports               1.48 s    3.9%  numpy, sounddevice, project modules
-  load personality             0.66 s    1.7%
-  resolve voice                0.00 s    0.0%
-  import piper/onnxruntime     0.44 s    1.1%
-  load voice model            35.48 s   92.8%  en_GB-alan-medium.onnx
-  init audio                   0.00 s    0.0%
-  synthesize                   0.00 s    0.0%  disk cache hit
-  playback                     0.15 s    0.4%  0.72 s of audio
-  total                       38.22 s
+  python imports       1.61 s   51.0%  numpy, sounddevice, project modules
+  load personality     0.66 s   20.8%
+  resolve voice        0.00 s    0.0%
+  init audio           0.00 s    0.0%
+  load voice model     0.00 s    0.0%  skipped (phrase was cached)
+  synthesize           0.01 s    0.2%  disk cache hit
+  playback             0.88 s   27.9%  0.72 s of audio
+  total                3.15 s
+```
+
+Expected output when the phrase is new (Raspberry Pi 3):
+```text
+  load voice model    35.31 s   59.3%  en_GB-alan-medium.onnx
+  synthesize          12.93 s   21.7%  synthesized (cache miss)
 ```
 
 | Phase | What it covers |
 | :--- | :--- |
 | `python imports` | Loading numpy, sounddevice, and the project modules |
-| `load voice model` | Creating the ONNX Runtime session for the Piper voice. A new `say.py` process pays this on every run; the running service pays it once at startup |
+| `load voice model` | Creating the ONNX Runtime session for the Piper voice. `say.py` loads it only when the phrase is not cached; the running service loads it once at startup |
 | `synthesize` | Text to audio, or `disk cache hit` when the phrase is already in `models/cache` |
 | `playback` | Time to play the clip, including its length |
 
-To speak without loading a second copy of the voice, send the phrase to the running service:
-```bash
-python3 scripts/alsageist_ctl.py say "Testing speed."
-```
+> [!NOTE]
+> Loading the voice took about 35 seconds on a Raspberry Pi 3 whose CPU was throttled to 600 MHz (see section 5.5). Phrases pre-warmed with `scripts/prewarm_cache.py` skip it.
 
 ---
 
