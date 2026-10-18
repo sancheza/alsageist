@@ -20,6 +20,7 @@ services:
       - ./logs:/app/logs
       - /etc/asound.conf:/etc/asound.conf:ro
       - /etc/localtime:/etc/localtime:ro
+      - /sys/firmware/devicetree/base:/sys/firmware/devicetree/base:ro
     devices:
       - /dev/snd:/dev/snd
       - "${GPIO_DEVICE:-/dev/gpiochip0}:/dev/gpiochip0"

@@ -123,7 +123,10 @@ class ButtonGestureTracker:
     def released(self, *_args) -> None:
         """Handle a button release edge: trigger short-press or hold callback based on duration."""
         with self._lock:
-            elapsed = time.monotonic() - self._press_time if self._press_time > 0.0 else 0.0
+            if self._press_time == 0.0:
+                # Spurious release edge without a preceding press; ignore
+                return
+            elapsed = time.monotonic() - self._press_time
             self._press_time = 0.0
             self._cancel_timers()
             long_fired = self._long_hold_fired
@@ -523,13 +526,15 @@ def create_led_controller(
         long_hold_time_sec = env_float("BUTTON_SHUTDOWN_SEC", 10.0)
 
     is_pi = False
-    # Check Linux device-tree model (standard on Raspberry Pi OS 64-bit Bookworm/Bullseye)
-    try:
-        with open("/proc/device-tree/model", "r", encoding="utf-8") as f:
-            if "Raspberry Pi" in f.read():
-                is_pi = True
-    except Exception:
-        pass
+    # Check Linux device-tree model (standard on Raspberry Pi OS 64-bit Bookworm/Bullseye and in Docker)
+    for model_path in ("/sys/firmware/devicetree/base/model", "/proc/device-tree/model"):
+        try:
+            with open(model_path, "r", encoding="utf-8") as f:
+                if "Raspberry Pi" in f.read():
+                    is_pi = True
+                    break
+        except Exception:
+            pass
 
     if not is_pi:
         try:

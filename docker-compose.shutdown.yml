@@ -4,5 +4,6 @@
 #   docker compose -f docker-compose.yml -f docker-compose.shutdown.yml up -d
 services:
   alsageist:
+    user: "0:0"
     volumes:
       - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket

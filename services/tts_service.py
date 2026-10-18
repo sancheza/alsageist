@@ -177,10 +177,27 @@ class PiperTTSService:
 
         self._ensure_voice()
         if self._voice is not None:
-            chunks = list(self._voice.synthesize(normalized_text, syn_config=self._syn_config))
-            if chunks:
-                return np.concatenate([c.audio_float_array for c in chunks])
-            return np.zeros(0, dtype=np.float32)
+            try:
+                chunks = list(self._voice.synthesize(normalized_text, syn_config=self._syn_config))
+                if chunks:
+                    arrays = []
+                    for c in chunks:
+                        if hasattr(c, "audio_float_array"):
+                            arrays.append(c.audio_float_array)
+                        elif hasattr(c, "audio_int16_array"):
+                            arrays.append(c.audio_int16_array.astype(np.float32) / 32768.0)
+                        elif hasattr(c, "audio_bytes"):
+                            arrays.append(np.frombuffer(c.audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0)
+                        else:
+                            arrays.append(np.asarray(c, dtype=np.float32))
+                    if arrays:
+                        return np.concatenate(arrays)
+                return np.zeros(0, dtype=np.float32)
+            except Exception as exc:
+                print(
+                    f"Warning: In-process Piper synthesis failed for '{chunk_text}' ({exc}); "
+                    "falling back to the 'piper' command."
+                )
 
         # Fallback to subprocess invocation if in-memory voice failed to load
         cmd = [

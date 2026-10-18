@@ -639,7 +639,16 @@ class AlsaGeistAgent:
             tmpl = profile.system_announcements.get("volume_template")
             if tmpl:
                 vol_msg = safe_format(tmpl, vol_msg, percent=pct)
-        self.speak(vol_msg, blocking=True, cooldown_sec=0.0)
+
+        # Ensure the volume announcement is audible even when cycled to 0%
+        if new_vol <= 0.05:
+            self.audio.volume = 0.5
+            try:
+                self.speak(vol_msg, blocking=True, cooldown_sec=0.0)
+            finally:
+                self.set_volume(new_vol)
+        else:
+            self.speak(vol_msg, blocking=True, cooldown_sec=0.0)
 
     def _on_button_hold(self) -> None:
         """Handle 5-second arcade button hold: toggle mute/disabled state."""
@@ -890,18 +899,19 @@ class AlsaGeistAgent:
         Returns:
             Tuple of (response_text, matched_intent).
         """
-        # An engine with no intent rules (the LLM) cannot know the time or weather, so those
-        # questions are answered from live data before it is asked.
-        if self.args.engine != "intent":
+        # Check for live dynamic info (time and weather) first so any profile or engine
+        # can answer questions using live data and the persona's dynamic response templates.
+        if hasattr(self, "basic_info") and self.basic_info is not None:
             live_intent = self.basic_info.match_intent(user_text)
             if live_intent is not None:
                 return self.basic_info.respond(live_intent, allow_network=self.is_online), live_intent
 
         reply, matched_intent = self.dialogue_engine.classify_and_respond(user_text)
 
-        live_reply = self.basic_info.respond(matched_intent, allow_network=self.is_online)
-        if live_reply is not None:
-            return live_reply, matched_intent
+        if hasattr(self, "basic_info") and self.basic_info is not None:
+            live_reply = self.basic_info.respond(matched_intent, allow_network=self.is_online)
+            if live_reply is not None:
+                return live_reply, matched_intent
 
         # Escalate indeterminate prompts to custom LLM response if enabled
         if (

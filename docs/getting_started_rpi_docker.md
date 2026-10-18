@@ -223,7 +223,7 @@ docker exec alsageist python3 scripts/alsageist_ctl.py shutdown --yes
 
 ## 8. Physical Controls & Host Shutdown
 
-The containerized service has direct access to the GPIO button pins. Host poweroff needs the host's system D-Bus socket, which `docker-compose.shutdown.yml` mounts:
+The containerized service has direct access to the GPIO button pins. Host poweroff needs the host's system D-Bus socket and root privilege (to satisfy polkit authorization for systemd-logind PowerOff), which `docker-compose.shutdown.yml` configures:
 
 **Starting Host & Directory:** Raspberry Pi, repository root
 
@@ -238,7 +238,7 @@ COMPOSE_FILE=docker-compose.yml:docker-compose.shutdown.yml
 ```
 
 > [!WARNING]
-> The D-Bus mount gives the container access to the host's system services. Without it, the long hold and the `shutdown` command announce power-off and then return to normal operation.
+> The D-Bus mount and root user override give the container access to host system management. Without them, the long hold and the `shutdown` command announce power-off and then return to normal operation.
 
 
 * **Short Press (< 5s):** Cycles playback volume in 10% steps.

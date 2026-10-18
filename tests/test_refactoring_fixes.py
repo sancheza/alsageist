@@ -162,11 +162,11 @@ def test_cloud_api_unified_models():
     """Verify cloud_api provides centralized Gemini LLM and STT models."""
     llm_models = cloud_api.gemini_llm_models()
     assert len(llm_models) >= 2
-    assert "gemini-2.5-flash" in llm_models
+    assert "gemini-2.0-flash" in llm_models
 
     stt_models = cloud_api.gemini_stt_models()
     assert len(stt_models) >= 2
-    assert "gemini-2.5-flash" in stt_models
+    assert "gemini-2.0-flash" in stt_models
 
 
 def test_audio_io_resample_2x_fast_path():
