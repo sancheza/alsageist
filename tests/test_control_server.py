@@ -17,6 +17,7 @@ from core.control_server import (
     ControlSocketError,
     _secure_private_dir,
     default_socket_path,
+    parse_volume,
 )
 from core.intent_builder import PersonalityProfile, find_personality_file
 from services.intent_service import PersonaIntentEngine
@@ -507,3 +508,25 @@ def test_ctl_uses_longer_timeouts_for_slow_commands():
     assert used_timeout("say") == 60.0
     assert used_timeout("personality") == 120.0
     assert used_timeout("status", timeout=9.0) == 9.0
+
+
+@pytest.mark.parametrize("value,current,expected", [
+    ("75", 0.5, 0.75),
+    ("+10", 0.5, 0.6),
+    ("-10", 0.5, 0.4),
+    ("+150", 0.5, 1.0),
+    ("1", 0.5, 0.01),
+    ("1.0", 0.5, 1.0),
+    ("0.9", 0.5, 0.9),
+    (0.9, 0.5, 0.9),
+    (100, 0.5, 1.0),
+    ("0", 0.5, 0.0),
+])
+def test_parse_volume_accepts(value, current, expected):
+    assert parse_volume(value, current) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("value", ["+-5", "-+5", "nan", "inf", "abc", "-", "+", "", "--5"])
+def test_parse_volume_rejects(value):
+    with pytest.raises(ValueError):
+        parse_volume(value, 0.5)

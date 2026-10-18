@@ -165,6 +165,7 @@ alsageist/
 │   ├── basic_info_service.py    # Deterministic local system info & time provider
 │   ├── intent_service.py        # Local regex & keyword instant response matcher
 │   ├── llm_service.py           # Persona dialogue reasoning engine (Groq / Gemini)
+│   ├── network_monitor.py       # Online/offline mode tracking with background probes
 │   ├── stt_service.py           # In-memory speech-to-text (Groq Whisper / Gemini / Vosk)
 │   └── tts_service.py           # Local Piper neural TTS engine in RAM
 ├── models/

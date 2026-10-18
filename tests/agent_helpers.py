@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 from core.led_controller import ConsoleLEDController
 from services.agent import AlsaGeistAgent
+from services.network_monitor import NetworkMonitor
 
 
 def make_args(**overrides) -> argparse.Namespace:
@@ -47,7 +48,6 @@ def make_bare_agent(**overrides) -> AlsaGeistAgent:
     agent.args = make_args()
     agent.running = False
     agent.is_disabled = False
-    agent.is_online = True
     agent.start_time = time.time()
     agent.profile = None
     agent.llm_fallback_enabled = False
@@ -58,13 +58,13 @@ def make_bare_agent(**overrides) -> AlsaGeistAgent:
     agent._playback_generation = 0
     agent._mic_lock = threading.Lock()
     agent._user_muted = False
-    agent._net_lock = threading.Lock()
-    agent._net_check_result = None
-    agent._net_check_thread = None
+    agent._stopped = False
+    agent._consecutive_filtered_turns = 0
+    agent.network = NetworkMonitor(probe=lambda: agent._check_internet())
+    agent.power_monitor = None
+    agent.control_server = MagicMock()
     agent._last_activity_time = time.time()
     agent._idle_reset_done = False
-    agent._mode_forced = None
-    agent._last_check_request = 0.0
 
     agent.audio = MagicMock()
     agent.audio.volume = 0.5

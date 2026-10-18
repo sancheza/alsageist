@@ -54,7 +54,8 @@ AlsaGeist follows the dev ADR modular architecture standard (`core/`, `services/
 
 | Layer | Placement | Responsibility | Dependencies |
 | :--- | :--- | :--- | :--- |
-| **Orchestration** | `services/agent.py` | Subsystem lifecycle, periodic network polling, the decomposed utterance event loop (`_filter_utterance`, `_resolve_dialogue_response`, `_play_speech_audio`, `speak`), and the thread-safe control API used by the button handlers and the IPC server. | `core`, `services` |
+| **Network mode** | `services/network_monitor.py` | Background connectivity probes, the online/offline state, a mode forced by a control command, and on-demand probe requests. | `core` |
+| **Orchestration** | `services/agent.py` | Subsystem lifecycle, the decomposed utterance event loop (`_filter_utterance`, `_resolve_dialogue_response`, `_play_speech_audio`, `speak`), and the thread-safe control API used by the button handlers and the IPC server. | `core`, `services` |
 | **Runtime Entry Point** | `main.py` | Argument parsing, `.env` loading, signal handlers, and agent start. | `core`, `services` |
 | **Configuration** | `core/config.py` | Centralized command-line argument parser (`parse_args`, `build_arg_parser`), environment variable default resolution, and semantic version constants. | Standard library, `argparse` |
 | **System Utilities** | `core/system_utils.py` | Host and operating system utilities: `.env` file parsing, TCP network connectivity probing, and platform-safe operating system shutdown triggers. |
@@ -227,6 +228,7 @@ alsageist/
 │   ├── basic_info_service.py      # Real-time spoken time and weather status provider
 │   ├── intent_service.py          # Deterministic dialogue rules & costume state machine
 │   ├── llm_service.py             # Optional cloud LLM fallback service
+│   ├── network_monitor.py         # Online/offline mode: background probes, forced mode
 │   ├── stt_service.py             # Groq, Gemini & offline Vosk speech recognition
 │   └── tts_service.py             # Piper neural TTS & disk/memory cache
 ├── data/

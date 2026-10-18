@@ -50,6 +50,37 @@ class ControlTarget(Protocol):
     def request_shutdown(self) -> None: ...
 
 
+def parse_volume(value: Any, current: float) -> float:
+    """Resolve a requested volume to a ratio between 0.0 and 1.0.
+
+    A leading + or - is a change in percentage points ("+1" is one point, not 100%). A plain
+    number is a percentage, except a value of 1.0 or less that is a float or has a decimal
+    point, which is a ratio ("0.9" is 90%, "1" is 1%).
+
+    Args:
+        value: Requested volume as received (string, int or float).
+        current: Current volume ratio, the base for a change.
+
+    Returns:
+        The new volume ratio, clamped to 0.0 to 1.0.
+
+    Raises:
+        ValueError: If the value is not a finite, non-negative number after its optional sign.
+    """
+    text = str(value).strip()
+    sign = text[:1] if text[:1] in ("+", "-") else ""
+    digits = text[len(sign):]
+    number = float(digits)
+    if digits[:1] in ("+", "-") or not math.isfinite(number) or number < 0:
+        raise ValueError(text)
+
+    if sign:
+        delta = number / 100.0
+        return min(1.0, max(0.0, current + delta if sign == "+" else current - delta))
+    is_ratio = number <= 1.0 and ("." in text or isinstance(value, float))
+    return min(1.0, max(0.0, number if is_ratio else number / 100.0))
+
+
 class ControlSocketError(RuntimeError):
     """Raised when the control socket location cannot be made private."""
 
@@ -457,41 +488,10 @@ class ControlServer:
             pct = int(round(agent.volume * 100))
             return {"status": "ok", "volume_pct": pct, "volume_float": round(agent.volume, 2)}
 
-        val_str = str(value).strip()
         try:
-            if not math.isfinite(float(val_str.lstrip("+-"))):
-                raise ValueError(val_str)
+            new_vol = parse_volume(value, agent.volume)
         except ValueError:
-            return {"status": "error", "message": f"Invalid volume value '{val_str}'. Use 0-100 or +10/-10."}
-        current_vol = agent.volume
-
-        # A leading + or - is a change in percentage points ("+1" is one point, not 100%)
-        if val_str.startswith("+"):
-            try:
-                delta = float(val_str[1:]) / 100.0
-                new_vol = min(1.0, current_vol + delta)
-            except ValueError:
-                return {"status": "error", "message": f"Invalid volume increment '{val_str}'"}
-        elif val_str.startswith("-"):
-            try:
-                delta = float(val_str[1:]) / 100.0
-                new_vol = max(0.0, current_vol - delta)
-            except ValueError:
-                return {"status": "error", "message": f"Invalid volume decrement '{val_str}'"}
-        else:
-            try:
-                num = float(val_str)
-                # If given as percentage (e.g. 75, or 1 for 1%), normalize to 0.75 or 0.01
-                # Values <= 1.0 that include a decimal point (e.g. "0.9", "1.0") or float types are treated as ratios
-                if ("." in val_str and num <= 1.0) or (isinstance(value, float) and 0.0 <= value <= 1.0):
-                    new_vol = num
-                elif num > 1.0 or (num == 1.0 and "." not in val_str):
-                    new_vol = num / 100.0
-                else:
-                    new_vol = num
-                new_vol = min(1.0, max(0.0, new_vol))
-            except ValueError:
-                return {"status": "error", "message": f"Invalid volume value '{val_str}'. Use 0-100 or +10/-10."}
+            return {"status": "error", "message": f"Invalid volume value '{str(value).strip()}'. Use 0-100 or +10/-10."}
 
         applied = agent.set_volume(new_vol)
         pct = int(round(applied * 100))

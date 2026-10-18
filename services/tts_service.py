@@ -295,6 +295,14 @@ class PiperTTSService:
         except OSError:
             pass
 
+    @staticmethod
+    def _unlink_cache_file(path: str) -> None:
+        """Delete a cache file, ignoring errors."""
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
     def _prune_disk_cache(self, force: bool = True) -> None:
         """Delete least recently used cache files until the cache fits its size limit."""
         now = time.time()
@@ -354,9 +362,11 @@ class PiperTTSService:
             if os.path.isfile(cache_path):
                 try:
                     audio = np.load(cache_path)
-                    self._touch(cache_path)
-                    self._remember(text, audio)
-                    return audio, self.sample_rate
+                    if audio.size > 0:
+                        self._touch(cache_path)
+                        self._remember(text, audio)
+                        return audio, self.sample_rate
+                    self._unlink_cache_file(cache_path)  # an empty clip cached by an earlier run
                 except (OSError, ValueError, EOFError):
                     pass
 
@@ -377,7 +387,8 @@ class PiperTTSService:
 
                 audio = np.concatenate(audio_parts)
 
-            if not cache:
+            # Silence from a failed or empty synthesis must not be remembered
+            if not cache or audio.size == 0:
                 return audio, self.sample_rate
 
             # Store in RAM and disk cache

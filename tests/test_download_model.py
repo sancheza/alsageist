@@ -205,3 +205,12 @@ def test_main_returns_nonzero_on_integrity_failure(tmp_path, monkeypatch, capsys
 
     assert dm.main() == 1
     assert "does not match" in capsys.readouterr().err
+
+
+def test_piper_urls_are_pinned_to_a_commit():
+    """Voice URLs name a repository commit, so the pinned digests do not drift with main."""
+    for config in dm.VOICE_URLS.values():
+        for key in ("onnx", "json"):
+            assert f"/resolve/{dm._PIPER_COMMIT}/" in config[key]
+    assert len(dm._PIPER_COMMIT) == 40
+    int(dm._PIPER_COMMIT, 16)

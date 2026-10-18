@@ -29,7 +29,10 @@ DEFAULT_MODELS_DIR = os.path.join(REPO_ROOT, "models")
 REQUEST_TIMEOUT_SEC = 60
 CHUNK_BYTES = 1024 * 1024
 
-_PIPER_BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en"
+# Pinned to a commit of the piper-voices repository, so the digests below stay valid
+# when the repository's main branch changes.
+_PIPER_COMMIT = "c10ece1aade47bb51c153c893d14e5bf8e5b7117"
+_PIPER_BASE = f"https://huggingface.co/rhasspy/piper-voices/resolve/{_PIPER_COMMIT}/en"
 
 # Paths are relative to the models directory. SHA-256 digests of the .onnx files are the
 # Hugging Face LFS digests; the .json digests match the published git blob hashes.

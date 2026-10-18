@@ -14,6 +14,7 @@ import socket
 import subprocess
 import sys
 import time
+from typing import List
 
 
 def is_running_in_docker() -> bool:
@@ -32,15 +33,30 @@ def is_running_in_docker() -> bool:
         return False
 
 
+def _command_succeeds(cmd: List[str], timeout: float = 5.0) -> bool:
+    """Run a command and report whether it exited with status 0.
+
+    Args:
+        cmd: Command and arguments.
+        timeout: Seconds to wait before giving up.
+
+    Returns:
+        True if the command ran and exited with status 0.
+    """
+    try:
+        return subprocess.run(cmd, capture_output=True, timeout=timeout).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def trigger_host_shutdown(dry_run: bool = False) -> bool:
     """Trigger an orderly poweroff and shutdown of the host system.
 
     Attempts methods in sequence:
     1. macOS workstation: Simulates shutdown safely to avoid powering down developer machine.
-    2. systemctl poweroff (direct or via sudo).
-    3. shutdown -h now (direct or via sudo).
-    4. D-Bus systemd-logind method call over shared system_bus_socket.
-    5. Linux Magic SysRq trigger (/proc/sysrq-trigger: sync -> remount ro -> power off).
+    2. systemctl poweroff, then shutdown -h now (each direct, then via sudo).
+    3. D-Bus systemd-logind method call over shared system_bus_socket.
+    4. Linux Magic SysRq trigger (/proc/sysrq-trigger: sync -> remount ro -> power off).
 
     Args:
         dry_run: If True, log intent and return without executing shutdown commands.
@@ -57,87 +73,39 @@ def trigger_host_shutdown(dry_run: bool = False) -> bool:
         sys.stdout.write("[SHUTDOWN] macOS host detected: Shutdown simulated safely (workstation will not power off).\n")
         return True
 
-    # 2. Try systemctl poweroff
-    systemctl_path = shutil.which("systemctl") or "/bin/systemctl"
-    if os.path.isfile(systemctl_path):
-        cmds_to_try = [
-            [systemctl_path, "poweroff"],
-        ]
+    # 2. Try systemctl poweroff, then shutdown -h now
+    for fallback_path, args in (
+        ("/bin/systemctl", ["poweroff"]),
+        ("/sbin/shutdown", ["-h", "now"]),
+    ):
+        binary = shutil.which(os.path.basename(fallback_path)) or fallback_path
+        if not os.path.isfile(binary):
+            continue
+        cmds_to_try = [[binary, *args]]
         if hasattr(os, "geteuid") and os.geteuid() != 0 and shutil.which("sudo"):
-            cmds_to_try.append(["sudo", "-n", systemctl_path, "poweroff"])
+            cmds_to_try.append(["sudo", "-n", binary, *args])
+        if any(_command_succeeds(cmd) for cmd in cmds_to_try):
+            return True
 
-        for cmd in cmds_to_try:
-            try:
-                res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-                if res.returncode == 0:
-                    return True
-            except Exception:
-                pass
-
-    # 3. Try shutdown -h now
-    shutdown_path = shutil.which("shutdown") or "/sbin/shutdown"
-    if os.path.isfile(shutdown_path):
-        cmds_to_try = [
-            [shutdown_path, "-h", "now"],
-        ]
-        if hasattr(os, "geteuid") and os.geteuid() != 0 and shutil.which("sudo"):
-            cmds_to_try.append(["sudo", "-n", shutdown_path, "-h", "now"])
-
-        for cmd in cmds_to_try:
-            try:
-                res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-                if res.returncode == 0:
-                    return True
-            except Exception:
-                pass
-
-    # 4. Try D-Bus method call to systemd-logind via busctl or dbus-send
-    dbus_socket = "/var/run/dbus/system_bus_socket"
-    if os.path.exists(dbus_socket) or os.path.exists("/run/dbus/system_bus_socket"):
+    # 3. Try D-Bus method call to systemd-logind via busctl or dbus-send
+    if os.path.exists("/var/run/dbus/system_bus_socket") or os.path.exists("/run/dbus/system_bus_socket"):
+        dbus_cmds = []
         busctl_path = shutil.which("busctl")
         if busctl_path:
-            try:
-                res = subprocess.run(
-                    [
-                        busctl_path,
-                        "call",
-                        "org.freedesktop.login1",
-                        "/org/freedesktop/login1",
-                        "org.freedesktop.login1.Manager",
-                        "PowerOff",
-                        "b",
-                        "true",
-                    ],
-                    capture_output=True,
-                    timeout=5,
-                )
-                if res.returncode == 0:
-                    return True
-            except Exception:
-                pass
-
+            dbus_cmds.append([
+                busctl_path, "call", "org.freedesktop.login1", "/org/freedesktop/login1",
+                "org.freedesktop.login1.Manager", "PowerOff", "b", "true",
+            ])
         dbus_send_path = shutil.which("dbus-send")
         if dbus_send_path:
-            try:
-                res = subprocess.run(
-                    [
-                        dbus_send_path,
-                        "--system",
-                        "--print-reply",
-                        "--dest=org.freedesktop.login1",
-                        "/org/freedesktop/login1",
-                        "org.freedesktop.login1.Manager.PowerOff",
-                        "boolean:true",
-                    ],
-                    capture_output=True,
-                    timeout=5,
-                )
-                if res.returncode == 0:
-                    return True
-            except Exception:
-                pass
+            dbus_cmds.append([
+                dbus_send_path, "--system", "--print-reply", "--dest=org.freedesktop.login1",
+                "/org/freedesktop/login1", "org.freedesktop.login1.Manager.PowerOff", "boolean:true",
+            ])
+        if any(_command_succeeds(cmd) for cmd in dbus_cmds):
+            return True
 
-    # 5. Fallback: Linux Magic SysRq trigger (sync -> unmount -> poweroff)
+    # 4. Fallback: Linux Magic SysRq trigger (sync -> unmount -> poweroff)
     sysrq_path = "/proc/sysrq-trigger"
     sysrq_mask_path = "/proc/sys/kernel/sysrq"
     if os.path.exists(sysrq_path) and os.path.exists(sysrq_mask_path):

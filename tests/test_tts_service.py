@@ -308,3 +308,23 @@ def test_tts_service_ram_cache_hit_updates_disk_mtime(tmp_path):
     assert os.stat(cache_path).st_mtime > time.time() - 10
 
 
+
+
+def test_empty_synthesis_is_not_cached(make_tts, monkeypatch):
+    """A zero-length clip is returned but never stored in RAM or on disk."""
+    tts = make_tts()
+    monkeypatch.setattr(tts, "_synthesize_chunk", lambda text: np.zeros(0, dtype=np.float32))
+    audio, _ = tts.synthesize("...")
+    assert audio.size == 0
+    assert not tts.is_cached("...")
+    assert not os.path.exists(tts._get_cache_path("..."))
+
+
+def test_empty_cache_file_from_an_earlier_run_is_discarded(make_tts):
+    """An empty clip already on disk is deleted and the phrase is synthesized again."""
+    tts = make_tts()
+    path = tts._get_cache_path("hello")
+    np.save(path, np.zeros(0, dtype=np.float32))
+    audio, _ = tts.synthesize("hello")
+    assert audio.size == 1000
+    assert np.load(path).size == 1000

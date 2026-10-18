@@ -216,7 +216,8 @@ def test_automatic_offline_mode_uses_cloud_when_no_offline_model():
 
 
 def test_forced_offline_mode_never_uses_cloud():
-    agent = make_bare_agent(is_online=False, _mode_forced=False, _consecutive_filtered_turns=0)
+    agent = make_bare_agent(is_online=False, _consecutive_filtered_turns=0)
+    agent.network.forced = False
     agent.stt.offline_available = False
     agent.stt.transcribe.return_value = ""
     agent.vad.calculate_rms.return_value = 0.05

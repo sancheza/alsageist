@@ -216,10 +216,10 @@ def test_main_runs_agent_and_installs_signal_handlers():
 
 def _agent_for_network_polling():
     agent = make_bare_agent()
-    agent.last_net_check_time = 0.0
-    agent.net_check_interval = 10.0
-    agent._net_check_thread = None
-    agent._net_check_result = None
+    agent.network.last_check_time = 0.0
+    agent.network.check_interval_sec = 10.0
+    agent.network._thread = None
+    agent.network._result = None
     return agent
 
 
@@ -234,7 +234,7 @@ def test_network_poll_runs_probe_on_background_thread():
 
     with patch.object(AlsaGeistAgent, "_check_internet", side_effect=fake_check):
         agent._poll_network(now=100.0)
-        agent._net_check_thread.join(timeout=2)
+        agent.network._thread.join(timeout=2)
 
     assert probe_threads and probe_threads[0] is not threading.current_thread()
     assert agent.is_online is True  # result applies on the next poll
@@ -243,14 +243,14 @@ def test_network_poll_runs_probe_on_background_thread():
 def test_network_poll_applies_result_and_announces_change():
     """A published result flips the mode once and announces it."""
     agent = _agent_for_network_polling()
-    agent.last_net_check_time = 100.0
-    agent._net_check_result = False
+    agent.network.last_check_time = 100.0
+    agent.network._result = False
     agent._announce_mode = MagicMock()
 
     agent._poll_network(now=101.0)
     assert agent.is_online is False
     agent._announce_mode.assert_called_once_with(online=False)
-    assert agent._net_check_result is None
+    assert agent.network._result is None
 
     agent._poll_network(now=102.0)
     agent._announce_mode.assert_called_once()
@@ -267,10 +267,10 @@ def test_network_poll_does_not_start_second_probe_while_running():
 
     with patch.object(AlsaGeistAgent, "_check_internet", side_effect=slow_check):
         agent._poll_network(now=100.0)
-        first = agent._net_check_thread
-        agent.last_net_check_time = 0.0
+        first = agent.network._thread
+        agent.network.last_check_time = 0.0
         agent._poll_network(now=200.0)
-        assert agent._net_check_thread is first
+        assert agent.network._thread is first
         release.set()
         first.join(timeout=2)
 
@@ -317,10 +317,10 @@ def test_main_loop_resets_idle_conversation_while_frames_keep_arriving():
     import numpy as np
 
     agent = make_bare_agent()
-    agent.last_net_check_time = time.time()
-    agent.net_check_interval = 3600.0
-    agent._net_check_thread = None
-    agent._net_check_result = None
+    agent.network.last_check_time = time.time()
+    agent.network.check_interval_sec = 3600.0
+    agent.network._thread = None
+    agent.network._result = None
     agent.logger.jsonl_path = "unused"
     resets = threading.Event()
     agent.reset_dialogue = MagicMock(side_effect=lambda: resets.set())
@@ -350,25 +350,25 @@ def test_forced_mode_survives_periodic_connectivity_check():
     agent.set_online(False)
     assert agent.mode_forced is True
 
-    agent._net_check_result = True  # probe says the network is up
+    agent.network._result = True  # probe says the network is up
     agent._announce_mode = MagicMock()
-    agent._poll_network(now=agent.last_net_check_time + 1.0)
+    agent._poll_network(now=agent.network.last_check_time + 1.0)
 
     assert agent.is_online is False
     agent._announce_mode.assert_not_called()
-    assert agent._net_check_thread is None  # no probe is started while forced
+    assert agent.network._thread is None  # no probe is started while forced
 
 
 def test_auto_mode_resumes_detection():
     """set_online(None) clears the override and schedules an immediate probe."""
     agent = _agent_for_network_polling()
     agent.set_online(False)
-    agent.last_net_check_time = 12345.0
+    agent.network.last_check_time = 12345.0
 
     agent.set_online(None)
 
     assert agent.mode_forced is False
-    assert agent.last_net_check_time == 0.0
+    assert agent.network.last_check_time == 0.0
 
 
 def test_failed_shutdown_returns_agent_to_normal_operation(capsys):
@@ -443,10 +443,10 @@ def test_agent_starts_and_stops_power_monitor():
     agent.power_monitor = MagicMock()
     agent.audio.read_frame.return_value = None
     agent.logger.jsonl_path = "unused"
-    agent.last_net_check_time = time.time()
-    agent.net_check_interval = 3600.0
-    agent._net_check_thread = None
-    agent._net_check_result = None
+    agent.network.last_check_time = time.time()
+    agent.network.check_interval_sec = 3600.0
+    agent.network._thread = None
+    agent.network._result = None
 
     runner = threading.Thread(target=agent.start, daemon=True)
     runner.start()
@@ -564,7 +564,7 @@ def _agent_with_failed_cloud_stt(**overrides):
     agent = _agent_for_network_polling()
     for name, value in overrides.items():
         setattr(agent, name, value)
-    agent.last_net_check_time = 1000.0
+    agent.network.last_check_time = 1000.0
     agent.stt.transcribe.return_value = "what time is it"
     agent.stt.last_cloud_failed = True
     agent.vad.calculate_rms.return_value = 0.05
@@ -577,7 +577,7 @@ def test_failed_cloud_stt_requests_an_immediate_connectivity_check():
     """When every cloud STT backend failed the next loop pass probes the network right away."""
     agent = _agent_with_failed_cloud_stt()
     agent._handle_utterance(np.zeros(16000, dtype=np.float32))
-    assert agent.last_net_check_time == 0.0
+    assert agent.network.last_check_time == 0.0
 
 
 def test_healthy_cloud_stt_does_not_request_a_check():
@@ -585,7 +585,7 @@ def test_healthy_cloud_stt_does_not_request_a_check():
     agent = _agent_with_failed_cloud_stt()
     agent.stt.last_cloud_failed = False
     agent._handle_utterance(np.zeros(16000, dtype=np.float32))
-    assert agent.last_net_check_time == 1000.0
+    assert agent.network.last_check_time == 1000.0
 
 
 def test_stt_total_failure_also_requests_a_check():
@@ -594,33 +594,34 @@ def test_stt_total_failure_also_requests_a_check():
     agent.stt.transcribe.side_effect = RuntimeError("All transcription backends failed")
     with patch("services.agent.time.sleep"):
         agent._handle_utterance(np.zeros(16000, dtype=np.float32))
-    assert agent.last_net_check_time == 0.0
+    assert agent.network.last_check_time == 0.0
 
 
 def test_check_not_requested_when_mode_is_forced_or_already_offline():
     """A forced mode is respected, and an offline agent waits for the periodic check to come back."""
-    forced = _agent_with_failed_cloud_stt(_mode_forced=True)
+    forced = _agent_with_failed_cloud_stt()
+    forced.network.forced = True
     forced._request_network_check()
-    assert forced.last_net_check_time == 1000.0
+    assert forced.network.last_check_time == 1000.0
 
     offline = _agent_with_failed_cloud_stt(is_online=False)
     offline._request_network_check()
-    assert offline.last_net_check_time == 1000.0
+    assert offline.network.last_check_time == 1000.0
 
 
 def test_check_requests_are_rate_limited():
     """Repeated failures inside 30 seconds do not keep re-triggering probes."""
     agent = _agent_with_failed_cloud_stt()
     agent._request_network_check()
-    assert agent.last_net_check_time == 0.0
+    assert agent.network.last_check_time == 0.0
 
-    agent.last_net_check_time = 5000.0       # the probe ran and updated the time
+    agent.network.last_check_time = 5000.0       # the probe ran and updated the time
     agent._request_network_check()           # a second failure right after
-    assert agent.last_net_check_time == 5000.0
+    assert agent.network.last_check_time == 5000.0
 
-    agent._last_check_request -= 31          # 31 seconds later a new request is allowed
+    agent.network._last_request_time -= 31          # 31 seconds later a new request is allowed
     agent._request_network_check()
-    assert agent.last_net_check_time == 0.0
+    assert agent.network.last_check_time == 0.0
 
 
 def test_cloud_failure_with_network_down_goes_offline_and_announces():
@@ -631,7 +632,7 @@ def test_cloud_failure_with_network_down_goes_offline_and_announces():
 
     with patch.object(AlsaGeistAgent, "_check_internet", return_value=False):
         agent._poll_network(now=time.time())          # the loop starts the probe
-        agent._net_check_thread.join(timeout=2)
+        agent.network._thread.join(timeout=2)
         agent._poll_network(now=time.time())          # the next pass applies the result
 
     assert agent.is_online is False
@@ -646,7 +647,7 @@ def test_cloud_failure_with_network_up_stays_online():
 
     with patch.object(AlsaGeistAgent, "_check_internet", return_value=True):
         agent._poll_network(now=time.time())
-        agent._net_check_thread.join(timeout=2)
+        agent.network._thread.join(timeout=2)
         agent._poll_network(now=time.time())
 
     assert agent.is_online is True
@@ -733,10 +734,10 @@ def test_agent_runs_and_stops_without_a_power_monitor():
     agent = make_bare_agent()
     agent.power_monitor = None
     agent.logger.jsonl_path = "unused"
-    agent.last_net_check_time = time.time()
-    agent.net_check_interval = 3600.0
-    agent._net_check_thread = None
-    agent._net_check_result = None
+    agent.network.last_check_time = time.time()
+    agent.network.check_interval_sec = 3600.0
+    agent.network._thread = None
+    agent.network._result = None
     agent.audio.read_frame.return_value = None
 
     runner = threading.Thread(target=agent.start, daemon=True)
@@ -768,10 +769,10 @@ def test_power_monitor_starts_after_the_startup_greeting():
     agent = make_bare_agent()
     agent.args = make_args(no_greeting=False)
     agent.logger.jsonl_path = "unused"
-    agent.last_net_check_time = time.time()
-    agent.net_check_interval = 3600.0
-    agent._net_check_thread = None
-    agent._net_check_result = None
+    agent.network.last_check_time = time.time()
+    agent.network.check_interval_sec = 3600.0
+    agent.network._thread = None
+    agent.network._result = None
     agent.audio.read_frame.return_value = None
     order = []
     agent._play_startup_greeting = MagicMock(side_effect=lambda: order.append("greeting"))
@@ -857,3 +858,13 @@ def test_agent_tts_error_is_logged():
     assert "synthesis failure" in kwargs["notes"]
 
 
+
+
+def test_filtered_utterance_keeps_led_off_while_asleep():
+    """A turn that is filtered after the agent went to sleep does not light the LED."""
+    agent = make_bare_agent(is_disabled=True)
+    agent.stt.transcribe.return_value = ""
+    agent.vad.calculate_rms.return_value = 0.05
+    agent.led.set_state(LEDState.OFF)
+    agent._handle_utterance(np.zeros(16000, dtype=np.float32))
+    assert agent.led.current_state != LEDState.IDLE

@@ -31,6 +31,7 @@ from core.vad import VoiceActivityDetector
 from services.basic_info_service import INTENT_TIME, INTENT_WEATHER, BasicInfoService, safe_format
 from services.intent_service import PersonaIntentEngine
 from services.llm_service import ConversationalLLMService
+from services.network_monitor import NetworkMonitor
 from services.stt_service import SpeechToTextService
 from services.tts_service import PiperTTSService
 
@@ -60,6 +61,7 @@ class AlsaGeistAgent:
         """
         self.args = args
         self.running = False
+        self._stopped = False
         self.is_disabled = False
         self.start_time = time.time()
         self._state_lock = threading.RLock()
@@ -70,8 +72,6 @@ class AlsaGeistAgent:
         self._user_muted = False  # set by the mute command; playback never unmutes over it
         self._last_activity_time = time.time()
         self._idle_reset_done = False
-        self._mode_forced: Optional[bool] = None
-        self._last_check_request = 0.0
         self._consecutive_filtered_turns = 0
 
         print(f"Initializing AlsaGeist subsystems (Dialogue Engine: {args.engine.upper()})...")
@@ -98,16 +98,8 @@ class AlsaGeistAgent:
         self.logger = InteractionLogger.from_env(log_dir=log_dir, persona_name=self.persona_name)
         self.basic_info = BasicInfoService(profile=self.profile)
 
-        self.is_online = True
-        self.last_net_check_time = 0.0
-        self.net_check_interval = 15.0 * 60.0  # 15 minutes
-        self._net_check_result: Optional[bool] = None
-        self._net_lock = threading.Lock()  # guards _net_check_result
-        self._net_check_thread: Optional[threading.Thread] = threading.Thread(
-            target=self._probe_network, daemon=True, name="AlsaGeist-NetCheck"
-        )
-        self._net_check_thread.start()
-        self.last_net_check_time = time.time()  # the probe above is the first periodic check
+        self.network = NetworkMonitor(probe=lambda: self._check_internet())
+        self.network.start_probe()
 
         # With button shutdown disabled the long hold is not registered, so a long press still
         # acts as the sleep/wake hold instead of being swallowed
@@ -295,9 +287,18 @@ class AlsaGeistAgent:
     # ------------------------------------------------------------------
 
     @property
+    def is_online(self) -> bool:
+        """Return True while the agent treats the network as reachable."""
+        return self.network.is_online
+
+    @is_online.setter
+    def is_online(self, online: bool) -> None:
+        self.network.is_online = online
+
+    @property
     def active_profile(self) -> Optional[PersonalityProfile]:
         """Return the profile of the active dialogue engine, else the loaded profile."""
-        for candidate in (getattr(self.dialogue_engine, "profile", None), getattr(self, "profile", None)):
+        for candidate in (getattr(self.dialogue_engine, "profile", None), self.profile):
             if isinstance(candidate, PersonalityProfile):
                 return candidate
         return None
@@ -389,7 +390,7 @@ class AlsaGeistAgent:
     @property
     def mode_forced(self) -> bool:
         """Return True while the online/offline mode is fixed by a control command."""
-        return self._mode_forced is not None
+        return self.network.mode_forced
 
     def set_online(self, online: Optional[bool]) -> None:
         """Force the online or offline operating mode, or return to automatic detection.
@@ -401,11 +402,7 @@ class AlsaGeistAgent:
             online: True or False to force a mode, None for automatic detection.
         """
         with self._state_lock:
-            self._mode_forced = None if online is None else bool(online)
-            if online is None:
-                self.last_net_check_time = 0.0  # probe on the next loop pass
-            else:
-                self.is_online = bool(online)
+            self.network.set_forced(online)
 
     def disable(self) -> None:
         """Enter sleep mode: stop playback, mute the microphone, turn the LED off."""
@@ -444,7 +441,7 @@ class AlsaGeistAgent:
     def reset_dialogue(self) -> None:
         """Reset conversational context for the next visitor."""
         self.dialogue_engine.reset_conversation()
-        if getattr(self, "llm_fallback_service", None) is not None:
+        if self.llm_fallback_service is not None:
             self.llm_fallback_service.reset_conversation()
 
     def switch_personality(self, name_or_path: str) -> PersonalityProfile:
@@ -469,20 +466,10 @@ class AlsaGeistAgent:
             profile = self._load_profile(name_or_path, strict=True)
             engine, fallback = self._build_dialogue(profile, name_or_path)
             tts = self._reuse_or_build_tts(profile)
-            cached_weather = (
-                self.basic_info.cached_weather
-                if hasattr(self, "basic_info") and self.basic_info is not None
-                else None
-            )
-            cached_time = (
-                self.basic_info.cached_weather_time
-                if hasattr(self, "basic_info") and self.basic_info is not None
-                else 0.0
-            )
             info = BasicInfoService(
                 profile=profile,
-                cached_weather=cached_weather,
-                cached_weather_time=cached_time,
+                cached_weather=self.basic_info.cached_weather,
+                cached_weather_time=self.basic_info.cached_weather_time,
             )
 
             with self._state_lock:
@@ -704,18 +691,8 @@ class AlsaGeistAgent:
         self.led.start()
         self.audio.start_capture()
         self.led.set_state(LEDState.IDLE)
-        if hasattr(self, "control_server"):
-            self.control_server.start()
-        net_thread = getattr(self, "_net_check_thread", None)
-        mode_forced = getattr(self, "_mode_forced", None)
-        if mode_forced is None and net_thread is not None and net_thread.is_alive():
-            net_thread.join(timeout=1.0)
-        net_lock = getattr(self, "_net_lock", None)
-        if net_lock is not None:
-            with net_lock:
-                if mode_forced is None and getattr(self, "_net_check_result", None) is not None:
-                    self.is_online = self._net_check_result
-                    self._net_check_result = None
+        self.control_server.start()
+        self.network.apply_first_result()
         if self.is_online:
             self.basic_info.prefetch_weather()
         self._note_activity()
@@ -746,7 +723,7 @@ class AlsaGeistAgent:
         # Start the power monitor last: its first check may speak, and that must come after the
         # greeting and outside the quiet period that follows startup
         self._note_activity()
-        if getattr(self, "power_monitor", None) is not None:
+        if self.power_monitor is not None:
             self.power_monitor.start()
 
         try:
@@ -828,53 +805,19 @@ class AlsaGeistAgent:
         if self.stt.last_cloud_failed is True:
             self._request_network_check()
 
-    def _request_network_check(self, min_interval: float = 30.0) -> None:
-        """Make the main loop probe connectivity now instead of waiting for the next interval.
-
-        Does nothing when the mode is forced or the agent is already offline (the periodic
-        check brings it back online), and at most one request per min_interval seconds.
-
-        Args:
-            min_interval: Minimum seconds between requests.
-        """
-        if self._mode_forced is not None or not self.is_online:
-            return
-        now = time.time()
-        if now - self._last_check_request < min_interval:
-            return
-        self._last_check_request = now
-        self.last_net_check_time = 0.0
+    def _request_network_check(self) -> None:
+        """Make the main loop probe connectivity now instead of waiting for the next interval."""
+        self.network.request_check()
 
     def _poll_network(self, now: float) -> None:
-        """Switch between online and offline modes without blocking the audio loop.
-
-        Every net_check_interval seconds a background thread probes connectivity.
-        The loop applies the result on a later iteration and announces any change.
+        """Apply a finished connectivity probe, announcing any change, and start the next when due.
 
         Args:
             now: Current time in seconds since the epoch.
         """
-        with self._net_lock:
-            result, self._net_check_result = self._net_check_result, None
-        if self._mode_forced is not None:
-            return
-        if result is not None and result != self.is_online:
-            self.is_online = result
-            self._announce_mode(online=result)
-
-        checking = self._net_check_thread is not None and self._net_check_thread.is_alive()
-        if not checking and now - self.last_net_check_time > self.net_check_interval:
-            self.last_net_check_time = now
-            self._net_check_thread = threading.Thread(
-                target=self._probe_network, daemon=True, name="AlsaGeist-NetCheck"
-            )
-            self._net_check_thread.start()
-
-    def _probe_network(self) -> None:
-        """Probe connectivity and publish the result for the main loop."""
-        reachable = self._check_internet()
-        with self._net_lock:
-            self._net_check_result = reachable
+        changed = self.network.poll(now)
+        if changed is not None:
+            self._announce_mode(online=changed)
 
     def _filter_utterance(
         self, user_text: Optional[str], audio_rms: float
@@ -901,17 +844,15 @@ class AlsaGeistAgent:
         """
         # Check for live dynamic info (time and weather) first so any profile or engine
         # can answer questions using live data and the persona's dynamic response templates.
-        if hasattr(self, "basic_info") and self.basic_info is not None:
-            live_intent = self.basic_info.match_intent(user_text)
-            if live_intent is not None:
-                return self.basic_info.respond(live_intent, allow_network=self.is_online), live_intent
+        live_intent = self.basic_info.match_intent(user_text)
+        if live_intent is not None:
+            return self.basic_info.respond(live_intent, allow_network=self.is_online), live_intent
 
         reply, matched_intent = self.dialogue_engine.classify_and_respond(user_text)
 
-        if hasattr(self, "basic_info") and self.basic_info is not None:
-            live_reply = self.basic_info.respond(matched_intent, allow_network=self.is_online)
-            if live_reply is not None:
-                return live_reply, matched_intent
+        live_reply = self.basic_info.respond(matched_intent, allow_network=self.is_online)
+        if live_reply is not None:
+            return live_reply, matched_intent
 
         # Escalate indeterminate prompts to custom LLM response if enabled
         if (
@@ -959,6 +900,11 @@ class AlsaGeistAgent:
             notes=notes,
         )
 
+    def _show_idle_unless_asleep(self) -> None:
+        """Show the idle LED, except while the agent is asleep (the LED stays off)."""
+        if not self.is_disabled:
+            self.led.set_state(LEDState.IDLE)
+
     def _error_pause(self) -> None:
         """Show the error LED, discard pending audio and pause before listening again."""
         self.led.set_state(LEDState.ERROR)
@@ -967,7 +913,7 @@ class AlsaGeistAgent:
 
     def _say_or_hide(self, text: str) -> str:
         """Return text for the console, or a placeholder when transcripts are not stored."""
-        return text if getattr(self.logger, "store_text", True) else "[TRANSCRIPT REDACTED]"
+        return text if self.logger.store_text else "[TRANSCRIPT REDACTED]"
 
     def _handle_utterance(self, utterance_pcm) -> None:
         """Process completed user utterance through STT -> Brain -> TTS -> Playback."""
@@ -984,7 +930,7 @@ class AlsaGeistAgent:
         try:
             # Automatic offline mode uses the cloud when there is no offline model: the probe only
             # shows that a few hosts are unreachable. A mode forced by command is honoured.
-            offline = not self.is_online and (self._mode_forced is not None or self.stt.offline_available)
+            offline = not self.is_online and (self.mode_forced or self.stt.offline_available)
             user_text = self.stt.transcribe(utterance_pcm, offline=offline)
             self._check_network_if_cloud_stt_failed()
         except Exception as exc:
@@ -1016,9 +962,9 @@ class AlsaGeistAgent:
             if filter_status == "FILTERED_SILENCE":
                 print("  (Silence / ambient noise filtered)")
             else:
-                shown = f'"{user_text}"' if getattr(self.logger, "store_text", True) else "[REDACTED]"
+                shown = f'"{user_text}"' if self.logger.store_text else "[REDACTED]"
                 print(f"  (Filtered ambient background artifact / timecode: {shown})")
-            self.led.set_state(LEDState.IDLE)
+            self._show_idle_unless_asleep()
             self._discard_pending_audio()
             self._log_turn(
                 user_text or "", "", matched_intent, audio_dur, audio_rms,
@@ -1037,7 +983,7 @@ class AlsaGeistAgent:
                 {"stt": stt_ms}, status="TIMEOUT",
                 notes=f"Speech recognition took longer than {TURN_DEADLINE_SEC:.0f}s",
             )
-            self.led.set_state(LEDState.IDLE)
+            self._show_idle_unless_asleep()
             self._discard_pending_audio()
             return
 
@@ -1105,17 +1051,16 @@ class AlsaGeistAgent:
     def stop(self) -> None:
         """Clean up all audio streams, control server, and LED threads."""
         with self._state_lock:
-            if getattr(self, "_stopped", False):
+            if self._stopped:
                 return
             self._stopped = True
             self.running = False
-            if getattr(self, "power_monitor", None) is not None:
+            if self.power_monitor is not None:
                 self.power_monitor.stop()
-            if hasattr(self, "control_server"):
-                try:
-                    self.control_server.stop()
-                except Exception:
-                    pass
+            try:
+                self.control_server.stop()
+            except Exception:
+                pass
             self.audio.stop_playback()
             self.audio.stop_capture()
             self.led.stop()
