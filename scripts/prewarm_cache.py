@@ -110,7 +110,7 @@ def collect_phrases_to_prewarm(engine: PersonaIntentEngine, warm_all: bool, limi
 
     # 2. System lifecycle & mode announcements
     announcements = dict(getattr(profile, "system_announcements", {})) if profile else {}
-    for key in ("offline_mode", "online_mode", "powering_off"):
+    for key in ("offline_mode", "online_mode", "powering_off", "status_online", "status_offline"):
         phrases.append(announcements.get(key) or DEFAULT_ANNOUNCEMENTS[key])
 
     # 2b. Spoken low-power lines

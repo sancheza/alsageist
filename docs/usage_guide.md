@@ -334,6 +334,21 @@ The physical illuminated arcade button on GPIO 23 and LED on GPIO 25 provide dir
 
 ---
 
+### 4.3 Spoken Voice System Commands
+
+AlsaGeist recognizes spoken system commands for poweroff, mode switching, and operational status queries without requiring button presses or terminal access. These commands are parsed directly before dialogue intents and execute reliably in pure offline mode.
+
+| Command Goal | Example Spoken Phrases | System Action | Response Spoken |
+| :--- | :--- | :--- | :--- |
+| **Shutdown Host** | *"shut down"*, *"power off"*, *"power down"*, *"grimjaw shut down"*, *"shut down the system"* | Initiates safe host poweroff (`trigger_host_shutdown`) | *"Powering off."* |
+| **Switch to Offline Mode** | *"go offline"*, *"switch to offline mode"*, *"offline mode"*, *"set mode offline"*, *"disconnect"* | Forces offline mode (`set_online(False)`) | *"NOW IN OFFLINE MODE"* |
+| **Switch to Online Mode** | *"go online"*, *"switch to online mode"*, *"online mode"*, *"set mode online"*, *"reconnect"* | Forces online mode (`set_online(True)`) | *"NOW IN ONLINE MODE"* |
+| **Query Active Mode** | *"what mode are you in"*, *"what is your mode"*, *"are you online or offline"*, *"current mode"*, *"check mode"* | Queries current network operating mode | *"I am in online mode."* or *"I am in offline mode."* |
+
+Spoken commands accommodate offline speech recognizer formatting (unpunctuated lowercase words, phonetic splits such as *"off line"* or *"on line"*), as well as polite wake prefixes (*"grimjaw"*, *"please"*, *"can you"*). Their spoken response lines are pre-warmed in `models/cache/` for zero-latency playback.
+
+---
+
 ## 5. Offline vs. Online Operational Modes
 
 AlsaGeist adapts automatically based on network connectivity and API keys configured in `.env`.

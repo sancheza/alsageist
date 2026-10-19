@@ -12,7 +12,7 @@ import threading
 import time
 from typing import Optional, Tuple
 
-from core import system_utils, voice_config
+from core import system_utils, voice_commands, voice_config
 from core.audio_io import AudioIO
 from core.control_server import ControlServer
 from core.dialogue_interface import DialogueEngine
@@ -833,6 +833,37 @@ class AlsaGeistAgent:
         """
         return classify_utterance(user_text, audio_rms)
 
+    def _execute_voice_command(self, command: str) -> Tuple[str, str]:
+        """Execute a matched system voice command and return response text and intent name.
+
+        Args:
+            command: Matched voice command identifier from core.voice_commands.
+
+        Returns:
+            Tuple of (response_text, matched_intent).
+        """
+        if command == voice_commands.COMMAND_SHUTDOWN:
+            return self._announcement("powering_off"), command
+
+        if command == voice_commands.COMMAND_MODE_OFFLINE:
+            self.set_online(False)
+            return self._announcement("offline_mode"), command
+
+        if command == voice_commands.COMMAND_MODE_ONLINE:
+            self.set_online(True)
+            return self._announcement("online_mode"), command
+
+        if command == voice_commands.COMMAND_MODE_AUTO:
+            self.set_online(None)
+            msg = self._announcement("online_mode") if self.is_online else self._announcement("offline_mode")
+            return msg, command
+
+        if command == voice_commands.COMMAND_MODE_QUERY:
+            msg = self._announcement("status_online") if self.is_online else self._announcement("status_offline")
+            return msg, command
+
+        return self._announcement("offline_mode"), command
+
     def _resolve_dialogue_response(self, user_text: str) -> Tuple[str, str]:
         """Resolve persona reply and matched intent from dialogue engine.
 
@@ -842,6 +873,11 @@ class AlsaGeistAgent:
         Returns:
             Tuple of (response_text, matched_intent).
         """
+        # System voice commands (shutdown, mode toggle, mode query) take priority over normal dialogue
+        cmd = voice_commands.match_voice_command(user_text)
+        if cmd is not None:
+            return self._execute_voice_command(cmd)
+
         # Check for live dynamic info (time and weather) first so any profile or engine
         # can answer questions using live data and the persona's dynamic response templates.
         live_intent = self.basic_info.match_intent(user_text)
@@ -1005,6 +1041,14 @@ class AlsaGeistAgent:
         t_llm = time.time()
         llm_ms = int((t_llm - t_stt) * 1000)
         print(f"{self.persona_name} ({matched_intent}): \"{self._say_or_hide(reply)}\"  ({llm_ms}ms)")
+
+        if matched_intent == voice_commands.COMMAND_SHUTDOWN:
+            self._log_turn(
+                user_text, reply, matched_intent, audio_dur, audio_rms,
+                {"stt": stt_ms, "dialogue": llm_ms},
+            )
+            self.request_shutdown()
+            return
 
         # 3. Local Piper TTS Synthesis in RAM
         try:

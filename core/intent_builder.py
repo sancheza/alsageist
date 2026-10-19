@@ -30,6 +30,8 @@ DEFAULT_ANNOUNCEMENTS = {
     "offline_mode": "NOW IN OFFLINE MODE",
     "powering_off": "Powering off.",
     "volume_template": "Volume {percent} percent.",
+    "status_online": "I am in online mode.",
+    "status_offline": "I am in offline mode.",
 }
 DEFAULT_GREETING_TEMPLATE = "I am {name}. System online and ready."
 

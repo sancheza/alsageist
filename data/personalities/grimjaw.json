@@ -60,7 +60,9 @@
     "offline_mode": "NOW IN OFFLINE MODE",
     "online_mode": "NOW IN ONLINE MODE",
     "powering_off": "Powering off.",
-    "powering_down": "Powering down."
+    "powering_down": "Powering down.",
+    "status_online": "I am in online mode.",
+    "status_offline": "I am in offline mode."
   },
   "low_power_lines": [
     "My power levels are low. I need to frighten more children to recharge.",

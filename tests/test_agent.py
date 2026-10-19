@@ -868,3 +868,54 @@ def test_filtered_utterance_keeps_led_off_while_asleep():
     agent.led.set_state(LEDState.OFF)
     agent._handle_utterance(np.zeros(16000, dtype=np.float32))
     assert agent.led.current_state != LEDState.IDLE
+
+
+def test_agent_voice_command_switch_to_offline():
+    """Speaking 'switch to offline mode' forces offline mode and returns the offline announcement."""
+    agent = make_bare_agent(is_online=True)
+    assert agent.is_online is True
+    reply, intent = agent._resolve_dialogue_response("switch to offline mode")
+    assert agent.is_online is False
+    assert agent.mode_forced is True
+    assert intent == "system_mode_offline"
+    assert reply == "NOW IN OFFLINE MODE"
+
+
+def test_agent_voice_command_switch_to_online():
+    """Speaking 'go online' forces online mode and returns the online announcement."""
+    agent = make_bare_agent(is_online=False)
+    assert agent.is_online is False
+    reply, intent = agent._resolve_dialogue_response("go online")
+    assert agent.is_online is True
+    assert agent.mode_forced is True
+    assert intent == "system_mode_online"
+    assert reply == "NOW IN ONLINE MODE"
+
+
+def test_agent_voice_command_query_mode_offline_and_online():
+    """Speaking 'what mode are you in' returns current mode status reliably."""
+    agent = make_bare_agent(is_online=False)
+    reply, intent = agent._resolve_dialogue_response("what mode are you in")
+    assert intent == "system_mode_query"
+    assert reply == "I am in offline mode."
+
+    agent.set_online(True)
+    reply, intent = agent._resolve_dialogue_response("are you online or offline")
+    assert intent == "system_mode_query"
+    assert reply == "I am in online mode."
+
+
+def test_agent_voice_command_shutdown_triggers_request_shutdown():
+    """Speaking 'shut down' in an utterance triggers host shutdown."""
+    agent = make_bare_agent()
+    agent.stt.transcribe.return_value = "grimjaw shut down"
+    agent.vad.calculate_rms.return_value = 0.05
+    agent.request_shutdown = MagicMock()
+
+    agent._handle_utterance(np.zeros(16000, dtype=np.float32))
+
+    agent.request_shutdown.assert_called_once()
+    agent.logger.log_interaction.assert_called_once()
+    kwargs = agent.logger.log_interaction.call_args.kwargs
+    assert kwargs["matched_intent"] == "system_shutdown"
+    assert kwargs["status"] == "PROCESSED"
