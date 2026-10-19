@@ -108,6 +108,11 @@ class AudioIO:
             except queue.Full:
                 pass
 
+    @property
+    def is_capturing(self) -> bool:
+        """Return True while microphone capture stream is running."""
+        return self._is_capturing
+
     def start_capture(self) -> None:
         """Start non-blocking continuous microphone capture."""
         with self._lock:
@@ -137,17 +142,28 @@ class AudioIO:
                 # If hardware rejects mono (e.g. Google AIY Voice HAT dual Knowles MEMS),
                 # retry with 2 channels stereo and downmix to mono in RAM
                 if self.channels == 1:
-                    self.channels = 2
-                    self._input_stream = sd.InputStream(
-                        samplerate=self.sample_rate,
-                        channels=2,
-                        dtype="float32",
-                        blocksize=self.block_size,
-                        device=self.device_input,
-                        callback=self._input_callback,
-                    )
-                    self._input_stream.start()
+                    try:
+                        self.channels = 2
+                        self._input_stream = sd.InputStream(
+                            samplerate=self.sample_rate,
+                            channels=2,
+                            dtype="float32",
+                            blocksize=self.block_size,
+                            device=self.device_input,
+                            callback=self._input_callback,
+                        )
+                        self._input_stream.start()
+                    except Exception:
+                        if self._input_stream is not None:
+                            try:
+                                self._input_stream.close()
+                            except Exception:
+                                pass
+                            self._input_stream = None
+                        self._is_capturing = False
+                        raise
                 else:
+                    self._is_capturing = False
                     raise
 
     def stop_capture(self) -> None:

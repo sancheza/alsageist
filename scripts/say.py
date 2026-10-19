@@ -21,10 +21,11 @@ import os
 import sys
 from typing import Iterator, List, Tuple
 
+from core import control_server
+from core import voice_config
 from core.audio_io import AudioIO
 from core.env_utils import env_float
 from core.intent_builder import load_personality
-from core import voice_config
 from core.system_utils import load_env_file
 from services.tts_service import PiperTTSService
 
@@ -124,6 +125,17 @@ def parse_args() -> argparse.Namespace:
         help="Print how long each phase took (imports, model load, synthesis, playback).",
     )
     parser.add_argument(
+        "--direct",
+        action="store_true",
+        help="Bypass the running daemon and play audio directly to hardware (even if daemon is active).",
+    )
+    parser.add_argument(
+        "--socket-path",
+        type=str,
+        default=None,
+        help="Path to AlsaGeist Unix domain socket (default: $ALSAGEIST_SOCKET or per-user socket).",
+    )
+    parser.add_argument(
         "-d",
         "--dry-run",
         action="store_true",
@@ -176,6 +188,22 @@ def main() -> int:
             print(f"[DRY-RUN] {display_name} speaking (volume={vol}): \"{args.text}\"")
             print(f"  Voice Model: {model_path} (tempo={tempo}, noise={noise})")
             return 0
+
+        # Check if the AlsaGeist daemon is active to prevent ALSA device / clock contention
+        sock_path = getattr(args, "socket_path", None) or os.environ.get("ALSAGEIST_SOCKET")
+        if not args.direct and control_server.is_socket_active(sock_path):
+            with timer.phase("daemon ipc", "delegated to running daemon"):
+                from scripts.alsageist_ctl import send_command
+                if args.volume is not None:
+                    send_command("volume", args.volume, socket_path=sock_path)
+                if args.personality and profile:
+                    send_command("personality", args.personality, socket_path=sock_path)
+                ok, resp = send_command("say", args.text, socket_path=sock_path)
+                if not ok:
+                    print(f"Error from daemon: {resp.get('message', 'Speech command failed.')}", file=sys.stderr)
+                    return 1
+                print(f"{display_name} speaking via running daemon (volume={vol}): \"{args.text}\"")
+                return 0
 
         with timer.phase("init audio"):
             audio = AudioIO(volume=vol)

@@ -181,3 +181,43 @@ def test_say_debug_separates_voice_load_from_synthesis(monkeypatch, capsys):
     assert load and float(load.group(1)) == 0.25
     # About 0.3 s was spent in synthesize(); the 0.25 s of voice loading is reported separately
     assert synth and 0.0 <= float(synth.group(1)) < 0.2
+
+
+def test_say_delegates_to_active_daemon(monkeypatch, capsys):
+    """When the daemon control socket is active, say.py delegates speech via IPC."""
+    monkeypatch.setattr(sys, "argv", ["say.py", "Happy Halloween!"])
+    mock_send = MagicMock(return_value=(True, {"status": "ok", "message": "Spoke"}))
+
+    with patch("core.control_server.is_socket_active", return_value=True), \
+         patch("scripts.alsageist_ctl.send_command", mock_send), \
+         patch.object(say, "AudioIO") as mock_audio, \
+         patch.object(say, "PiperTTSService") as mock_tts:
+        code = say.main()
+
+    assert code == 0
+    mock_send.assert_called_with("say", "Happy Halloween!", socket_path=None)
+    mock_audio.assert_not_called()
+    mock_tts.assert_not_called()
+    assert "speaking via running daemon" in capsys.readouterr().out
+
+
+def test_say_direct_bypasses_active_daemon(monkeypatch, capsys):
+    """When --direct is specified, say.py plays directly even if daemon socket is active."""
+    monkeypatch.setattr(sys, "argv", ["say.py", "--direct", "Spooky test"])
+    mock_send = MagicMock()
+    mock_tts = MagicMock()
+    mock_tts.cache_path.return_value = "/nonexistent.npy"
+    mock_tts.voice_loaded = False
+    mock_tts.voice_load_sec = 0.0
+    mock_tts.synthesize.return_value = (np.zeros(2205, dtype=np.float32), 22050)
+
+    with patch("core.control_server.is_socket_active", return_value=True), \
+         patch("scripts.alsageist_ctl.send_command", mock_send), \
+         patch.object(say, "AudioIO") as mock_audio, \
+         patch.object(say, "PiperTTSService", return_value=mock_tts):
+        code = say.main()
+
+    assert code == 0
+    mock_send.assert_not_called()
+    mock_audio.assert_called_once()
+    mock_audio.return_value.play_audio.assert_called_once()

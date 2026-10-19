@@ -676,8 +676,9 @@ Expected output:
 | Goal | Command |
 | :--- | :--- |
 | Speak a line through the running service (fastest; reuses its loaded voice) | `python3 scripts/alsageist_ctl.py say "Testing."` |
-| Preview a voice, personality, tempo, or volume without touching the service | `python3 scripts/say.py "Testing." --tempo 1.3` |
-| Speak when the service is not running (for example on a development machine) | `python3 scripts/say.py "Testing."` |
+| Speak via CLI (automatically delegates to running daemon if active, or plays directly if not) | `python3 scripts/say.py "Testing."` |
+| Force direct hardware playback without delegating to running daemon | `python3 scripts/say.py "Testing." --direct` |
+| Preview a voice, personality, tempo, or volume without touching the service | `python3 scripts/say.py "Testing." --tempo 1.3 --direct` |
 
 ```bash
 python3 scripts/say.py "Halt! Who dares disturb the crypt?"

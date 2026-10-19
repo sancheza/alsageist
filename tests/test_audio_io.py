@@ -186,5 +186,50 @@ def test_audio_io_failed_stream_closed_before_stereo_retry():
         mock_mono_stream.close.assert_called_once()
         assert audio.channels == 2
         mock_stereo_stream.start.assert_called_once()
+        assert audio.is_capturing is True
+
+
+def test_audio_io_stereo_failure_resets_capturing_and_stream():
+    """When stereo stream fails, _is_capturing is False, stream is None, and retry is allowed."""
+    from unittest.mock import MagicMock, patch
+
+    audio = AudioIO(sample_rate=16000, channels=1)
+    mock_mono = MagicMock()
+    mock_mono.start.side_effect = RuntimeError("Mono rejected")
+    mock_stereo = MagicMock()
+    mock_stereo.start.side_effect = RuntimeError("Stereo rejected")
+
+    with patch("core.audio_io.sd.InputStream", side_effect=[mock_mono, mock_stereo]):
+        with pytest.raises(RuntimeError, match="Stereo rejected"):
+            audio.start_capture()
+
+    assert audio.is_capturing is False
+    assert audio._input_stream is None
+    mock_stereo.close.assert_called_once()
+
+    # Retry with working stream succeeds rather than returning early on a dead stream
+    working_stream = MagicMock()
+    with patch("core.audio_io.sd.InputStream", return_value=working_stream):
+        audio.start_capture()
+        assert audio.is_capturing is True
+        assert audio._input_stream is working_stream
+        working_stream.start.assert_called_once()
+
+
+def test_audio_io_initial_stereo_failure_resets_capturing():
+    """When initial channels=2 fails, _is_capturing is False and stream is None."""
+    from unittest.mock import MagicMock, patch
+
+    audio = AudioIO(sample_rate=16000, channels=2)
+    mock_stream = MagicMock()
+    mock_stream.start.side_effect = RuntimeError("Stereo failed")
+
+    with patch("core.audio_io.sd.InputStream", return_value=mock_stream):
+        with pytest.raises(RuntimeError, match="Stereo failed"):
+            audio.start_capture()
+
+    assert audio.is_capturing is False
+    assert audio._input_stream is None
+    mock_stream.close.assert_called_once()
 
 

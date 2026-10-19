@@ -192,14 +192,17 @@ class PiperTTSService:
                             arrays.append(np.asarray(c, dtype=np.float32))
                     if arrays:
                         return np.concatenate(arrays)
-                return np.zeros(0, dtype=np.float32)
+                print(
+                    f"Warning: In-process Piper synthesis produced no audio for '{chunk_text}'; "
+                    "falling back to the 'piper' command."
+                )
             except Exception as exc:
                 print(
                     f"Warning: In-process Piper synthesis failed for '{chunk_text}' ({exc}); "
                     "falling back to the 'piper' command."
                 )
 
-        # Fallback to subprocess invocation if in-memory voice failed to load
+        # Fallback to subprocess invocation if in-memory voice failed to load or synthesize
         cmd = [
             "piper",
             "-m", self.model_path,

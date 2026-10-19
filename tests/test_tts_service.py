@@ -206,7 +206,9 @@ def fake_piper(monkeypatch):
     """Install a fake piper module and return its PiperVoice.load mock."""
     module = types.ModuleType("piper")
     module.PiperVoice = MagicMock()
-    module.PiperVoice.load.return_value.synthesize.return_value = []
+    mock_chunk = MagicMock()
+    mock_chunk.audio_float_array = np.full(100, 0.1, dtype=np.float32)
+    module.PiperVoice.load.return_value.synthesize.return_value = [mock_chunk]
     module.SynthesisConfig = MagicMock()
     monkeypatch.setitem(sys.modules, "piper", module)
     return module.PiperVoice.load
@@ -328,3 +330,22 @@ def test_empty_cache_file_from_an_earlier_run_is_discarded(make_tts):
     audio, _ = tts.synthesize("hello")
     assert audio.size == 1000
     assert np.load(path).size == 1000
+
+
+def test_in_process_empty_chunks_falls_back_to_cli(fake_piper, tmp_path, capsys):
+    """When in-process synthesize returns empty chunks, it warns and falls back to piper CLI."""
+    fake_voice = MagicMock()
+    fake_voice.synthesize.return_value = []
+    fake_piper.return_value = fake_voice
+
+    tts = PiperTTSService(model_path=_model(tmp_path), cache_dir=str(tmp_path / "c"))
+    mock_proc = MagicMock()
+    mock_pcm = (np.ones(100, dtype=np.int16) * 1000).tobytes()
+    mock_proc.communicate.return_value = (mock_pcm, b"")
+    mock_proc.returncode = 0
+
+    with patch("services.tts_service.subprocess.Popen", return_value=mock_proc) as mock_popen:
+        audio = tts._synthesize_chunk("test phrase")
+        assert len(audio) == 100
+        mock_popen.assert_called_once()
+        assert "Warning: In-process Piper synthesis produced no audio" in capsys.readouterr().out

@@ -102,6 +102,30 @@ def default_socket_path() -> str:
     return os.path.join(default_socket_dir(), "alsageist.sock")
 
 
+def is_socket_active(socket_path: Optional[str] = None, timeout: float = 0.5) -> bool:
+    """Check if an active AlsaGeist control server is listening on the socket.
+
+    Args:
+        socket_path: Path to Unix domain socket file (default: default_socket_path()).
+        timeout: Connection timeout in seconds (default: 0.5).
+
+    Returns:
+        True if the socket exists and accepts connections.
+    """
+    path = socket_path or default_socket_path()
+    if not os.path.exists(path):
+        return False
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(timeout)
+        sock.connect(path)
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
 def _secure_private_dir(directory: str) -> None:
     """Create a directory readable only by the current user, or verify an existing one.
 
@@ -229,15 +253,7 @@ class ControlServer:
 
     def _is_socket_alive(self) -> bool:
         """Check if an existing socket file has an active listener."""
-        test_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        try:
-            test_sock.settimeout(0.5)
-            test_sock.connect(self.socket_path)
-            return True
-        except OSError:
-            return False
-        finally:
-            test_sock.close()
+        return is_socket_active(self.socket_path)
 
     def _listen_loop(self) -> None:
         """Main connection listening loop running on background thread."""

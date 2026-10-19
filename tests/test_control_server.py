@@ -17,6 +17,7 @@ from core.control_server import (
     ControlSocketError,
     _secure_private_dir,
     default_socket_path,
+    is_socket_active,
     parse_volume,
 )
 from core.intent_builder import PersonalityProfile, find_personality_file
@@ -530,3 +531,12 @@ def test_parse_volume_accepts(value, current, expected):
 def test_parse_volume_rejects(value):
     with pytest.raises(ValueError):
         parse_volume(value, 0.5)
+
+
+def test_is_socket_active(server_and_agent, test_socket_path):
+    """is_socket_active returns True while the server listens, and False after stop."""
+    server, _ = server_and_agent
+    assert is_socket_active(test_socket_path) is True
+    assert is_socket_active("/tmp/nonexistent_socket_path.sock") is False
+    server.stop()
+    assert is_socket_active(test_socket_path) is False
