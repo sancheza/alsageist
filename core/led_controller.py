@@ -97,26 +97,36 @@ class ButtonGestureTracker:
     gesture starts, so they can be changed after the hardware is wired.
     """
 
-    def __init__(self, controller: "BaseLEDController") -> None:
+    def __init__(self, controller: "BaseLEDController", debounce_sec: float = 0.0) -> None:
         """Create a tracker bound to a controller.
 
         Args:
             controller: Controller whose button_callback, button_hold_callback,
                 button_long_hold_callback, hold_time_sec and long_hold_time_sec are used.
+            debounce_sec: Post-hold debounce cooldown window in seconds.
         """
         self._controller = controller
+        self.debounce_sec = debounce_sec
         self._lock = threading.Lock()
+        self._hold_timer: Optional[threading.Timer] = None
         self._long_hold_timer: Optional[threading.Timer] = None
         self._press_time: float = 0.0
+        self._hold_armed = False
         self._long_hold_fired = False
+        self._suppress_until: float = 0.0
 
     def pressed(self, *_args) -> None:
-        """Handle a button press edge: record press time and start long-hold shutdown timer."""
+        """Handle a button press edge: record press time and start hold and shutdown timers."""
         with self._lock:
-            self._press_time = time.monotonic()
+            now = time.monotonic()
+            if now < self._suppress_until:
+                return
+            self._press_time = now
+            self._hold_armed = False
             self._long_hold_fired = False
             self._cancel_timers()
-            # Without a long-hold callback a long press is an ordinary hold, handled on release
+            if self._controller.button_hold_callback is not None:
+                self._hold_timer = self._start_timer(self._controller.hold_time_sec, self._on_hold)
             if self._controller.button_long_hold_callback is not None:
                 self._long_hold_timer = self._start_timer(self._controller.long_hold_time_sec, self._on_long_hold)
 
@@ -129,14 +139,21 @@ class ButtonGestureTracker:
             elapsed = time.monotonic() - self._press_time
             self._press_time = 0.0
             self._cancel_timers()
+            hold_armed = self._hold_armed or (
+                self._controller.button_hold_callback is not None
+                and elapsed >= self._controller.hold_time_sec
+            )
             long_fired = self._long_hold_fired
+            self._hold_armed = False
             self._long_hold_fired = False
+            if (hold_armed or long_fired) and self.debounce_sec > 0:
+                self._suppress_until = time.monotonic() + self.debounce_sec
 
         if long_fired:
-            # Shutdown already initiated at long_hold_time_sec; do nothing on release
+            # Action already executed when long-hold shutdown threshold was reached
             return
 
-        if elapsed >= self._controller.hold_time_sec:
+        if hold_armed:
             self._invoke(self._controller.button_hold_callback, "hold")
         else:
             self._invoke(self._controller.button_callback, "press")
@@ -145,11 +162,15 @@ class ButtonGestureTracker:
         """Cancel pending timers without firing any callback."""
         with self._lock:
             self._press_time = 0.0
+            self._hold_armed = False
             self._long_hold_fired = False
             self._cancel_timers()
 
     def _cancel_timers(self) -> None:
-        """Cancel and clear the long-hold timer. Caller holds self._lock."""
+        """Cancel and clear pending timers. Caller holds self._lock."""
+        if self._hold_timer is not None:
+            self._hold_timer.cancel()
+        self._hold_timer = None
         if self._long_hold_timer is not None:
             self._long_hold_timer.cancel()
         self._long_hold_timer = None
@@ -162,12 +183,24 @@ class ButtonGestureTracker:
         timer.start()
         return timer
 
+    def _on_hold(self) -> None:
+        """Timer action: the button has reached hold_time_sec while pressed."""
+        with self._lock:
+            if self._press_time == 0.0 or self._long_hold_fired:
+                return
+            self._hold_armed = True
+        try:
+            self._controller.flash(count=2, on_time=0.08, off_time=0.08)
+        except Exception:
+            pass
+
     def _on_long_hold(self) -> None:
         """Timer action: the button has been held continuously for long_hold_time_sec."""
         with self._lock:
             if self._press_time == 0.0:  # released while the timer was firing
                 return
             self._long_hold_fired = True
+            self._hold_armed = False
         self._invoke(self._controller.button_long_hold_callback, "long hold")
 
     @staticmethod
@@ -285,7 +318,7 @@ class RaspberryPiLEDController(BaseLEDController):
         self._flashing = False
         self._flash_request: Optional[Tuple[int, float, float]] = None
         self._flash_lock = threading.Lock()
-        self._buttons = ButtonGestureTracker(self)
+        self._buttons = ButtonGestureTracker(self, debounce_sec=0.25)
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
@@ -358,7 +391,7 @@ class RaspberryPiLEDController(BaseLEDController):
         self._gpio_btn.when_released = self._buttons.released
 
     def _wire_rpigpio_button(self) -> None:
-        """Route RPi.GPIO edge events to the gesture tracker."""
+        """Route RPi.GPIO edge events to the gesture tracker with software debouncing."""
         try:
             import RPi.GPIO as GPIO  # pylint: disable=import-error
             try:
@@ -366,13 +399,31 @@ class RaspberryPiLEDController(BaseLEDController):
             except Exception:
                 pass
 
-            def _handle_edge(channel):
-                if GPIO.input(self.button_pin) == GPIO.LOW:
-                    self._buttons.pressed()
-                else:
-                    self._buttons.released()
+            debounce_timer: Optional[threading.Timer] = None
+            confirmed_state: Optional[int] = None
+            lock = threading.Lock()
 
-            GPIO.add_event_detect(self.button_pin, GPIO.BOTH, callback=_handle_edge, bouncetime=50)
+            def _check_pin() -> None:
+                nonlocal confirmed_state
+                with lock:
+                    current_state = GPIO.input(self.button_pin)
+                    if current_state != confirmed_state:
+                        confirmed_state = current_state
+                        if current_state == GPIO.LOW:
+                            self._buttons.pressed()
+                        else:
+                            self._buttons.released()
+
+            def _handle_edge(_channel) -> None:
+                nonlocal debounce_timer
+                with lock:
+                    if debounce_timer is not None:
+                        debounce_timer.cancel()
+                    debounce_timer = threading.Timer(0.025, _check_pin)
+                    debounce_timer.daemon = True
+                    debounce_timer.start()
+
+            GPIO.add_event_detect(self.button_pin, GPIO.BOTH, callback=_handle_edge)
         except Exception:
             pass
 

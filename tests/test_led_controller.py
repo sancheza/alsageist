@@ -524,3 +524,71 @@ def test_pi_flash_does_not_wake_disabled_led():
     led.set_state(LEDState.OFF)
     led.flash(count=1)
     assert led.current_state == LEDState.OFF
+
+
+def test_gesture_tracker_hold_armed_suppresses_press_on_extended_holds():
+    """Holding past hold threshold (e.g. 5s, 6s, 7s) arms hold and never fires volume press on release."""
+    import time
+    tracker, events = _tracker_events(hold_sec=0.05, long_hold_sec=0.5)
+
+    # Press and hold for 0.12s (well past 0.05s hold threshold, before 0.5s shutdown)
+    tracker.pressed()
+    time.sleep(0.12)
+    tracker.released()
+
+    assert events == ["hold"]
+    assert "press" not in events
+
+
+def test_gesture_tracker_debounce_suppresses_release_contact_chatter():
+    """Contact chatter immediately following hold release does not trigger a false short press."""
+    import time
+    from core.led_controller import ButtonGestureTracker
+
+    led = ConsoleLEDController(verbose=False)
+    events = []
+    led.set_button_callbacks(
+        on_press=lambda: events.append("press"),
+        on_hold=lambda: events.append("hold"),
+        on_long_hold=lambda: events.append("long_hold"),
+        hold_time_sec=0.05,
+        long_hold_time_sec=0.5,
+    )
+    # Tracker with 0.15s post-hold debounce cooldown
+    tracker = ButtonGestureTracker(led, debounce_sec=0.15)
+
+    # 1. Medium hold past threshold
+    tracker.pressed()
+    time.sleep(0.08)
+    tracker.released()
+    assert events == ["hold"]
+
+    # 2. Mechanical release bounce / chatter 10ms later
+    time.sleep(0.01)
+    tracker.pressed()
+    time.sleep(0.005)
+    tracker.released()
+
+    # Bounce should have been discarded by debounce cooldown
+    assert events == ["hold"]
+
+
+def test_gesture_tracker_flashes_led_on_hold_threshold():
+    """When the hold threshold is reached while pressed, the LED flashes to provide user feedback."""
+    import time
+    from core.led_controller import ButtonGestureTracker
+
+    led = ConsoleLEDController(verbose=False)
+    led.set_button_callbacks(
+        on_press=lambda: None,
+        on_hold=lambda: None,
+        hold_time_sec=0.05,
+    )
+    tracker = ButtonGestureTracker(led)
+
+    assert led.flash_count == 0
+    tracker.pressed()
+    time.sleep(0.08)
+    assert led.flash_count >= 2
+    tracker.released()
+
