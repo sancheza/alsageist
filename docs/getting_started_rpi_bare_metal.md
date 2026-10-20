@@ -440,7 +440,87 @@ journalctl -u alsageist.service -f
 
 ---
 
-## 12. Troubleshooting Runbook
+## 12. Updating an Existing Installation
+
+### Objective: Upgrade AlsaGeist to the latest release, update virtual environment dependencies, refresh the audio cache, and restart the background service.
+
+1. Navigate to the installation directory:
+
+```bash
+cd ~/alsageist
+```
+
+2. Pull the latest release code:
+
+```bash
+git pull origin main
+```
+
+Expected output:
+```text
+Updating acdecae..35bab29
+Fast-forward
+```
+
+3. Update dependencies in the virtual environment:
+
+```bash
+./venv/bin/pip install -r requirements.txt
+```
+
+Expected output:
+```text
+Requirement already satisfied: ...
+Installing collected packages: ...
+Successfully installed ...
+```
+
+4. Pre-warm dialogue audio cache:
+
+```bash
+./venv/bin/python3 scripts/prewarm_cache.py
+```
+
+Expected output:
+```text
+======================================================================
+ Pre-Warming Dialogue Audio Cache
+======================================================================
+Pre-warming complete: 168 files cached.
+```
+
+5. Restart the background service:
+
+```bash
+sudo systemctl restart alsageist.service
+```
+
+6. Verify operational status:
+
+```bash
+./scripts/alsageist_ctl.py status
+```
+
+Expected output:
+```text
+================================================================
+ AlsaGeist Runtime Status
+================================================================
+  Display State:     RUNNING
+  Active Persona:    Grimjaw the Crypt Skeleton (grimjaw)
+  Voice Model:       en_GB-alan-medium (Local ONNX)
+  Audio Output Vol:  50% (0.5)
+  Microphone State:  UNMUTED (Capturing)
+  Network Mode:      ONLINE (auto) (Cloud STT / LLM: Disabled)
+  Dialogue Engine:   INTENT
+  Hardware LED:      IDLE
+  Process PID:       1234 (Uptime: 0m 5s)
+================================================================
+```
+
+---
+
+## 13. Troubleshooting Runbook
 
 ### Problem: `PortAudio / sounddevice: No default input/output device found`
 Ensure the user account belongs to the `audio` group and specify devices explicitly:
@@ -485,7 +565,7 @@ frequency(48)=600000000
 throttled=0x50005
 ```
 
-A clock of `1200000000` and a value of `0x0` mean the supply is not the cause. Otherwise see [Under-Voltage and CPU Throttling](usage_guide.md#55-under-voltage-and-cpu-throttling-raspberry-pi).
+A clock of `1200000000` and a value of `0x0` mean the supply is not the cause. Otherwise see [Under-Voltage and CPU Throttling](usage_guide.md#56-under-voltage-and-cpu-throttling-raspberry-pi).
 
 ### Problem: `alsamixer: This sound device does not have any controls`
 This is expected behavior for the Google AIY Voice HAT V1 because it uses a fixed-gain I2S codec. Test speaker output directly:
