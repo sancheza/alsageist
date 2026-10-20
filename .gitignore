@@ -26,8 +26,8 @@ env/
 .DS_Store
 
 # Secrets & Environment variables
+.env
 .env.*
-!.env
 !.env.example
 
 # Logs & Runtime telemetry

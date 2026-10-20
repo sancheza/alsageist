@@ -163,3 +163,20 @@ def test_resolve_piper_model_path_missing_voice_is_not_replaced_by_default(tmp_p
 
     path = resolve_piper_model_path(model_path="typo-voice", repo_root=str(tmp_path))
     assert path == str(tmp_path / "models" / "piper" / "typo-voice.onnx")
+
+
+def test_load_env_file_populates_missing_keys_from_example(tmp_path, monkeypatch):
+    """load_env_file loads user .env first, then populates unset keys from env.example."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("USER_CUSTOM_VAR", raising=False)
+    monkeypatch.delenv("FALLBACK_DEFAULT_VAR", raising=False)
+    monkeypatch.delenv("MISSING_IN_USER_ENV", raising=False)
+
+    (tmp_path / ".env").write_text("USER_CUSTOM_VAR=custom_val\nFALLBACK_DEFAULT_VAR=user_override\n", encoding="utf-8")
+    (tmp_path / "env.example").write_text("FALLBACK_DEFAULT_VAR=default_val\nMISSING_IN_USER_ENV=from_example\n", encoding="utf-8")
+
+    load_env_file(".env")
+
+    assert os.environ.get("USER_CUSTOM_VAR") == "custom_val"
+    assert os.environ.get("FALLBACK_DEFAULT_VAR") == "user_override"
+    assert os.environ.get("MISSING_IN_USER_ENV") == "from_example"

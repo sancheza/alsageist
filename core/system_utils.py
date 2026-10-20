@@ -161,28 +161,10 @@ def _parse_env_value(raw: str) -> str:
     return re.split(r"\s#", val, maxsplit=1)[0].strip()
 
 
-def load_env_file(path: str = ".env") -> None:
-    """Load key-value environment variables from an environment file if present.
-
-    An absolute path is used as given. A relative path is looked up in the repository
-    root first and then in the current working directory, so a stray `.env` in the
-    directory a command runs from cannot take precedence over the project's own.
-    Existing environment variables are never overwritten.
-
-    Args:
-        path: Relative or absolute path to the environment file.
-    """
-    if os.path.isabs(path):
-        candidates = [path]
-    else:
-        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        candidates = [os.path.join(repo_root, path), path]
-    target_path = next((p for p in candidates if os.path.isfile(p)), None)
-    if not target_path:
-        return
-
+def _parse_env_file_contents(file_path: str) -> None:
+    """Read a key-value file and set values into os.environ if not already present."""
     try:
-        with open(target_path, "r", encoding="utf-8") as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("#"):
@@ -196,7 +178,43 @@ def load_env_file(path: str = ".env") -> None:
                 if key and key not in os.environ:
                     os.environ[key] = _parse_env_value(val)
     except Exception as exc:
-        print(f"Warning: Failed to load environment file from {target_path}: {exc}")
+        print(f"Warning: Failed to load environment file from {file_path}: {exc}")
+
+
+def load_env_file(path: str = ".env") -> None:
+    """Load key-value environment variables from an environment file if present.
+
+    An absolute path is used as given. A relative path is looked up in the repository
+    root first and then in the current working directory, so a stray `.env` in the
+    directory a command runs from cannot take precedence over the project's own.
+    Existing environment variables are never overwritten.
+
+    When loading the default '.env', defaults from 'env.example' are also loaded
+    to populate any parameters not defined in the user's environment file.
+
+    Args:
+        path: Relative or absolute path to the environment file.
+    """
+    if os.path.isabs(path):
+        candidates = [path]
+    else:
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        candidates = [os.path.join(repo_root, path), path]
+    target_path = next((p for p in candidates if os.path.isfile(p)), None)
+    if target_path:
+        _parse_env_file_contents(target_path)
+
+    # If using default .env, also populate missing parameters from env.example
+    if path == ".env":
+        base_dir = os.path.dirname(target_path) if target_path else repo_root
+        example_candidates = [
+            os.path.join(base_dir, "env.example"),
+            os.path.join(repo_root, "env.example"),
+            "env.example",
+        ]
+        example_path = next((p for p in example_candidates if os.path.isfile(p)), None)
+        if example_path and example_path != target_path:
+            _parse_env_file_contents(example_path)
 
 
 def check_internet_connectivity(timeout: float = 2.5) -> bool:
