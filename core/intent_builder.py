@@ -37,6 +37,7 @@ DEFAULT_ANNOUNCEMENTS = {
     "voice_model_template": "My voice model is {model}.",
     "fallback_enabled": "L L M fallback is enabled.",
     "fallback_disabled": "L L M fallback is disabled.",
+    "access_denied": "Access denied: verbal password required.",
 }
 DEFAULT_GREETING_TEMPLATE = "I am {name}. System online and ready."
 

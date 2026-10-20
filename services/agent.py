@@ -101,6 +101,11 @@ class AlsaGeistAgent:
             self.stt = self._build_stt()
 
             self.llm_fallback_enabled = getattr(args, "llm_fallback", False)
+            self.voice_command_password = (
+                getattr(args, "voice_command_password", None)
+                if getattr(args, "voice_command_password", None) is not None
+                else os.environ.get("VOICE_COMMAND_PASSWORD", "alsageist")
+            )
             self.dialogue_engine, self.llm_fallback_service = self._build_dialogue(self.profile, personality)
             self.tts = self._build_tts(self.profile)
 
@@ -899,6 +904,9 @@ class AlsaGeistAgent:
         Returns:
             Tuple of (response_text, matched_intent).
         """
+        if command == voice_commands.COMMAND_ACCESS_DENIED:
+            return self._announcement("access_denied"), command
+
         if command == voice_commands.COMMAND_SHUTDOWN:
             return self._announcement("powering_off"), command
 
@@ -959,7 +967,8 @@ class AlsaGeistAgent:
             Tuple of (response_text, matched_intent).
         """
         # System voice commands (shutdown, mode toggle, mode query) take priority over normal dialogue
-        cmd = voice_commands.match_voice_command(user_text)
+        pwd = getattr(self, "voice_command_password", None)
+        cmd = voice_commands.match_voice_command(user_text, password=pwd)
         if cmd is not None:
             return self._execute_voice_command(cmd)
 

@@ -22,6 +22,14 @@ def test_config_defaults(monkeypatch):
     assert args.threshold == 0.0035
     assert args.led_pin == 25
     assert args.button_pin == 23
+    assert args.voice_command_password == "alsageist"
+
+
+def test_config_voice_command_password_env(monkeypatch):
+    """Verify VOICE_COMMAND_PASSWORD environment variable overrides default."""
+    monkeypatch.setenv("VOICE_COMMAND_PASSWORD", "sesame")
+    args = parse_args([])
+    assert args.voice_command_password == "sesame"
 
 
 def test_config_invalid_env_falls_back_to_defaults(monkeypatch):
@@ -45,6 +53,7 @@ def test_config_explicit_flags():
         "--led-pin", "18",
         "--button-pin", "24",
         "--no-greeting",
+        "--voice-command-password", "abracadabra",
     ])
     assert args.personality == "snowman"
     assert args.engine == "llm"
@@ -53,3 +62,4 @@ def test_config_explicit_flags():
     assert args.led_pin == 18
     assert args.button_pin == 24
     assert args.no_greeting is True
+    assert args.voice_command_password == "abracadabra"

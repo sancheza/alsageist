@@ -144,6 +144,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Disable spoken greeting announcement upon startup.",
     )
+    parser.add_argument(
+        "--voice-command-password",
+        default=os.environ.get("VOICE_COMMAND_PASSWORD", "alsageist"),
+        help="Verbal password required for privileged voice commands (default: 'alsageist' or $VOICE_COMMAND_PASSWORD). Set to 'none' to disable.",
+    )
     return parser
 
 

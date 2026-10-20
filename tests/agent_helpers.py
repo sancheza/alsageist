@@ -53,6 +53,7 @@ def make_bare_agent(**overrides) -> AlsaGeistAgent:
     agent.profile = None
     agent.llm_fallback_enabled = False
     agent.llm_fallback_service = None
+    agent.voice_command_password = None
     agent._state_lock = threading.RLock()
     agent._audio_lock = threading.RLock()
     agent._switch_lock = threading.Lock()

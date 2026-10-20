@@ -1010,3 +1010,50 @@ def test_agent_voice_command_shutdown_triggers_request_shutdown():
     kwargs = agent.logger.log_interaction.call_args.kwargs
     assert kwargs["matched_intent"] == "system_shutdown"
     assert kwargs["status"] == "PROCESSED"
+
+
+def test_agent_voice_command_privileged_access_denied():
+    """Privileged voice command without password returns access denied announcement."""
+    agent = make_bare_agent(is_online=True, voice_command_password="alsageist")
+    reply, intent = agent._resolve_dialogue_response("switch to offline mode")
+    assert intent == "system_access_denied"
+    assert "access denied" in reply.lower()
+    assert agent.is_online is True
+
+
+def test_agent_voice_command_privileged_with_password():
+    """Privileged voice command with valid password succeeds."""
+    agent = make_bare_agent(is_online=True, voice_command_password="alsageist")
+    reply, intent = agent._resolve_dialogue_response("alsageist switch to offline mode")
+    assert intent == "system_mode_offline"
+    assert agent.is_online is False
+
+
+def test_agent_voice_command_shutdown_denied_without_password():
+    """Speaking shutdown without password does not trigger host shutdown."""
+    agent = make_bare_agent(voice_command_password="alsageist")
+    agent.stt.transcribe.return_value = "grimjaw shut down"
+    agent.vad.calculate_rms.return_value = 0.05
+    agent.request_shutdown = MagicMock()
+
+    agent._handle_utterance(np.zeros(16000, dtype=np.float32))
+
+    agent.request_shutdown.assert_not_called()
+    agent.logger.log_interaction.assert_called_once()
+    kwargs = agent.logger.log_interaction.call_args.kwargs
+    assert kwargs["matched_intent"] == "system_access_denied"
+
+
+def test_agent_voice_command_shutdown_allowed_with_password():
+    """Speaking shutdown with password triggers host shutdown."""
+    agent = make_bare_agent(voice_command_password="alsageist")
+    agent.stt.transcribe.return_value = "grimjaw alsageist shut down"
+    agent.vad.calculate_rms.return_value = 0.05
+    agent.request_shutdown = MagicMock()
+
+    agent._handle_utterance(np.zeros(16000, dtype=np.float32))
+
+    agent.request_shutdown.assert_called_once()
+    agent.logger.log_interaction.assert_called_once()
+    kwargs = agent.logger.log_interaction.call_args.kwargs
+    assert kwargs["matched_intent"] == "system_shutdown"

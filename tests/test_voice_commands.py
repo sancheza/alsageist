@@ -7,6 +7,7 @@ typographic apostrophes, phonetic word splits ('off line'), and conversational p
 import pytest
 
 from core.voice_commands import (
+    COMMAND_ACCESS_DENIED,
     COMMAND_ENGINE_QUERY,
     COMMAND_FALLBACK_DISABLE,
     COMMAND_FALLBACK_ENABLE,
@@ -17,6 +18,7 @@ from core.voice_commands import (
     COMMAND_MODE_QUERY,
     COMMAND_SHUTDOWN,
     COMMAND_VOICE_QUERY,
+    PRIVILEGED_COMMANDS,
     match_voice_command,
 )
 
@@ -295,3 +297,63 @@ def test_match_voice_command_fallback_disable(phrase):
 def test_match_voice_command_ignores_unrelated(phrase):
     """Verify non-command speech and conversational phrases do not false-trigger."""
     assert match_voice_command(phrase) is None
+
+
+@pytest.mark.parametrize("phrase, expected_cmd", [
+    ("alsageist shut down", COMMAND_SHUTDOWN),
+    ("grimjaw alsageist power off", COMMAND_SHUTDOWN),
+    ("shut down alsageist", COMMAND_SHUTDOWN),
+    ("alsageist switch to offline mode", COMMAND_MODE_OFFLINE),
+    ("grimjaw alsageist go online", COMMAND_MODE_ONLINE),
+    ("alsageist automatic mode", COMMAND_MODE_AUTO),
+    ("alsageist enable llm fallback", COMMAND_FALLBACK_ENABLE),
+    ("alsageist disable fallback", COMMAND_FALLBACK_DISABLE),
+])
+def test_privileged_commands_succeed_with_valid_password(phrase, expected_cmd):
+    """Privileged voice commands succeed when the verbal password is provided."""
+    assert match_voice_command(phrase, password="alsageist") == expected_cmd
+
+
+@pytest.mark.parametrize("phrase", [
+    "shut down",
+    "grimjaw shut down",
+    "power off",
+    "grimjaw power off",
+    "turn off the system",
+    "switch to offline mode",
+    "grimjaw go offline",
+    "go online",
+    "grimjaw go online",
+    "automatic mode",
+    "enable llm fallback",
+    "disable fallback",
+])
+def test_privileged_commands_rejected_without_password(phrase):
+    """Privileged voice commands return COMMAND_ACCESS_DENIED without the verbal password."""
+    assert match_voice_command(phrase, password="alsageist") == COMMAND_ACCESS_DENIED
+
+
+@pytest.mark.parametrize("phrase, expected_cmd", [
+    ("what mode are you in", COMMAND_MODE_QUERY),
+    ("are you online", COMMAND_MODE_QUERY),
+    ("what is your voice model", COMMAND_VOICE_QUERY),
+    ("what engine are you using", COMMAND_ENGINE_QUERY),
+    ("is fallback enabled", COMMAND_FALLBACK_QUERY),
+    ("alsageist what mode are you in", COMMAND_MODE_QUERY),
+])
+def test_unprivileged_commands_succeed_without_password(phrase, expected_cmd):
+    """Query commands do not require a verbal password."""
+    assert match_voice_command(phrase, password="alsageist") == expected_cmd
+
+
+def test_custom_verbal_password():
+    """Custom verbal password configured via parameter is verified."""
+    assert match_voice_command("sesame shut down", password="sesame") == COMMAND_SHUTDOWN
+    assert match_voice_command("alsageist shut down", password="sesame") == COMMAND_ACCESS_DENIED
+
+
+@pytest.mark.parametrize("pwd", [None, "", "none", "off", "false"])
+def test_disabled_verbal_password(pwd):
+    """Password protection can be disabled by setting password to None, empty, or 'none'."""
+    assert match_voice_command("shut down", password=pwd) == COMMAND_SHUTDOWN
+    assert match_voice_command("switch to offline mode", password=pwd) == COMMAND_MODE_OFFLINE

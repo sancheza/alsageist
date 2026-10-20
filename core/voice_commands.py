@@ -22,6 +22,16 @@ COMMAND_ENGINE_QUERY = "system_engine_query"
 COMMAND_FALLBACK_QUERY = "system_fallback_query"
 COMMAND_FALLBACK_ENABLE = "system_fallback_enable"
 COMMAND_FALLBACK_DISABLE = "system_fallback_disable"
+COMMAND_ACCESS_DENIED = "system_access_denied"
+
+PRIVILEGED_COMMANDS = {
+    COMMAND_SHUTDOWN,
+    COMMAND_MODE_OFFLINE,
+    COMMAND_MODE_ONLINE,
+    COMMAND_MODE_AUTO,
+    COMMAND_FALLBACK_ENABLE,
+    COMMAND_FALLBACK_DISABLE,
+}
 
 # Common polite or wake-word prefixes to strip before command evaluation
 _PREFIX_PATTERN = re.compile(
@@ -121,15 +131,19 @@ _MODE_AUTO_PATTERN = re.compile(
 )
 
 
-def match_voice_command(user_text: str) -> Optional[str]:
+def match_voice_command(user_text: str, password: Optional[str] = None) -> Optional[str]:
     """Classify transcribed speech as a system voice command.
 
     Handles offline recognition nuances such as unpunctuated text, phonetic
     word splits ('off line'), and conversational phrasing. Evaluates query
     patterns before mode-setting patterns to avoid ambiguous collisions.
 
+    If a verbal password is provided and not disabled, checks that privileged
+    commands (e.g. shutdown, mode switching, fallback toggles) include the password.
+
     Args:
         user_text: Raw or normalized transcribed speech string.
+        password: Optional verbal password required for privileged operations.
 
     Returns:
         One of the COMMAND_* string constants if a command is recognized, or None.
@@ -138,48 +152,58 @@ def match_voice_command(user_text: str) -> Optional[str]:
         return None
 
     clean = normalize_query(user_text)
+
+    has_password = False
+    clean_password = normalize_query(password) if password else ""
+    if clean_password and clean_password not in ("none", "off", "false"):
+        pwd_pattern = re.compile(r"\b" + re.escape(clean_password) + r"\b", re.IGNORECASE)
+        if pwd_pattern.search(clean):
+            has_password = True
+            clean = pwd_pattern.sub(" ", clean)
+            clean = re.sub(r"\s+", " ", clean).strip()
+
     stripped = _PREFIX_PATTERN.sub("", clean).strip()
     if not stripped:
         return None
 
+    matched_cmd = None
     # 1. Shutdown command
     if _SHUTDOWN_PATTERN.match(stripped):
-        return COMMAND_SHUTDOWN
-
+        matched_cmd = COMMAND_SHUTDOWN
     # 2. Mode query command (evaluated before mode-setting to prevent 'are you offline' matching 'offline')
-    if _MODE_QUERY_PATTERN.match(stripped):
-        return COMMAND_MODE_QUERY
-
+    elif _MODE_QUERY_PATTERN.match(stripped):
+        matched_cmd = COMMAND_MODE_QUERY
     # 3. Voice model query command
-    if _VOICE_QUERY_PATTERN.match(stripped):
-        return COMMAND_VOICE_QUERY
-
+    elif _VOICE_QUERY_PATTERN.match(stripped):
+        matched_cmd = COMMAND_VOICE_QUERY
     # 4. Dialogue engine query command
-    if _ENGINE_QUERY_PATTERN.match(stripped):
-        return COMMAND_ENGINE_QUERY
-
+    elif _ENGINE_QUERY_PATTERN.match(stripped):
+        matched_cmd = COMMAND_ENGINE_QUERY
     # 5. Fallback query command
-    if _FALLBACK_QUERY_PATTERN.match(stripped):
-        return COMMAND_FALLBACK_QUERY
-
+    elif _FALLBACK_QUERY_PATTERN.match(stripped):
+        matched_cmd = COMMAND_FALLBACK_QUERY
     # 6. Fallback enable command
-    if _FALLBACK_ENABLE_PATTERN.match(stripped):
-        return COMMAND_FALLBACK_ENABLE
-
+    elif _FALLBACK_ENABLE_PATTERN.match(stripped):
+        matched_cmd = COMMAND_FALLBACK_ENABLE
     # 7. Fallback disable command
-    if _FALLBACK_DISABLE_PATTERN.match(stripped):
-        return COMMAND_FALLBACK_DISABLE
-
+    elif _FALLBACK_DISABLE_PATTERN.match(stripped):
+        matched_cmd = COMMAND_FALLBACK_DISABLE
     # 8. Switch to offline mode
-    if _MODE_OFFLINE_PATTERN.match(stripped):
-        return COMMAND_MODE_OFFLINE
+    elif _MODE_OFFLINE_PATTERN.match(stripped):
+        matched_cmd = COMMAND_MODE_OFFLINE
+    # 9. Switch to online mode
+    elif _MODE_ONLINE_PATTERN.match(stripped):
+        matched_cmd = COMMAND_MODE_ONLINE
+    # 10. Switch to automatic mode
+    elif _MODE_AUTO_PATTERN.match(stripped):
+        matched_cmd = COMMAND_MODE_AUTO
 
-    # 4. Switch to online mode
-    if _MODE_ONLINE_PATTERN.match(stripped):
-        return COMMAND_MODE_ONLINE
+    if matched_cmd is None:
+        return None
 
-    # 5. Switch to automatic mode
-    if _MODE_AUTO_PATTERN.match(stripped):
-        return COMMAND_MODE_AUTO
+    # Check privilege authorization if password is required
+    if clean_password and clean_password not in ("none", "off", "false"):
+        if matched_cmd in PRIVILEGED_COMMANDS and not has_password:
+            return COMMAND_ACCESS_DENIED
 
-    return None
+    return matched_cmd
