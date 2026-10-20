@@ -8,6 +8,9 @@ import pytest
 
 from core.voice_commands import (
     COMMAND_ENGINE_QUERY,
+    COMMAND_FALLBACK_DISABLE,
+    COMMAND_FALLBACK_ENABLE,
+    COMMAND_FALLBACK_QUERY,
     COMMAND_MODE_AUTO,
     COMMAND_MODE_OFFLINE,
     COMMAND_MODE_ONLINE,
@@ -212,6 +215,65 @@ def test_match_voice_command_voice_query(phrase):
 def test_match_voice_command_engine_query(phrase):
     """Verify dialogue engine queries match accurately."""
     assert match_voice_command(phrase) == COMMAND_ENGINE_QUERY
+
+
+@pytest.mark.parametrize("phrase", [
+    "what is your fallback status",
+    "what is the fallback status",
+    "fallback status",
+    "llm fallback status",
+    "is fallback enabled",
+    "is fallback on",
+    "is llm fallback enabled",
+    "is llm fallback on",
+    "check fallback status",
+    "query fallback status",
+    "are you using fallback",
+    "are you using llm fallback",
+    "hey grimjaw is llm fallback enabled",
+    "grimjaw fallback status",
+])
+def test_match_voice_command_fallback_query(phrase):
+    """Verify fallback status queries match accurately."""
+    assert match_voice_command(phrase) == COMMAND_FALLBACK_QUERY
+
+
+@pytest.mark.parametrize("phrase", [
+    "enable fallback",
+    "enable llm fallback",
+    "turn on fallback",
+    "turn on llm fallback",
+    "activate fallback",
+    "activate llm fallback",
+    "fallback on",
+    "llm fallback on",
+    "switch on fallback",
+    "switch on llm fallback",
+    "hey grimjaw enable llm fallback",
+    "grimjaw fallback on",
+])
+def test_match_voice_command_fallback_enable(phrase):
+    """Verify fallback enable commands match accurately."""
+    assert match_voice_command(phrase) == COMMAND_FALLBACK_ENABLE
+
+
+@pytest.mark.parametrize("phrase", [
+    "disable fallback",
+    "disable llm fallback",
+    "turn off fallback",
+    "turn off llm fallback",
+    "deactivate fallback",
+    "deactivate llm fallback",
+    "fallback off",
+    "llm fallback off",
+    "switch off fallback",
+    "switch off llm fallback",
+    "hey grimjaw disable llm fallback",
+    "grimjaw fallback off",
+])
+def test_match_voice_command_fallback_disable(phrase):
+    """Verify fallback disable commands match accurately."""
+    assert match_voice_command(phrase) == COMMAND_FALLBACK_DISABLE
 
 
 @pytest.mark.parametrize("phrase", [

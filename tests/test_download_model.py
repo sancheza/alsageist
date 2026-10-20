@@ -12,7 +12,7 @@ def test_download_model_help():
     """Verify -h / --help prints usage and exits with 0."""
     result = subprocess.run([SCRIPT_PATH, "--help"], capture_output=True, text=True)
     assert result.returncode == 0
-    assert "Download Piper TTS neural voice and Vosk STT models." in result.stdout
+    assert "Download Piper TTS neural voice and Vosk Speech-to-Text" in result.stdout
     assert "--vosk" in result.stdout
     assert "--all" in result.stdout
 

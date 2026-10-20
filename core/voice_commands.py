@@ -19,6 +19,9 @@ COMMAND_MODE_AUTO = "system_mode_auto"
 COMMAND_MODE_QUERY = "system_mode_query"
 COMMAND_VOICE_QUERY = "system_voice_query"
 COMMAND_ENGINE_QUERY = "system_engine_query"
+COMMAND_FALLBACK_QUERY = "system_fallback_query"
+COMMAND_FALLBACK_ENABLE = "system_fallback_enable"
+COMMAND_FALLBACK_DISABLE = "system_fallback_disable"
 
 # Common polite or wake-word prefixes to strip before command evaluation
 _PREFIX_PATTERN = re.compile(
@@ -64,6 +67,31 @@ _ENGINE_QUERY_PATTERN = re.compile(
     r"|^(?:current|check|status|system)\s+(?:dialog(?:ue)?\s+)?engine$"
     r"|^(?:dialog(?:ue)?\s+engine)(?:\s+(?:status|check))?$"
     r"|^engine\s+(?:status|check)$",
+    re.IGNORECASE,
+)
+
+# Fallback status query commands: "what is your fallback status", "is fallback enabled", etc.
+_FALLBACK_QUERY_PATTERN = re.compile(
+    r"^(?:(?:what(?:'?s|\s+is)?)\s+)?(?:your\s+|the\s+|current\s+)?(?:l\s*l\s*m\s+)?fallback(?:\s+status)?(?:\s+(?:is\s+this|is\s+it))?$"
+    r"|^(?:what(?:'?s|\s+is)?\s+)?(?:l\s*l\s*m\s+)?fallback\s+status$"
+    r"|^is\s+(?:l\s*l\s*m\s+)?fallback(?:\s+(?:on|enabled|active))?$"
+    r"|^(?:check|query)\s+(?:l\s*l\s*m\s+)?fallback(?:\s+status)?$"
+    r"|^(?:l\s*l\s*m\s+)?fallback\s+(?:status|check)$"
+    r"|^are\s+you\s+using\s+(?:l\s*l\s*m\s+)?fallback$",
+    re.IGNORECASE,
+)
+
+# Fallback enable commands: "enable fallback", "turn on llm fallback", "fallback on", etc.
+_FALLBACK_ENABLE_PATTERN = re.compile(
+    r"^(?:enable|turn\s+on|activate|start|switch\s+on)\s+(?:l\s*l\s*m\s+)?fallback$"
+    r"|^(?:l\s*l\s*m\s+)?fallback\s+on$",
+    re.IGNORECASE,
+)
+
+# Fallback disable commands: "disable fallback", "turn off llm fallback", "fallback off", etc.
+_FALLBACK_DISABLE_PATTERN = re.compile(
+    r"^(?:disable|turn\s+off|deactivate|stop|switch\s+off)\s+(?:l\s*l\s*m\s+)?fallback$"
+    r"|^(?:l\s*l\s*m\s+)?fallback\s+off$",
     re.IGNORECASE,
 )
 
@@ -130,7 +158,19 @@ def match_voice_command(user_text: str) -> Optional[str]:
     if _ENGINE_QUERY_PATTERN.match(stripped):
         return COMMAND_ENGINE_QUERY
 
-    # 5. Switch to offline mode
+    # 5. Fallback query command
+    if _FALLBACK_QUERY_PATTERN.match(stripped):
+        return COMMAND_FALLBACK_QUERY
+
+    # 6. Fallback enable command
+    if _FALLBACK_ENABLE_PATTERN.match(stripped):
+        return COMMAND_FALLBACK_ENABLE
+
+    # 7. Fallback disable command
+    if _FALLBACK_DISABLE_PATTERN.match(stripped):
+        return COMMAND_FALLBACK_DISABLE
+
+    # 8. Switch to offline mode
     if _MODE_OFFLINE_PATTERN.match(stripped):
         return COMMAND_MODE_OFFLINE
 

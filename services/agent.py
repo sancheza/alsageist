@@ -917,6 +917,22 @@ class AlsaGeistAgent:
             key = "engine_llm" if engine_type == "llm" else "engine_intent"
             return self._announcement(key), command
 
+        if command == voice_commands.COMMAND_FALLBACK_QUERY:
+            msg = self._announcement("fallback_enabled") if self.llm_fallback_enabled else self._announcement("fallback_disabled")
+            return msg, command
+
+        if command == voice_commands.COMMAND_FALLBACK_ENABLE:
+            try:
+                self.set_llm_fallback(True)
+                return self._announcement("fallback_enabled"), command
+            except Exception as exc:
+                print(f"Failed to enable LLM fallback via voice: {exc}")
+                return "Could not enable L L M fallback. Check API key configuration.", command
+
+        if command == voice_commands.COMMAND_FALLBACK_DISABLE:
+            self.set_llm_fallback(False)
+            return self._announcement("fallback_disabled"), command
+
         return self._announcement("offline_mode"), command
 
     def _resolve_dialogue_response(self, user_text: str) -> Tuple[str, str]:

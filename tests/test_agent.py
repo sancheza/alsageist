@@ -967,6 +967,35 @@ def test_agent_voice_command_query_dialogue_engine():
     assert reply == "The dialogue engine is neural L L M."
 
 
+def test_agent_voice_command_fallback_query_and_toggle():
+    """Speaking fallback voice commands queries, enables, and disables fallback."""
+    agent = make_bare_agent(llm_fallback_enabled=False)
+    mock_llm = MagicMock()
+    agent._build_llm = MagicMock(return_value=mock_llm)
+
+    # 1. Query while disabled
+    reply, intent = agent._resolve_dialogue_response("what is your fallback status")
+    assert intent == "system_fallback_query"
+    assert reply == "L L M fallback is disabled."
+
+    # 2. Enable
+    reply, intent = agent._resolve_dialogue_response("enable llm fallback")
+    assert intent == "system_fallback_enable"
+    assert reply == "L L M fallback is enabled."
+    assert agent.llm_fallback_enabled is True
+
+    # 3. Query while enabled
+    reply, intent = agent._resolve_dialogue_response("is fallback enabled")
+    assert intent == "system_fallback_query"
+    assert reply == "L L M fallback is enabled."
+
+    # 4. Disable
+    reply, intent = agent._resolve_dialogue_response("disable llm fallback")
+    assert intent == "system_fallback_disable"
+    assert reply == "L L M fallback is disabled."
+    assert agent.llm_fallback_enabled is False
+
+
 def test_agent_voice_command_shutdown_triggers_request_shutdown():
     """Speaking 'shut down' in an utterance triggers host shutdown."""
     agent = make_bare_agent()

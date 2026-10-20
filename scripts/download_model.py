@@ -73,7 +73,7 @@ def parse_args() -> argparse.Namespace:
         argparse.Namespace: Parsed command line options.
     """
     parser = argparse.ArgumentParser(
-        description="Download Piper TTS neural voice and Vosk STT models."
+        description="Download Piper TTS neural voice and Vosk Speech-to-Text (speech recognition) models."
     )
     parser.add_argument(
         "-v",
@@ -95,7 +95,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--all",
         action="store_true",
-        help="Download both Piper neural voice model and Vosk STT model.",
+        help="Download both Piper neural voice model and Vosk Speech-to-Text (speech recognition) model.",
     )
     parser.add_argument(
         "--models-dir",

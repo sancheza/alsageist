@@ -35,6 +35,8 @@ DEFAULT_ANNOUNCEMENTS = {
     "engine_intent": "The dialogue engine is intent.",
     "engine_llm": "The dialogue engine is neural L L M.",
     "voice_model_template": "My voice model is {model}.",
+    "fallback_enabled": "L L M fallback is enabled.",
+    "fallback_disabled": "L L M fallback is disabled.",
 }
 DEFAULT_GREETING_TEMPLATE = "I am {name}. System online and ready."
 
