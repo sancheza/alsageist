@@ -132,6 +132,21 @@ def test_healthy_cpu_logs_nothing():
     assert messages == []
 
 
+def test_benign_frequency_capping_since_boot_alone_does_not_warn():
+    """Bit 17 (0x20000) alone without under-voltage or throttling is benign and logs no warning."""
+    monitor, messages, _ = _monitor([PowerStatus(1 << 17, temp_c=59.1)] * 3)
+    for _ in range(3):
+        monitor.check()
+    assert messages == []
+
+
+def test_advice_requires_actual_throttling_to_claim_throttling():
+    """_advice only mentions throttling when bit 2 or bit 18 is set."""
+    assert "Throttling slows" not in PowerMonitor._advice(PowerStatus(1 << 17))
+    assert "Throttling slows" in PowerMonitor._advice(PowerStatus(1 << 18))
+    assert "Throttling slows" in PowerMonitor._advice(PowerStatus(1 << 2))
+
+
 def test_soft_temperature_limit_advises_cooling():
     """A thermal flag points at cooling rather than the power supply."""
     monitor, messages, _ = _monitor([PowerStatus(1 << 3, temp_c=82.0)])

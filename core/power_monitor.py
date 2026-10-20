@@ -275,9 +275,14 @@ class PowerMonitor:
                 self._log(f"CPU is no longer throttled{temp}.")
 
         new = [text for text in status.occurred if text not in self._reported_occurred]
-        if new:
+        if new == ["ARM frequency capping has occurred"] and not (status.raw & ((1 << 16) | (1 << 18) | (1 << 19))):
+            # Benign bootloader-time frequency cap latch without under-voltage or throttling
             self._reported_occurred.update(new)
-            self._log(f"Warning: since boot the CPU reported: {', '.join(new)}{temp}. {self._advice(status)}")
+        elif new:
+            self._reported_occurred.update(new)
+            advice = self._advice(status)
+            suffix = f" {advice}" if advice else ""
+            self._log(f"Warning: since boot the CPU reported: {', '.join(new)}{temp}.{suffix}")
         return status
 
     def _maybe_announce(self, status: PowerStatus, now: float) -> None:
@@ -302,7 +307,9 @@ class PowerMonitor:
             parts.append("Check the power supply and USB cable (the Pi 3 needs a solid 5 V, 2.5 A).")
         if status.raw & ((1 << 3) | (1 << 19)):
             parts.append("Check cooling and airflow.")
-        return " ".join(parts) or "Throttling slows CPU-bound work such as loading a voice model."
+        if status.raw & ((1 << 2) | (1 << 18)):
+            parts.append("Throttling slows CPU-bound work such as loading a voice model.")
+        return " ".join(parts)
 
     def start(self) -> bool:
         """Run one check now, then keep checking on a background thread.
