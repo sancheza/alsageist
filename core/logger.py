@@ -7,7 +7,7 @@ to JSONL and plain-text log files for dynamic evaluation and fine-tuning.
 from datetime import datetime
 import json
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from core.env_utils import env_bool, env_float, env_int
 
