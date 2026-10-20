@@ -30,6 +30,7 @@ class ControlTarget(Protocol):
 
     start_time: float
     is_disabled: bool
+    is_initializing: bool
     is_online: bool
     mode_forced: bool
     mic_muted: bool
@@ -383,6 +384,22 @@ class ControlServer:
         """
         agent = self.agent
 
+        if getattr(agent, "is_initializing", False) is True:
+            if cmd == "status":
+                return self._cmd_status()
+            if cmd in ("shutdown", "poweroff"):
+                if str(value) != SHUTDOWN_CONFIRMATION:
+                    return {
+                        "status": "error",
+                        "message": f"Shutdown powers off the host. Send value '{SHUTDOWN_CONFIRMATION}' to confirm.",
+                    }
+                agent.request_shutdown()
+                return {"status": "ok", "message": "Host system shutdown initiated."}
+            return {
+                "status": "error",
+                "message": "Daemon is currently starting up and loading neural models into RAM. Please wait a moment.",
+            }
+
         if cmd == "status":
             return self._cmd_status()
 
@@ -506,27 +523,36 @@ class ControlServer:
     def _cmd_status(self) -> Dict[str, Any]:
         """Compile comprehensive runtime status."""
         agent = self.agent
-        profile = agent.active_profile
-        vol_pct = int(round(agent.volume * 100))
+        profile = getattr(agent, "active_profile", None) or getattr(agent, "profile", None)
+        is_init = getattr(agent, "is_initializing", False) is True
+        vol = getattr(agent, "volume", 0.8)
+        vol_pct = int(round(vol * 100))
 
         uptime_sec = int(time.time() - agent.start_time)
 
+        if is_init:
+            state = "INITIALIZING"
+        elif getattr(agent, "is_disabled", False):
+            state = "DISABLED"
+        else:
+            state = "ACTIVE"
+
         return {
             "status": "ok",
-            "state": "DISABLED" if agent.is_disabled else "ACTIVE",
-            "personality": profile.personality if profile else "unknown",
-            "display_name": profile.display_name if profile else "AlsaGeist Persona",
-            "voice": profile.voice if profile else "default",
+            "state": state,
+            "personality": getattr(profile, "personality", "unknown") if profile else "unknown",
+            "display_name": getattr(agent, "persona_name", "AlsaGeist Persona"),
+            "voice": getattr(profile, "voice", "default") if profile else "default",
             "volume_pct": vol_pct,
-            "volume_float": round(agent.volume, 2),
-            "mic_muted": agent.mic_muted,
-            "mic_state": getattr(agent, "mic_state", "MUTED" if agent.mic_muted else "UNMUTED (Capturing)"),
-            "disabled": agent.is_disabled,
-            "mode": "ONLINE" if agent.is_online else "OFFLINE",
-            "mode_forced": agent.mode_forced,
-            "engine": agent.engine_name.upper(),
-            "llm_fallback": agent.llm_fallback_enabled,
-            "led_state": agent.led_state_name,
+            "volume_float": round(vol, 2),
+            "mic_muted": getattr(agent, "mic_muted", False),
+            "mic_state": "INITIALIZING" if is_init else getattr(agent, "mic_state", "MUTED" if getattr(agent, "mic_muted", False) else "UNMUTED (Capturing)"),
+            "disabled": getattr(agent, "is_disabled", False),
+            "mode": "ONLINE" if getattr(agent, "is_online", True) else "OFFLINE",
+            "mode_forced": getattr(agent, "mode_forced", False),
+            "engine": getattr(agent, "engine_name", "intent").upper(),
+            "llm_fallback": getattr(agent, "llm_fallback_enabled", False),
+            "led_state": "INITIALIZING" if is_init else getattr(agent, "led_state_name", "UNKNOWN"),
             "uptime_sec": uptime_sec,
             "pid": os.getpid(),
         }

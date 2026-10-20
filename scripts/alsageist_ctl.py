@@ -48,6 +48,7 @@ import json
 import os
 import socket
 import sys
+import time
 from typing import Any, Dict, Optional, Tuple
 
 VERSION = "1.1.0"
@@ -61,6 +62,7 @@ def send_command(
     value: Any = None,
     socket_path: Optional[str] = None,
     timeout: Optional[float] = None,
+    wait_sec: float = 3.0,
 ) -> Tuple[bool, Dict[str, Any]]:
     """Send command to AlsaGeist Unix domain socket and parse response.
 
@@ -71,6 +73,7 @@ def send_command(
             the per-user path /tmp/alsageist-<uid>/alsageist.sock).
         timeout: Socket communication timeout in seconds (default: 3 s, longer for
             commands that wait for speech or a voice model).
+        wait_sec: Seconds to wait for daemon socket if it is currently starting up (default: 3.0 s).
 
     Returns:
         Tuple of (success_boolean, response_dict).
@@ -82,14 +85,18 @@ def send_command(
         socket_path = control_server.default_socket_path()
 
     if not os.path.exists(socket_path):
-        return False, {
-            "status": "error",
-            "message": (
-                f"Socket file '{socket_path}' not found.\n"
-                "Is the AlsaGeist daemon running?\n"
-                "Check service status with: sudo systemctl status alsageist.service"
-            ),
-        }
+        deadline = time.monotonic() + max(0.0, wait_sec)
+        while not os.path.exists(socket_path):
+            if time.monotonic() >= deadline:
+                return False, {
+                    "status": "error",
+                    "message": (
+                        f"Socket file '{socket_path}' not found.\n"
+                        "Is the AlsaGeist daemon running?\n"
+                        "Check service status with: sudo systemctl status alsageist.service"
+                    ),
+                }
+            time.sleep(0.2)
 
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
@@ -138,7 +145,12 @@ def format_status(data: Dict[str, Any]) -> str:
         Formatted multi-line text dashboard.
     """
     state = data.get("state", "UNKNOWN")
-    state_display = "ACTIVE (Listening)" if state == "ACTIVE" else "DISABLED (Sleep Mode)"
+    if state == "INITIALIZING":
+        state_display = "INITIALIZING (Loading neural models into RAM...)"
+    elif state == "ACTIVE":
+        state_display = "ACTIVE (Listening)"
+    else:
+        state_display = "DISABLED (Sleep Mode)"
     personality = data.get("personality", "unknown")
     display_name = data.get("display_name", "AlsaGeist")
     voice = data.get("voice", "default")
@@ -273,6 +285,12 @@ COMMON USAGE EXAMPLES:
         help="Seconds to wait for the daemon's reply (default: 3, 60 for say, 120 for personality).",
     )
     parser.add_argument(
+        "--wait",
+        type=float,
+        default=3.0,
+        help="Max seconds to wait for daemon socket if starting up (default: 3.0).",
+    )
+    parser.add_argument(
         "--yes",
         action="store_true",
         help="Confirm a host shutdown (required for shutdown and poweroff).",
@@ -321,7 +339,7 @@ def main() -> int:
         print(f"[DRY RUN] Would send command '{cmd}' with value '{val}' to {socket_path}.")
         return 0
 
-    ok, resp = send_command(cmd, val, socket_path=socket_path, timeout=args.timeout)
+    ok, resp = send_command(cmd, val, socket_path=socket_path, timeout=args.timeout, wait_sec=args.wait)
 
     if args.json:
         print(json.dumps(resp, indent=2))

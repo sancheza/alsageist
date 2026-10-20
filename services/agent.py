@@ -64,6 +64,7 @@ class AlsaGeistAgent:
         self.running = False
         self._stopped = False
         self.is_disabled = False
+        self.is_initializing = True
         self.start_time = time.time()
         self._state_lock = threading.RLock()
         self._audio_lock = threading.RLock()
@@ -75,51 +76,61 @@ class AlsaGeistAgent:
         self._idle_reset_done = False
         self._consecutive_filtered_turns = 0
 
-        print(f"Initializing AlsaGeist subsystems (Dialogue Engine: {args.engine.upper()})...")
-
         personality = getattr(args, "personality", "grimjaw")
         self.profile: Optional[PersonalityProfile] = self._load_profile(personality)
 
-        self.led = create_led_controller(
-            verbose=True,
-            led_pin=getattr(args, "led_pin", None),
-            button_pin=getattr(args, "button_pin", None),
-            hold_time_sec=getattr(args, "button_hold_sec", None),
-            long_hold_time_sec=getattr(args, "button_shutdown_sec", None),
-        )
-        self.audio = self._build_audio()
-        self.vad = self._build_vad()
-        self.stt = self._build_stt()
-
-        self.llm_fallback_enabled = getattr(args, "llm_fallback", False)
-        self.dialogue_engine, self.llm_fallback_service = self._build_dialogue(self.profile, personality)
-        self.tts = self._build_tts(self.profile)
-
-        log_dir = os.environ.get("LOG_DIR", os.path.join(REPO_ROOT, "logs"))
-        self.logger = InteractionLogger.from_env(log_dir=log_dir, persona_name=self.persona_name)
-        self.basic_info = BasicInfoService(profile=self.profile)
-
-        self.network = NetworkMonitor(probe=lambda: self._check_internet())
-        self.network.start_probe()
-
-        # With button shutdown disabled the long hold is not registered, so a long press still
-        # acts as the sleep/wake hold instead of being swallowed
-        self.led.set_button_callbacks(
-            on_press=self._on_button_press,
-            on_hold=self._on_button_hold,
-            on_long_hold=self._on_button_long_hold if env_bool("BUTTON_SHUTDOWN_ENABLED", True) else None,
-            hold_time_sec=getattr(args, "button_hold_sec", 5.0),
-            long_hold_time_sec=getattr(args, "button_shutdown_sec", 10.0),
-        )
-
+        # Start control server immediately so socket is available during model loading
         self.control_server = ControlServer(agent=self)
-        monitor_enabled = env_bool("LOW_POWER_MONITOR", True)
-        announce_enabled = env_bool("LOW_POWER_ANNOUNCE", True)
-        self.power_monitor: Optional[PowerMonitor] = (
-            PowerMonitor.from_env(announce=self._announce_low_power if announce_enabled else None)
-            if monitor_enabled
-            else None
-        )
+        try:
+            self.control_server.start()
+        except Exception as exc:
+            print(f"Warning: Could not start control server early: {exc}")
+
+        try:
+            print(f"Initializing AlsaGeist subsystems (Dialogue Engine: {args.engine.upper()})...")
+
+            self.led = create_led_controller(
+                verbose=True,
+                led_pin=getattr(args, "led_pin", None),
+                button_pin=getattr(args, "button_pin", None),
+                hold_time_sec=getattr(args, "button_hold_sec", None),
+                long_hold_time_sec=getattr(args, "button_shutdown_sec", None),
+            )
+            self.audio = self._build_audio()
+            self.vad = self._build_vad()
+            self.stt = self._build_stt()
+
+            self.llm_fallback_enabled = getattr(args, "llm_fallback", False)
+            self.dialogue_engine, self.llm_fallback_service = self._build_dialogue(self.profile, personality)
+            self.tts = self._build_tts(self.profile)
+
+            log_dir = os.environ.get("LOG_DIR", os.path.join(REPO_ROOT, "logs"))
+            self.logger = InteractionLogger.from_env(log_dir=log_dir, persona_name=self.persona_name)
+            self.basic_info = BasicInfoService(profile=self.profile)
+
+            self.network = NetworkMonitor(probe=lambda: self._check_internet())
+            self.network.start_probe()
+
+            # With button shutdown disabled the long hold is not registered, so a long press still
+            # acts as the sleep/wake hold instead of being swallowed
+            self.led.set_button_callbacks(
+                on_press=self._on_button_press,
+                on_hold=self._on_button_hold,
+                on_long_hold=self._on_button_long_hold if env_bool("BUTTON_SHUTDOWN_ENABLED", True) else None,
+                hold_time_sec=getattr(args, "button_hold_sec", 5.0),
+                long_hold_time_sec=getattr(args, "button_shutdown_sec", 10.0),
+            )
+
+            monitor_enabled = env_bool("LOW_POWER_MONITOR", True)
+            announce_enabled = env_bool("LOW_POWER_ANNOUNCE", True)
+            self.power_monitor: Optional[PowerMonitor] = (
+                PowerMonitor.from_env(announce=self._announce_low_power if announce_enabled else None)
+                if monitor_enabled
+                else None
+            )
+        except Exception:
+            self.control_server.stop()
+            raise
 
     # ------------------------------------------------------------------
     # Construction helpers
@@ -378,6 +389,8 @@ class AlsaGeistAgent:
     @property
     def mic_state(self) -> str:
         """Return a descriptive label for the current microphone state."""
+        if getattr(self, "is_initializing", False):
+            return "INITIALIZING"
         if self.is_disabled:
             return "MUTED (Sleep Mode)"
         if self._user_muted:
@@ -730,6 +743,7 @@ class AlsaGeistAgent:
 
     def start(self) -> None:
         """Run the real-time hands-free conversational loop."""
+        self.is_initializing = False
         self.running = True
         self.led.start()
         self.audio.start_capture()

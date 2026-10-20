@@ -48,6 +48,7 @@ def make_bare_agent(**overrides) -> AlsaGeistAgent:
     agent.args = make_args()
     agent.running = False
     agent.is_disabled = False
+    agent.is_initializing = False
     agent.start_time = time.time()
     agent.profile = None
     agent.llm_fallback_enabled = False

@@ -337,6 +337,34 @@ def test_format_status_mic_display():
     rendered = format_status({"mic_muted": False})
     assert "Microphone State:  UNMUTED (Capturing)" in rendered
 
+    rendered = format_status({"state": "INITIALIZING", "mic_state": "INITIALIZING"})
+    assert "Display State:     INITIALIZING (Loading neural models into RAM...)" in rendered
+    assert "Microphone State:  INITIALIZING" in rendered
+
+
+def test_dispatch_status_while_initializing(server_and_agent):
+    """Test status and commands while daemon is initializing neural models."""
+    server, agent = server_and_agent
+    agent.is_initializing = True
+
+    try:
+        # Status succeeds and reports INITIALIZING
+        resp = server.dispatch_command("status")
+        assert resp["status"] == "ok"
+        assert resp["state"] == "INITIALIZING"
+        assert resp["mic_state"] == "INITIALIZING"
+
+        # Operational commands return error asking client to wait
+        resp = server.dispatch_command("volume", "50")
+        assert resp["status"] == "error"
+        assert "loading neural models into RAM" in resp["message"]
+
+        resp = server.dispatch_command("say", "Hello")
+        assert resp["status"] == "error"
+        assert "loading neural models into RAM" in resp["message"]
+    finally:
+        agent.is_initializing = False
+
 
 def test_dispatch_disable_enable_toggle(server_and_agent):
     """Test disable, enable, and toggle sleep/wake commands."""
@@ -480,7 +508,7 @@ def test_cli_missing_socket():
     """Test CLI handles missing socket gracefully."""
     from scripts.alsageist_ctl import send_command
 
-    ok, resp = send_command("status", socket_path="/tmp/nonexistent_socket_12345.sock")
+    ok, resp = send_command("status", socket_path="/tmp/nonexistent_socket_12345.sock", wait_sec=0.05)
     assert ok is False
     assert resp["status"] == "error"
     assert "Socket file" in resp["message"]
