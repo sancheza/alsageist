@@ -109,7 +109,7 @@ class AlsaGeistAgent:
             self.dialogue_engine, self.llm_fallback_service = self._build_dialogue(self.profile, personality)
             self.tts = self._build_tts(self.profile)
 
-            log_dir = os.environ.get("LOG_DIR", os.path.join(REPO_ROOT, "logs"))
+            log_dir = os.environ.get("LOG_DIR", "").strip() or os.path.join(REPO_ROOT, "logs")
             self.logger = InteractionLogger.from_env(log_dir=log_dir, persona_name=self.persona_name)
             self.basic_info = BasicInfoService(profile=self.profile)
 

@@ -114,3 +114,15 @@ def test_logger_from_env(tmp_path, monkeypatch):
 
     monkeypatch.delenv("LOG_TRANSCRIPTS")
     assert InteractionLogger.from_env(str(tmp_path)).store_text is False  # transcripts are opt-in
+
+
+def test_logger_empty_log_dir_fallback(tmp_path, monkeypatch):
+    """Empty or whitespace log_dir falls back cleanly without raising FileNotFoundError."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LOG_DIR", "")
+    logger = InteractionLogger.from_env("")
+    assert logger.log_dir == "logs"
+    assert os.path.isdir(str(tmp_path / "logs"))
+
+    logger2 = InteractionLogger(log_dir="   ")
+    assert logger2.log_dir == "logs"

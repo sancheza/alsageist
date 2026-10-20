@@ -44,17 +44,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--engine",
         choices=["intent", "llm"],
-        default=os.environ.get("ENGINE", "intent").lower(),
+        default=(os.environ.get("ENGINE", "").strip() or "intent").lower(),
         help="Dialogue engine: 'intent' (fast offline banter engine) or 'llm' (neural LLM). (default: $ENGINE or intent)",
     )
     parser.add_argument(
         "--personality",
-        default=os.environ.get("PERSONALITY", "grimjaw"),
+        default=os.environ.get("PERSONALITY", "").strip() or "grimjaw",
         help="Personality profile identifier or JSON path (default: $PERSONALITY or grimjaw).",
     )
     parser.add_argument(
         "--model-path",
-        default=os.environ.get("MODEL_PATH"),
+        default=os.environ.get("MODEL_PATH", "").strip() or None,
         help="Path to Piper ONNX model file (default: $MODEL_PATH or resolved from personality profile).",
     )
     parser.add_argument(
@@ -146,7 +146,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--voice-command-password",
-        default=os.environ.get("VOICE_COMMAND_PASSWORD", "alsageist"),
+        default=os.environ.get("VOICE_COMMAND_PASSWORD", "").strip() or "alsageist",
         help="Verbal password required for privileged voice commands (default: 'alsageist' or $VOICE_COMMAND_PASSWORD). Set to 'none' to disable.",
     )
     return parser

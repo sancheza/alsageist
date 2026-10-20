@@ -42,7 +42,7 @@ class InteractionLogger:
             store_text: If False, visitor and persona text is replaced by a placeholder
                 and only timing, intent and audio statistics are recorded.
         """
-        self.log_dir = log_dir
+        self.log_dir = log_dir.strip() if log_dir and log_dir.strip() else "logs"
         self.persona_name = persona_name
         self.max_bytes = max_bytes
         self.backup_count = max(0, backup_count)
@@ -54,22 +54,26 @@ class InteractionLogger:
         self._turn_id = 0
 
     @classmethod
-    def from_env(cls, log_dir: str, persona_name: str = "Assistant") -> "InteractionLogger":
+    def from_env(cls, log_dir: Optional[str] = None, persona_name: str = "Assistant") -> "InteractionLogger":
         """Create a logger configured from the environment.
 
         Reads LOG_MAX_MB (default 5), LOG_BACKUPS (default 3) and LOG_TRANSCRIPTS
         (default false; set true to store what visitors and the persona say).
 
         Args:
-            log_dir: Directory where log files are stored.
+            log_dir: Directory where log files are stored. Defaults to LOG_DIR or 'logs'.
             persona_name: Display name of the persona written to the text log.
 
         Returns:
             Configured InteractionLogger.
         """
+        resolved_log_dir = (
+            log_dir.strip() if log_dir and log_dir.strip()
+            else os.environ.get("LOG_DIR", "").strip() or "logs"
+        )
         store_text = env_bool("LOG_TRANSCRIPTS", False)
         return cls(
-            log_dir=log_dir,
+            log_dir=resolved_log_dir,
             persona_name=persona_name,
             max_bytes=int(env_float("LOG_MAX_MB", DEFAULT_MAX_MB) * 1024 * 1024),
             backup_count=env_int("LOG_BACKUPS", DEFAULT_BACKUPS),

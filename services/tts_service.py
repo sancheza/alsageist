@@ -118,7 +118,7 @@ class PiperTTSService:
             max_disk_cache_mb = env_float("ALSAGEIST_CACHE_MAX_MB", DEFAULT_DISK_CACHE_MB)
         self.max_disk_cache_bytes = int(max_disk_cache_mb * 1024 * 1024)
         default_cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "models", "cache")
-        self.cache_dir = cache_dir or os.environ.get("ALSAGEIST_CACHE_DIR", default_cache)
+        self.cache_dir = cache_dir or os.environ.get("ALSAGEIST_CACHE_DIR", "").strip() or default_cache
         try:
             os.makedirs(self.cache_dir, exist_ok=True)
         except OSError:
