@@ -167,8 +167,8 @@ def format_status(data: Dict[str, Any]) -> str:
         f"  Voice Model:       {voice} (Local ONNX)",
         f"  Audio Output Vol:  {vol_pct}% ({vol_float})",
         f"  Microphone State:  {mic_display}",
-        f"  Network Mode:      {mode}{' (forced)' if data.get('mode_forced') else ' (auto)'} (Cloud STT / LLM: {llm_fallback})",
-        f"  Dialogue Engine:   {engine}",
+        f"  Network Mode:      {mode}{' (forced)' if data.get('mode_forced') else ' (auto)'} (Cloud STT: {'Active' if mode == 'ONLINE' else 'Inactive'})",
+        f"  Dialogue Engine:   {engine} (LLM Fallback: {llm_fallback})",
         f"  Hardware LED:      {led_state}",
         f"  Process PID:       {pid} (Uptime: {uptime_str})",
         "=" * 64,
@@ -215,7 +215,7 @@ COMMON USAGE EXAMPLES:
 
   5. Switch operational network mode:
      ./scripts/alsageist_ctl.py mode offline   # 100% local Vosk STT (no cloud)
-     ./scripts/alsageist_ctl.py mode online    # Restore cloud STT & LLM fallback
+     ./scripts/alsageist_ctl.py mode online    # Force online mode (restore cloud STT & weather)
      ./scripts/alsageist_ctl.py mode auto      # Detect connectivity automatically again
 
   6. Hot-swap active personality on the fly:
