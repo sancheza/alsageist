@@ -145,7 +145,7 @@ def format_status(data: Dict[str, Any]) -> str:
     vol_pct = data.get("volume_pct", 0)
     vol_float = data.get("volume_float", 0.0)
     mic_muted = data.get("mic_muted", False)
-    mic_display = "MUTED" if mic_muted else "UNMUTED (Capturing)"
+    mic_display = data.get("mic_state") or ("MUTED" if mic_muted else "UNMUTED (Capturing)")
     mode = data.get("mode", "UNKNOWN")
     engine = data.get("engine", "INTENT")
     llm_fallback = "Enabled" if data.get("llm_fallback") else "Disabled"

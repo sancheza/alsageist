@@ -224,6 +224,7 @@ def test_dispatch_status(server_and_agent):
     assert resp["personality"] == "grimjaw"
     assert resp["volume_pct"] == 80
     assert resp["mic_muted"] is False
+    assert resp["mic_state"] == "UNMUTED (Capturing)"
     assert resp["mode"] == "ONLINE"
     assert resp["engine"] == "INTENT"
     assert resp["uptime_sec"] >= 100
@@ -291,6 +292,50 @@ def test_dispatch_mute_and_unmute(server_and_agent):
     assert resp["status"] == "ok"
     assert resp["mic_muted"] is False
     agent.audio.unmute_capture.assert_called()
+
+
+def test_dispatch_mic_state_distinctions(server_and_agent):
+    """Test mic_state distinguishes user mute, sleep mode, speaking, and capturing."""
+    server, agent = server_and_agent
+
+    # 1. Normal capturing
+    status = server.dispatch_command("status")
+    assert status["mic_state"] == "UNMUTED (Capturing)"
+
+    # 2. Speaking / transient TTS echo cancellation mute
+    agent.audio.is_muted = True
+    status = server.dispatch_command("status")
+    assert status["mic_state"] == "MUTED (Speaking)"
+    agent.audio.is_muted = False
+
+    # 3. Explicit user mute
+    server.dispatch_command("mute")
+    status = server.dispatch_command("status")
+    assert status["mic_state"] == "MUTED (User)"
+    server.dispatch_command("unmute")
+
+    # 4. Sleep mode / disabled
+    server.dispatch_command("disable")
+    status = server.dispatch_command("status")
+    assert status["mic_state"] == "MUTED (Sleep Mode)"
+    server.dispatch_command("enable")
+
+
+def test_format_status_mic_display():
+    """Test format_status renders mic_state and falls back to mic_muted."""
+    from scripts.alsageist_ctl import format_status
+
+    rendered = format_status({"mic_state": "MUTED (Speaking)"})
+    assert "Microphone State:  MUTED (Speaking)" in rendered
+
+    rendered = format_status({"mic_state": "MUTED (User)"})
+    assert "Microphone State:  MUTED (User)" in rendered
+
+    rendered = format_status({"mic_muted": True})
+    assert "Microphone State:  MUTED" in rendered
+
+    rendered = format_status({"mic_muted": False})
+    assert "Microphone State:  UNMUTED (Capturing)" in rendered
 
 
 def test_dispatch_disable_enable_toggle(server_and_agent):

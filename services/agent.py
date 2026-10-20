@@ -371,6 +371,22 @@ class AlsaGeistAgent:
         return self.audio.is_muted
 
     @property
+    def user_muted(self) -> bool:
+        """Return True if microphone capture was explicitly muted by the user."""
+        return self._user_muted
+
+    @property
+    def mic_state(self) -> str:
+        """Return a descriptive label for the current microphone state."""
+        if self.is_disabled:
+            return "MUTED (Sleep Mode)"
+        if self._user_muted:
+            return "MUTED (User)"
+        if self.audio.is_muted:
+            return "MUTED (Speaking)"
+        return "UNMUTED (Capturing)"
+
+    @property
     def led_state_name(self) -> str:
         """Return the current LED state name, or UNKNOWN."""
         state = getattr(self.led, "current_state", None)

@@ -33,6 +33,7 @@ class ControlTarget(Protocol):
     is_online: bool
     mode_forced: bool
     mic_muted: bool
+    mic_state: str
     volume: float
     engine_name: str
     llm_fallback_enabled: bool
@@ -519,6 +520,7 @@ class ControlServer:
             "volume_pct": vol_pct,
             "volume_float": round(agent.volume, 2),
             "mic_muted": agent.mic_muted,
+            "mic_state": getattr(agent, "mic_state", "MUTED" if agent.mic_muted else "UNMUTED (Capturing)"),
             "disabled": agent.is_disabled,
             "mode": "ONLINE" if agent.is_online else "OFFLINE",
             "mode_forced": agent.mode_forced,
