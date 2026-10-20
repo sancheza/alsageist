@@ -32,6 +32,9 @@ DEFAULT_ANNOUNCEMENTS = {
     "volume_template": "Volume {percent} percent.",
     "status_online": "I am in online mode.",
     "status_offline": "I am in offline mode.",
+    "engine_intent": "The dialogue engine is intent.",
+    "engine_llm": "The dialogue engine is neural L L M.",
+    "voice_model_template": "My voice model is {model}.",
 }
 DEFAULT_GREETING_TEMPLATE = "I am {name}. System online and ready."
 

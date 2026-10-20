@@ -44,8 +44,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--engine",
         choices=["intent", "llm"],
-        default="intent",
-        help="Dialogue engine: 'intent' (fast offline banter engine) or 'llm' (neural LLM). (default: intent)",
+        default=os.environ.get("ENGINE", "intent").lower(),
+        help="Dialogue engine: 'intent' (fast offline banter engine) or 'llm' (neural LLM). (default: $ENGINE or intent)",
     )
     parser.add_argument(
         "--personality",

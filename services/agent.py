@@ -8,6 +8,7 @@ control server. Entry points (main.py) only parse arguments and call start().
 import argparse
 import os
 import random
+import re
 import threading
 import time
 from typing import Optional, Tuple
@@ -403,6 +404,32 @@ class AlsaGeistAgent:
         """
         with self._state_lock:
             self.network.set_forced(online)
+
+    def set_llm_fallback(self, enabled: bool) -> bool:
+        """Enable or disable dynamic LLM fallback at runtime.
+
+        When enabled, initializes ConversationalLLMService on demand.
+
+        Args:
+            enabled: True to enable LLM fallback, False to disable.
+
+        Returns:
+            True if fallback is now enabled, False otherwise.
+
+        Raises:
+            ValueError: If enabled is requested but neither GROQ_API_KEY nor GEMINI_API_KEY is configured.
+        """
+        with self._switch_lock:
+            if enabled:
+                fallback = self.llm_fallback_service or self._build_llm(self.profile)
+                with self._state_lock:
+                    self.llm_fallback_service = fallback
+                    self.llm_fallback_enabled = True
+                return True
+            else:
+                with self._state_lock:
+                    self.llm_fallback_enabled = False
+                return False
 
     def disable(self) -> None:
         """Enter sleep mode: stop playback, mute the microphone, turn the LED off."""
@@ -861,6 +888,18 @@ class AlsaGeistAgent:
         if command == voice_commands.COMMAND_MODE_QUERY:
             msg = self._announcement("status_online") if self.is_online else self._announcement("status_offline")
             return msg, command
+
+        if command == voice_commands.COMMAND_VOICE_QUERY:
+            raw_voice = getattr(self.tts, "model_path", "") or (self.profile.voice if self.profile else "")
+            voice_name = os.path.splitext(os.path.basename(raw_voice))[0] if raw_voice else "unknown"
+            clean_name = re.sub(r"[_\-]+", " ", voice_name).strip()
+            template = self._announcement("voice_model_template") or "My voice model is {model}."
+            return template.format(model=clean_name), command
+
+        if command == voice_commands.COMMAND_ENGINE_QUERY:
+            engine_type = getattr(self.args, "engine", "intent").lower()
+            key = "engine_llm" if engine_type == "llm" else "engine_intent"
+            return self._announcement(key), command
 
         return self._announcement("offline_mode"), command
 

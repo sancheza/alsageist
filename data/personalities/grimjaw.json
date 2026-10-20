@@ -62,7 +62,10 @@
     "powering_off": "Powering off.",
     "powering_down": "Powering down.",
     "status_online": "I am in online mode.",
-    "status_offline": "I am in offline mode."
+    "status_offline": "I am in offline mode.",
+    "engine_intent": "The dialogue engine is intent.",
+    "engine_llm": "The dialogue engine is neural L L M.",
+    "voice_model_template": "My voice model is {model}."
   },
   "low_power_lines": [
     "My power levels are low. I need to frighten more children to recharge.",

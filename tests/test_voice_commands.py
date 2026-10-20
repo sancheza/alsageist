@@ -7,11 +7,13 @@ typographic apostrophes, phonetic word splits ('off line'), and conversational p
 import pytest
 
 from core.voice_commands import (
+    COMMAND_ENGINE_QUERY,
     COMMAND_MODE_AUTO,
     COMMAND_MODE_OFFLINE,
     COMMAND_MODE_ONLINE,
     COMMAND_MODE_QUERY,
     COMMAND_SHUTDOWN,
+    COMMAND_VOICE_QUERY,
     match_voice_command,
 )
 
@@ -150,6 +152,66 @@ def test_match_voice_command_auto(phrase):
 def test_match_voice_command_query(phrase):
     """Verify mode status queries match accurately."""
     assert match_voice_command(phrase) == COMMAND_MODE_QUERY
+
+
+@pytest.mark.parametrize("phrase", [
+    # Query voice model commands
+    "what is your voice model",
+    "what's your voice model",
+    "what is the voice model",
+    "what voice model are you using",
+    "which voice model are you using",
+    "what voice model is this",
+    "what voice are you using",
+    "which voice are you using",
+    "what is your voice",
+    "which voice model",
+    "what voice model",
+    "voice model",
+    "current voice model",
+    "check voice model",
+    "voice model status",
+    # With conversational prefixes
+    "hey grimjaw what voice model are you using",
+    "please tell me what is your voice model",
+    "can you tell me which voice are you using",
+    "grimjaw voice model",
+])
+def test_match_voice_command_voice_query(phrase):
+    """Verify voice model queries match accurately."""
+    assert match_voice_command(phrase) == COMMAND_VOICE_QUERY
+
+
+@pytest.mark.parametrize("phrase", [
+    # Query dialogue engine commands
+    "what is your dialogue engine",
+    "what is your dialog engine",
+    "what's your dialogue engine",
+    "what is the dialogue engine",
+    "which dialogue engine are you using",
+    "which dialog engine are you using",
+    "what dialogue engine are you running",
+    "what dialog engine are you running",
+    "what engine are you using",
+    "which engine are you using",
+    "what engine is running",
+    "what is your engine",
+    "dialogue engine",
+    "dialog engine",
+    "current engine",
+    "are you using intent or llm",
+    "are you using llm or intent",
+    "check dialogue engine",
+    "dialogue engine status",
+    # With conversational prefixes
+    "hey grimjaw what engine are you using",
+    "please tell me what is your dialogue engine",
+    "can you tell me are you using intent or llm",
+    "grimjaw dialogue engine",
+])
+def test_match_voice_command_engine_query(phrase):
+    """Verify dialogue engine queries match accurately."""
+    assert match_voice_command(phrase) == COMMAND_ENGINE_QUERY
 
 
 @pytest.mark.parametrize("phrase", [

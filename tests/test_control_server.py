@@ -420,6 +420,17 @@ def test_cli_dry_run():
         assert ret == 0
 
 
+def test_cli_fallback_dry_run(capsys):
+    """Test CLI main() with fallback command dry-run."""
+    from scripts.alsageist_ctl import main
+
+    test_args = ["alsageist_ctl.py", "fallback", "on", "--dry-run"]
+    with patch.object(sys, "argv", test_args):
+        ret = main()
+        assert ret == 0
+        assert "Would send command 'fallback' with value 'on'" in capsys.readouterr().out
+
+
 def test_cli_missing_socket():
     """Test CLI handles missing socket gracefully."""
     from scripts.alsageist_ctl import send_command
@@ -531,6 +542,56 @@ def test_parse_volume_accepts(value, current, expected):
 def test_parse_volume_rejects(value):
     with pytest.raises(ValueError):
         parse_volume(value, 0.5)
+
+
+def test_dispatch_fallback_commands(server_and_agent):
+    """ControlServer handles fallback query, enable, disable, and toggle."""
+    server, agent = server_and_agent
+    mock_llm = MagicMock()
+    agent._build_llm = MagicMock(return_value=mock_llm)
+
+    # Query initial status
+    resp = server.dispatch_command("fallback")
+    assert resp["status"] == "ok"
+    assert resp["llm_fallback"] is False
+    assert "disabled" in resp["message"]
+
+    # Enable fallback
+    resp = server.dispatch_command("fallback", "on")
+    assert resp["status"] == "ok"
+    assert resp["llm_fallback"] is True
+    assert "enabled" in resp["message"]
+    assert agent.llm_fallback_enabled is True
+
+    # Disable fallback
+    resp = server.dispatch_command("fallback", "off")
+    assert resp["status"] == "ok"
+    assert resp["llm_fallback"] is False
+    assert "disabled" in resp["message"]
+    assert agent.llm_fallback_enabled is False
+
+    # Toggle fallback
+    resp = server.dispatch_command("fallback", "toggle")
+    assert resp["status"] == "ok"
+    assert resp["llm_fallback"] is True
+    assert agent.llm_fallback_enabled is True
+
+
+def test_dispatch_fallback_validation_and_errors(server_and_agent):
+    """ControlServer validates fallback values and surfaces agent exceptions cleanly."""
+    server, agent = server_and_agent
+
+    # Invalid value
+    resp = server.dispatch_command("fallback", "invalid_value")
+    assert resp["status"] == "error"
+    assert "Invalid fallback value" in resp["message"]
+
+    # Backend error on initialization
+    agent.set_llm_fallback = MagicMock(side_effect=ValueError("No API key configured"))
+    resp = server.dispatch_command("fallback", "on")
+    assert resp["status"] == "error"
+    assert "Failed to configure LLM fallback" in resp["message"]
+    assert "No API key configured" in resp["message"]
 
 
 def test_is_socket_active(server_and_agent, test_socket_path):

@@ -306,6 +306,51 @@ Host system shutdown initiated.
 
 ---
 
+### 3.8 Toggling Generative LLM Fallback
+
+#### Objective: Enable, disable, or query dynamic LLM fallback at runtime without restarting the daemon.
+
+1. Query current fallback status:
+
+```bash
+python3 scripts/alsageist_ctl.py fallback
+```
+
+Expected output:
+```text
+✅ LLM fallback is disabled.
+```
+
+2. Enable dynamic LLM fallback (initializes cloud LLM service on demand):
+
+```bash
+python3 scripts/alsageist_ctl.py fallback on
+```
+
+Expected output:
+```text
+✅ LLM fallback enabled.
+```
+
+3. Disable dynamic LLM fallback:
+
+```bash
+python3 scripts/alsageist_ctl.py fallback off
+```
+
+Expected output:
+```text
+✅ LLM fallback disabled.
+```
+
+4. Toggle state between enabled and disabled:
+
+```bash
+python3 scripts/alsageist_ctl.py fallback toggle
+```
+
+---
+
 ## 4. Hardware Button & LED Signaling
 
 The physical illuminated arcade button on GPIO 23 and LED on GPIO 25 provide direct hardware control without terminal access.
@@ -344,6 +389,8 @@ AlsaGeist recognizes spoken system commands for poweroff, mode switching, and op
 | **Switch to Offline Mode** | *"go offline"*, *"switch to offline mode"*, *"offline mode"*, *"set mode offline"*, *"disconnect"* | Forces offline mode (`set_online(False)`) | *"NOW IN OFFLINE MODE"* |
 | **Switch to Online Mode** | *"go online"*, *"switch to online mode"*, *"online mode"*, *"set mode online"*, *"reconnect"* | Forces online mode (`set_online(True)`) | *"NOW IN ONLINE MODE"* |
 | **Query Active Mode** | *"what mode are you in"*, *"what is your mode"*, *"are you online or offline"*, *"current mode"*, *"check mode"* | Queries current network operating mode | *"I am in online mode."* or *"I am in offline mode."* |
+| **Query Voice Model** | *"what is your voice model"*, *"what voice model are you using"*, *"what voice are you using"*, *"voice model"*, *"current voice model"* | Queries active Piper neural voice model | *"My voice model is <model>."* (e.g. *"My voice model is en GB alan medium."*) |
+| **Query Dialogue Engine** | *"what is your dialogue engine"*, *"what engine are you using"*, *"dialogue engine"*, *"current engine"*, *"are you using intent or llm"* | Queries active conversational dialogue engine | *"The dialogue engine is intent."* or *"The dialogue engine is neural L L M."* |
 
 Spoken commands accommodate offline speech recognizer formatting (unpunctuated lowercase words, phonetic splits such as *"off line"* or *"on line"*), as well as polite wake prefixes (*"grimjaw"*, *"please"*, *"can you"*). Their spoken response lines are pre-warmed in `models/cache/` for zero-latency playback.
 
@@ -368,7 +415,30 @@ When internet access and API keys are present, AlsaGeist enables cloud accelerat
 * **Dynamic LLM Fallback:** When a visitor asks an unfamiliar question not covered by the 150+ offline intents, Grimjaw queries an LLM to generate a witty, in-character response under 2 sentences.
 * **Automatic Resilience:** If every cloud transcription service fails, the local Vosk model answers that question and AlsaGeist probes the network immediately (at most once every 30 seconds). If the network is down it switches to offline mode, announces "NOW IN OFFLINE MODE", and later questions skip the cloud entirely. If only a cloud service is down while the network is up, it stays online and tries the next service. Connectivity is also probed every 15 minutes, which brings it back online and announces "NOW IN ONLINE MODE". A mode set with `alsageist_ctl.py mode online` or `mode offline` is never changed automatically.
 
-### 5.3 Configuring Operational Parameters in `.env`
+### 5.3 Generative LLM Fallback (`LLM_FALLBACK`)
+
+By default, AlsaGeist uses deterministic regex intent matching against local persona definitions (`data/personalities/<persona>.json`). When a visitor utterance matches an intent, the response is retrieved in under 1 ms from pre-rendered audio cache files. When an utterance does not match any predefined pattern, AlsaGeist defaults to a snarky canned fallback line.
+
+Enabling **Generative LLM Fallback** (`LLM_FALLBACK=true` or `./scripts/alsageist_ctl.py fallback on`) escalates unrecognized visitor utterances to a cloud LLM service (`services/llm_service.py` using Groq LLaMA or Google Gemini Flash). The LLM generates a custom, in-character dialogue line strictly constrained by the persona's system prompt (under 2 sentences).
+
+#### Trade-offs: Pros and Cons
+
+| Category | Pros | Cons |
+| :--- | :--- | :--- |
+| **Conversational Breadth** | Answers novel or open-ended visitor questions outside the 150+ fixed regex intents. | Responses are generative rather than manually curated. |
+| **Response Latency** | Keeps interactions conversational when unexpected questions arise. | Adds 500–1,500 ms roundtrip cloud network latency before neural TTS synthesis begins (compared to <1 ms cached deterministic intents). |
+| **Resource Usage** | Runs cloud inference only when local regex patterns fail to match (level 3 escalation). | Consumes external cloud API rate limits and token quotas. |
+| **Network Reliability** | Automatically falls back to local canned responses if offline or if cloud APIs time out. | Requires stable internet connectivity and valid API keys (`GROQ_API_KEY` or `GEMINI_API_KEY`). |
+
+#### Configuration Methods
+
+| Method | Syntax | Scope |
+| :--- | :--- | :--- |
+| **Environment File** | `LLM_FALLBACK=true` in `.env` | Applies on daemon startup or service restart. |
+| **CLI Argument** | `python3 main.py --llm-fallback` | Applies to foreground execution. |
+| **Runtime Socket Control** | `python3 scripts/alsageist_ctl.py fallback on` | Toggles the running daemon immediately without restart. |
+
+### 5.4 Configuring Operational Parameters in `.env`
 
 Edit your `.env` file to select modes:
 
@@ -389,7 +459,7 @@ MIC_GAIN=1.5
 VAD_THRESHOLD=0.0035
 ```
 
-### 5.4 Interaction Logs & Privacy
+### 5.5 Interaction Logs & Privacy
 
 | Setting | Default | Effect |
 | :--- | :--- | :--- |
@@ -400,7 +470,7 @@ VAD_THRESHOLD=0.0035
 * Log files are readable only by the user running AlsaGeist (mode 0600).
 * In online mode each utterance is sent to the configured cloud service (Groq or Google) for transcription, and unrecognized questions go to the LLM. In offline mode audio stays on the device.
 
-### 5.5 Under-Voltage and CPU Throttling (Raspberry Pi)
+### 5.6 Under-Voltage and CPU Throttling (Raspberry Pi)
 
 #### Objective: Recognize a weak power supply, understand its effect on response speed, and find the cause.
 
@@ -597,7 +667,7 @@ Personalities live in `data/personalities/<name>.json`. A profile defines charac
 }
 ```
 
-`fallbacks`, `escalation_lines`, and `low_power_lines` are lists of lines the persona speaks; `low_power_lines` is spoken while the power supply is weak (see section 5.5).
+`fallbacks`, `escalation_lines`, and `low_power_lines` are lists of lines the persona speaks; `low_power_lines` is spoken while the power supply is weak (see section 5.6).
 
 ---
 
@@ -737,7 +807,7 @@ Expected output when the phrase is new (Raspberry Pi 3):
 | `playback` | Time to play the clip, including its length |
 
 > [!NOTE]
-> Loading the voice took about 35 seconds on a Raspberry Pi 3 whose CPU was throttled to 600 MHz (see section 5.5). Phrases pre-warmed with `scripts/prewarm_cache.py` skip it.
+> Loading the voice took about 35 seconds on a Raspberry Pi 3 whose CPU was throttled to 600 MHz (see section 5.6). Phrases pre-warmed with `scripts/prewarm_cache.py` skip it.
 
 ---
 

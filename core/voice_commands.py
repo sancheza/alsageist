@@ -17,6 +17,8 @@ COMMAND_MODE_OFFLINE = "system_mode_offline"
 COMMAND_MODE_ONLINE = "system_mode_online"
 COMMAND_MODE_AUTO = "system_mode_auto"
 COMMAND_MODE_QUERY = "system_mode_query"
+COMMAND_VOICE_QUERY = "system_voice_query"
+COMMAND_ENGINE_QUERY = "system_engine_query"
 
 # Common polite or wake-word prefixes to strip before command evaluation
 _PREFIX_PATTERN = re.compile(
@@ -41,6 +43,27 @@ _MODE_QUERY_PATTERN = re.compile(
     r"|^are\s+you\s+(?:online\s+or\s+offline|offline\s+or\s+online|online|offline|on\s*line|off\s*line)$"
     r"|^(?:current|check|status|system|network)\s+mode$"
     r"|^mode\s+(?:status|check)$",
+    re.IGNORECASE,
+)
+
+# Voice model query commands: "what is your voice model", "what voice are you using", "voice model", etc.
+_VOICE_QUERY_PATTERN = re.compile(
+    r"^(?:(?:what(?:'?s|\s+is)?|which)\s+)?(?:your\s+|the\s+|current\s+)?voice(?:\s+model)?(?:\s+(?:are\s+you\s+using|do\s+you\s+use|is\s+this|is\s+it))?$"
+    r"|^what\s+voice(?:\s+model)?(?:\s+(?:are\s+you\s+using|do\s+you\s+use|is\s+this|is\s+it))?$"
+    r"|^(?:which|what)\s+voice\s+model$"
+    r"|^(?:current|check|status|system)\s+voice(?:\s+model)?$"
+    r"|^voice\s+model(?:\s+(?:status|check))?$",
+    re.IGNORECASE,
+)
+
+# Dialogue engine query commands: "what is your dialogue engine", "what engine are you using", etc.
+_ENGINE_QUERY_PATTERN = re.compile(
+    r"^(?:(?:what(?:'?s|\s+is)?|which)\s+)?(?:your\s+|the\s+|current\s+)?(?:dialog(?:ue)?\s+)?engine(?:\s+(?:are\s+you\s+using|are\s+you\s+running|do\s+you\s+use|is\s+this|is\s+it|is\s+running))?$"
+    r"|^what\s+(?:dialog(?:ue)?\s+)?engine(?:\s+(?:are\s+you\s+using|are\s+you\s+running|do\s+you\s+use|is\s+this|is\s+it|is\s+running))?$"
+    r"|^are\s+you\s+using\s+(?:intent\s+or\s+llm|llm\s+or\s+intent)$"
+    r"|^(?:current|check|status|system)\s+(?:dialog(?:ue)?\s+)?engine$"
+    r"|^(?:dialog(?:ue)?\s+engine)(?:\s+(?:status|check))?$"
+    r"|^engine\s+(?:status|check)$",
     re.IGNORECASE,
 )
 
@@ -99,7 +122,15 @@ def match_voice_command(user_text: str) -> Optional[str]:
     if _MODE_QUERY_PATTERN.match(stripped):
         return COMMAND_MODE_QUERY
 
-    # 3. Switch to offline mode
+    # 3. Voice model query command
+    if _VOICE_QUERY_PATTERN.match(stripped):
+        return COMMAND_VOICE_QUERY
+
+    # 4. Dialogue engine query command
+    if _ENGINE_QUERY_PATTERN.match(stripped):
+        return COMMAND_ENGINE_QUERY
+
+    # 5. Switch to offline mode
     if _MODE_OFFLINE_PATTERN.match(stripped):
         return COMMAND_MODE_OFFLINE
 

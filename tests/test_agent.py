@@ -437,6 +437,45 @@ def test_personality_switch_builds_new_voice_when_settings_differ():
     assert agent.tts is new_tts
 
 
+def test_agent_set_llm_fallback_enables_and_disables():
+    """set_llm_fallback initializes the LLM service on demand and toggles state."""
+    agent = make_bare_agent()
+    mock_llm = MagicMock()
+    agent._build_llm = MagicMock(return_value=mock_llm)
+
+    assert agent.llm_fallback_enabled is False
+    assert agent.llm_fallback_service is None
+
+    result = agent.set_llm_fallback(True)
+    assert result is True
+    assert agent.llm_fallback_enabled is True
+    assert agent.llm_fallback_service is mock_llm
+    agent._build_llm.assert_called_once_with(agent.profile)
+
+    # Disabling preserves the service but turns off the flag
+    result = agent.set_llm_fallback(False)
+    assert result is False
+    assert agent.llm_fallback_enabled is False
+
+    # Enabling again reuses existing service
+    agent._build_llm.reset_mock()
+    result = agent.set_llm_fallback(True)
+    assert result is True
+    assert agent.llm_fallback_enabled is True
+    agent._build_llm.assert_not_called()
+
+
+def test_agent_set_llm_fallback_raises_without_api_keys(monkeypatch):
+    """set_llm_fallback propagates ValueError when no LLM API keys are configured."""
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+
+    agent = make_bare_agent()
+    with pytest.raises(ValueError, match="Neither GROQ_API_KEY nor GEMINI_API_KEY"):
+        agent.set_llm_fallback(True)
+
+
 def test_agent_starts_and_stops_power_monitor():
     """The power monitor runs for the life of the agent loop and is stopped on shutdown."""
     agent = make_bare_agent()
@@ -903,6 +942,29 @@ def test_agent_voice_command_query_mode_offline_and_online():
     reply, intent = agent._resolve_dialogue_response("are you online or offline")
     assert intent == "system_mode_query"
     assert reply == "I am in online mode."
+
+
+def test_agent_voice_command_query_voice_model():
+    """Speaking 'what is your voice model' returns the active voice model announcement."""
+    agent = make_bare_agent()
+    agent.tts = MagicMock(model_path="models/piper/en_GB-alan-medium.onnx")
+    reply, intent = agent._resolve_dialogue_response("what is your voice model")
+    assert intent == "system_voice_query"
+    assert reply == "My voice model is en GB alan medium."
+
+
+def test_agent_voice_command_query_dialogue_engine():
+    """Speaking 'what engine are you using' returns the active dialogue engine status."""
+    agent = make_bare_agent()
+    agent.args.engine = "intent"
+    reply, intent = agent._resolve_dialogue_response("what engine are you using")
+    assert intent == "system_engine_query"
+    assert reply == "The dialogue engine is intent."
+
+    agent.args.engine = "llm"
+    reply, intent = agent._resolve_dialogue_response("what is your dialogue engine")
+    assert intent == "system_engine_query"
+    assert reply == "The dialogue engine is neural L L M."
 
 
 def test_agent_voice_command_shutdown_triggers_request_shutdown():

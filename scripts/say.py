@@ -190,7 +190,7 @@ def main() -> int:
             return 0
 
         # Check if the AlsaGeist daemon is active to prevent ALSA device / clock contention
-        sock_path = getattr(args, "socket_path", None) or os.environ.get("ALSAGEIST_SOCKET")
+        sock_path = getattr(args, "socket_path", None) or os.environ.get("ALSAGEIST_SOCKET") or None
         if not args.direct and control_server.is_socket_active(sock_path):
             with timer.phase("daemon ipc", "delegated to running daemon"):
                 from scripts.alsageist_ctl import send_command

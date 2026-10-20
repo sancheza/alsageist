@@ -42,6 +42,7 @@ class ControlTarget(Protocol):
     def set_volume(self, volume: float) -> float: ...
     def set_mic_muted(self, muted: bool) -> None: ...
     def set_online(self, online: Optional[bool]) -> None: ...
+    def set_llm_fallback(self, enabled: bool) -> bool: ...
     def disable(self) -> None: ...
     def enable(self) -> None: ...
     def toggle(self) -> bool: ...
@@ -455,6 +456,37 @@ class ControlServer:
                 return {"status": "error", "message": "Speech failed."}
             return {"status": "ok", "message": f"Spoke: \"{phrase}\"", "spoken": phrase}
 
+        elif cmd == "fallback":
+            if not value or str(value).strip().lower() in ("status", "query"):
+                enabled = agent.llm_fallback_enabled
+                state_str = "enabled" if enabled else "disabled"
+                return {"status": "ok", "message": f"LLM fallback is {state_str}.", "llm_fallback": enabled}
+
+            val_str = str(value).strip().lower()
+            if val_str in ("on", "enable", "enabled", "true", "1"):
+                target_state = True
+            elif val_str in ("off", "disable", "disabled", "false", "0"):
+                target_state = False
+            elif val_str == "toggle":
+                target_state = not agent.llm_fallback_enabled
+            else:
+                return {
+                    "status": "error",
+                    "message": f"Invalid fallback value '{value}'. Use 'on', 'off', 'toggle' or 'status'.",
+                }
+
+            try:
+                new_state = agent.set_llm_fallback(target_state)
+            except Exception as exc:
+                return {"status": "error", "message": f"Failed to configure LLM fallback: {exc}"}
+
+            state_str = "enabled" if new_state else "disabled"
+            return {
+                "status": "ok",
+                "message": f"LLM fallback {state_str}.",
+                "llm_fallback": new_state,
+            }
+
         elif cmd in ("shutdown", "poweroff"):
             if str(value) != SHUTDOWN_CONFIRMATION:
                 return {
@@ -467,7 +499,7 @@ class ControlServer:
         else:
             return {
                 "status": "error",
-                "message": f"Unknown command '{cmd}'. Available: status, volume, mute, unmute, disable, enable, toggle, mode, personality, say, shutdown.",
+                "message": f"Unknown command '{cmd}'. Available: status, volume, mute, unmute, disable, enable, toggle, mode, personality, say, fallback, shutdown.",
             }
 
     def _cmd_status(self) -> Dict[str, Any]:

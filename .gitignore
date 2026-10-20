@@ -26,8 +26,9 @@ env/
 .DS_Store
 
 # Secrets & Environment variables
-.env
 .env.*
+!.env
+!.env.example
 
 # Logs & Runtime telemetry
 logs/*.log
@@ -47,3 +48,4 @@ models/vosk*
 *.tmp
 *.bak
 *.sock
+*.npy

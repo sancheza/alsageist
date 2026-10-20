@@ -224,6 +224,11 @@ COMMON USAGE EXAMPLES:
 
   7. Speak a test line immediately through the speaker:
      ./scripts/alsageist_ctl.py say "Happy Halloween, mortals!"
+
+  8. Toggle or inspect dynamic LLM fallback for indeterminate prompts:
+     ./scripts/alsageist_ctl.py fallback on     # Enable LLM fallback (initializes cloud LLM on demand)
+     ./scripts/alsageist_ctl.py fallback off    # Disable LLM fallback
+     ./scripts/alsageist_ctl.py fallback        # Show current fallback state
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -243,6 +248,7 @@ COMMON USAGE EXAMPLES:
             "mode",
             "personality",
             "say",
+            "fallback",
             "shutdown",
             "poweroff",
         ],
@@ -252,7 +258,7 @@ COMMON USAGE EXAMPLES:
         "value",
         nargs="?",
         default=None,
-        help="Optional value argument for volume, mode, personality, or say.",
+        help="Optional value argument for volume, mode, personality, say, or fallback.",
     )
     parser.add_argument(
         "--socket",
