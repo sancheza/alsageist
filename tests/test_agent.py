@@ -1009,6 +1009,29 @@ def test_agent_voice_command_shutdown_triggers_request_shutdown():
     agent.logger.log_interaction.assert_called_once()
     kwargs = agent.logger.log_interaction.call_args.kwargs
     assert kwargs["matched_intent"] == "system_shutdown"
+
+
+def test_agent_voice_command_two_step_password_challenge_response():
+    """Speaking shutdown triggers challenge, following up with password completes the command."""
+    agent = make_bare_agent(voice_command_password="alsageist")
+    # Step 1: User says "shut down"
+    reply1, intent1 = agent._resolve_dialogue_response("shut down")
+    assert intent1 == "system_access_denied"
+    assert "access denied" in reply1.lower()
+    assert agent._pending_privileged_command is not None
+
+    # Step 2: User responds with speech recognizer phonetic alias "Auf die Geist."
+    reply2, intent2 = agent._resolve_dialogue_response("Auf die Geist.")
+    assert intent2 == "system_shutdown"
+    assert agent._pending_privileged_command is None
+
+
+def test_agent_voice_command_combined_password_phrase():
+    """User speaking 'Shut down. Password, Alphageist.' succeeds in a single utterance."""
+    agent = make_bare_agent(voice_command_password="alsageist")
+    reply, intent = agent._resolve_dialogue_response("Shut down. Password, Alphageist.")
+    assert intent == "system_shutdown"
+    assert agent._pending_privileged_command is None
     assert kwargs["status"] == "PROCESSED"
 
 
@@ -1057,3 +1080,26 @@ def test_agent_voice_command_shutdown_allowed_with_password():
     agent.logger.log_interaction.assert_called_once()
     kwargs = agent.logger.log_interaction.call_args.kwargs
     assert kwargs["matched_intent"] == "system_shutdown"
+
+
+def test_agent_voice_command_two_step_password_challenge_response():
+    """Speaking shutdown triggers challenge, following up with password completes the command."""
+    agent = make_bare_agent(voice_command_password="alsageist")
+    # Step 1: User says "shut down"
+    reply1, intent1 = agent._resolve_dialogue_response("shut down")
+    assert intent1 == "system_access_denied"
+    assert "access denied" in reply1.lower()
+    assert agent._pending_privileged_command is not None
+
+    # Step 2: User responds with speech recognizer phonetic alias "Auf die Geist."
+    reply2, intent2 = agent._resolve_dialogue_response("Auf die Geist.")
+    assert intent2 == "system_shutdown"
+    assert agent._pending_privileged_command is None
+
+
+def test_agent_voice_command_combined_password_phrase():
+    """User speaking 'Shut down. Password, Alphageist.' succeeds in a single utterance."""
+    agent = make_bare_agent(voice_command_password="alsageist")
+    reply, intent = agent._resolve_dialogue_response("Shut down. Password, Alphageist.")
+    assert intent == "system_shutdown"
+    assert agent._pending_privileged_command is None

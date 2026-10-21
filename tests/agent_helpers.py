@@ -67,6 +67,7 @@ def make_bare_agent(**overrides) -> AlsaGeistAgent:
     agent.control_server = MagicMock()
     agent._last_activity_time = time.time()
     agent._idle_reset_done = False
+    agent._pending_privileged_command = None
 
     agent.audio = MagicMock()
     agent.audio.volume = 0.5

@@ -8,7 +8,7 @@ vs 'offline'), and optional conversational prefixes.
 """
 
 import re
-from typing import Optional
+from typing import Optional, Tuple
 
 from core.intent_builder import normalize_query
 
@@ -134,33 +134,77 @@ _MODE_AUTO_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_DEFAULT_PASSWORD_ALIASES_REGEX = (
+    r"\b(?:(?:(?:the|my|verbal)\s+)?password(?:\s+is)?\s+)?"
+    r"(?:alsageist|alsa\s+geist|alphageist|alpha\s+geist|"
+    r"auf\s+die\s+geist|auf\s+geist|also\s+geist|elsa\s+geist|elsageist|geist)"
+    r"(?:\s+(?:is\s+the\s+)?password)?\b"
+)
 
-def match_voice_command(user_text: str, password: Optional[str] = None) -> Optional[str]:
-    """Classify transcribed speech as a system voice command.
 
-    Handles offline recognition nuances such as unpunctuated text, phonetic
-    word splits ('off line'), and conversational phrasing. Evaluates query
-    patterns before mode-setting patterns to avoid ambiguous collisions.
+def is_verbal_password(user_text: str, password: Optional[str] = "alsageist") -> bool:
+    """Check if transcribed user speech matches the verbal password.
 
-    If a verbal password is provided and not disabled, checks that privileged
-    commands (e.g. shutdown, mode switching, fallback toggles) include the password.
+    Accommodates compounding variations, phonetic STT transcriptions for
+    custom keywords (e.g. 'alphageist', 'auf die geist', 'alsa geist' for 'alsageist'),
+    and common conversational prefixes ('password', 'password is').
+
+    Args:
+        user_text: Spoken user utterance.
+        password: Configured verbal password.
+
+    Returns:
+        True if the verbal password is confirmed in user_text.
+    """
+    if not user_text or not user_text.strip():
+        return False
+    clean = normalize_query(user_text)
+    clean_pwd = normalize_query(password) if password else ""
+    if not clean_pwd or clean_pwd in ("none", "off", "false"):
+        return True
+
+    if clean_pwd == "alsageist":
+        return bool(re.search(_DEFAULT_PASSWORD_ALIASES_REGEX, clean, re.IGNORECASE))
+
+    pwd_regex = (
+        r"\b(?:(?:(?:the|my|verbal)\s+)?password(?:\s+is)?\s+)?"
+        + re.escape(clean_pwd) +
+        r"(?:\s+(?:is\s+the\s+)?password)?\b"
+    )
+    return bool(re.search(pwd_regex, clean, re.IGNORECASE))
+
+
+def match_voice_command_detailed(
+    user_text: str, password: Optional[str] = None
+) -> Tuple[Optional[str], Optional[str]]:
+    """Classify transcribed speech as a system voice command, reporting raw and authorized commands.
 
     Args:
         user_text: Raw or normalized transcribed speech string.
         password: Optional verbal password required for privileged operations.
 
     Returns:
-        One of the COMMAND_* string constants if a command is recognized, or None.
+        Tuple of (effective_command, raw_matched_command). If privileged command
+        was matched but password was absent, returns (COMMAND_ACCESS_DENIED, raw_command).
+        If no command matched, returns (None, None).
     """
     if not user_text or not user_text.strip():
-        return None
+        return None, None
 
     clean = normalize_query(user_text)
 
     has_password = False
     clean_password = normalize_query(password) if password else ""
     if clean_password and clean_password not in ("none", "off", "false"):
-        pwd_pattern = re.compile(r"\b" + re.escape(clean_password) + r"\b", re.IGNORECASE)
+        if clean_password == "alsageist":
+            pwd_regex = _DEFAULT_PASSWORD_ALIASES_REGEX
+        else:
+            pwd_regex = (
+                r"\b(?:(?:(?:the|my|verbal)\s+)?password(?:\s+is)?\s+)?"
+                + re.escape(clean_password) +
+                r"(?:\s+(?:is\s+the\s+)?password)?\b"
+            )
+        pwd_pattern = re.compile(pwd_regex, re.IGNORECASE)
         if pwd_pattern.search(clean):
             has_password = True
             clean = pwd_pattern.sub(" ", clean)
@@ -168,7 +212,7 @@ def match_voice_command(user_text: str, password: Optional[str] = None) -> Optio
 
     stripped = _PREFIX_PATTERN.sub("", clean).strip()
     if not stripped:
-        return None
+        return None, None
 
     matched_cmd = None
     # 1. Shutdown command
@@ -203,11 +247,32 @@ def match_voice_command(user_text: str, password: Optional[str] = None) -> Optio
         matched_cmd = COMMAND_MODE_AUTO
 
     if matched_cmd is None:
-        return None
+        return None, None
 
     # Check privilege authorization if password is required
     if clean_password and clean_password not in ("none", "off", "false"):
         if matched_cmd in PRIVILEGED_COMMANDS and not has_password:
-            return COMMAND_ACCESS_DENIED
+            return COMMAND_ACCESS_DENIED, matched_cmd
 
-    return matched_cmd
+    return matched_cmd, matched_cmd
+
+
+def match_voice_command(user_text: str, password: Optional[str] = None) -> Optional[str]:
+    """Classify transcribed speech as a system voice command.
+
+    Handles offline recognition nuances such as unpunctuated text, phonetic
+    word splits ('off line'), and conversational phrasing. Evaluates query
+    patterns before mode-setting patterns to avoid ambiguous collisions.
+
+    If a verbal password is provided and not disabled, checks that privileged
+    commands (e.g. shutdown, mode switching) include the password.
+
+    Args:
+        user_text: Raw or normalized transcribed speech string.
+        password: Optional verbal password required for privileged operations.
+
+    Returns:
+        One of the COMMAND_* string constants if a command is recognized, or None.
+    """
+    effective_cmd, _ = match_voice_command_detailed(user_text, password=password)
+    return effective_cmd

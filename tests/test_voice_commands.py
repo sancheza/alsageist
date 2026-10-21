@@ -19,7 +19,9 @@ from core.voice_commands import (
     COMMAND_SHUTDOWN,
     COMMAND_VOICE_QUERY,
     PRIVILEGED_COMMANDS,
+    is_verbal_password,
     match_voice_command,
+    match_voice_command_detailed,
 )
 
 
@@ -319,6 +321,10 @@ def test_match_voice_command_ignores_unrelated(phrase):
     ("alsageist shut down", COMMAND_SHUTDOWN),
     ("grimjaw alsageist power off", COMMAND_SHUTDOWN),
     ("shut down alsageist", COMMAND_SHUTDOWN),
+    ("Shut down. Password, Alphageist.", COMMAND_SHUTDOWN),
+    ("shut down password alsageist", COMMAND_SHUTDOWN),
+    ("Auf die Geist shut down", COMMAND_SHUTDOWN),
+    ("shut down auf die geist", COMMAND_SHUTDOWN),
     ("alsageist switch to offline mode", COMMAND_MODE_OFFLINE),
     ("grimjaw alsageist go online", COMMAND_MODE_ONLINE),
     ("alsageist automatic mode", COMMAND_MODE_AUTO),
@@ -326,7 +332,7 @@ def test_match_voice_command_ignores_unrelated(phrase):
     ("alsageist disable fallback", COMMAND_FALLBACK_DISABLE),
 ])
 def test_privileged_commands_succeed_with_valid_password(phrase, expected_cmd):
-    """Privileged voice commands succeed when the verbal password is provided."""
+    """Privileged voice commands succeed when the verbal password or phonetic alias is provided."""
     assert match_voice_command(phrase, password="alsageist") == expected_cmd
 
 
@@ -375,3 +381,32 @@ def test_disabled_verbal_password(pwd):
     """Password protection can be disabled by setting password to None, empty, or 'none'."""
     assert match_voice_command("shut down", password=pwd) == COMMAND_SHUTDOWN
     assert match_voice_command("switch to offline mode", password=pwd) == COMMAND_MODE_OFFLINE
+
+
+@pytest.mark.parametrize("utterance", [
+    "alsageist",
+    "alsa geist",
+    "alphageist",
+    "alpha geist",
+    "Auf die Geist.",
+    "auf geist",
+    "Geist.",
+    "Password, Alphageist.",
+    "the password is alsageist",
+    "verbal password alsageist",
+])
+def test_is_verbal_password_phonetic_variations(utterance):
+    """Verifies that speech recognizer transcriptions for alsageist are recognized."""
+    assert is_verbal_password(utterance, password="alsageist") is True
+
+
+@pytest.mark.parametrize("utterance", [
+    "hello",
+    "shut down",
+    "give me candy",
+    "wrong password",
+    "sesame",
+])
+def test_is_verbal_password_rejects_non_passwords(utterance):
+    """Non-password utterances return False."""
+    assert is_verbal_password(utterance, password="alsageist") is False

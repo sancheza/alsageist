@@ -75,6 +75,7 @@ class AlsaGeistAgent:
         self._last_activity_time = time.time()
         self._idle_reset_done = False
         self._consecutive_filtered_turns = 0
+        self._pending_privileged_command = None
 
         personality = getattr(args, "personality", "grimjaw")
         self.profile: Optional[PersonalityProfile] = self._load_profile(personality)
@@ -966,10 +967,23 @@ class AlsaGeistAgent:
         Returns:
             Tuple of (response_text, matched_intent).
         """
+        # Check if user is answering a previous verbal password challenge
+        if getattr(self, "_pending_privileged_command", None):
+            pending_cmd, timestamp = self._pending_privileged_command
+            if time.time() - timestamp <= 25.0:
+                pwd = getattr(self, "voice_command_password", None)
+                if voice_commands.is_verbal_password(user_text, password=pwd):
+                    self._pending_privileged_command = None
+                    return self._execute_voice_command(pending_cmd)
+            # Either expired or not a password attempt
+            self._pending_privileged_command = None
+
         # System voice commands (shutdown, mode toggle, mode query) take priority over normal dialogue
         pwd = getattr(self, "voice_command_password", None)
-        cmd = voice_commands.match_voice_command(user_text, password=pwd)
+        cmd, raw_cmd = voice_commands.match_voice_command_detailed(user_text, password=pwd)
         if cmd is not None:
+            if cmd == voice_commands.COMMAND_ACCESS_DENIED and raw_cmd:
+                self._pending_privileged_command = (raw_cmd, time.time())
             return self._execute_voice_command(cmd)
 
         # Check for live dynamic info (time and weather) first so any profile or engine
