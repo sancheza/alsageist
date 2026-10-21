@@ -1623,10 +1623,21 @@
     {
       "name": "costume_eevee",
       "patterns": [
-        "\\beevee\\b"
+        "\\b(eevee|evie)\\b"
       ],
       "responses": [
-        "Eevee! Look at that fluffy collar! What are you evolving into tonight? A Jolteon, or a Sugar-eon?"
+        "Eevee! Look at that fluffy collar! What are you evolving into tonight? A Jolteon, or a Sugar-eon?",
+        "Look at that disguise! Whether you're Pokémon Eevee or Evie from the Isle of the Lost, take one treat before my jaw snaps shut!"
+      ]
+    },
+    {
+      "name": "costume_gi_joe",
+      "patterns": [
+        "\\b(g\\s+i\\s+joe|gi\\s*joe|g\\.?i\\.?\\s*joe)\\b"
+      ],
+      "responses": [
+        "G.I. Joe! A real American hero marching onto my porch! Knowing is half the battle, and the other half is guarding my candy bowl!",
+        "G.I. Joe! At ease, soldier! Stand down before my rattling bones report you to General Hawk!"
       ]
     },
     {
@@ -2052,6 +2063,10 @@
         "\\bwhat am i\\b",
         "\\bhow do i look\\b",
         "\\bi('m| am) a\\b",
+        "\\b(i'm|i am|we're|we are)?\\s*dressed (up )?as\\b",
+        "\\bmy costume is\\b",
+        "\\bcame as\\b",
+        "\\bgoing as\\b",
         "\\bdress up\\b",
         "\\bnext year\\b"
       ],

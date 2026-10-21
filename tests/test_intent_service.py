@@ -150,3 +150,21 @@ def test_pick_unique_resets_when_every_choice_was_used(engine):
     first_round = {engine._pick_unique(choices), engine._pick_unique(choices)}
     assert first_round == {"a", "b"}
     assert engine._pick_unique(choices) in choices
+
+
+@pytest.mark.parametrize("query, expected_intent", [
+    ("G.I. Joe.", "costume_gi_joe"),
+    ("gi joe", "costume_gi_joe"),
+    ("I am G.I. Joe", "costume_gi_joe"),
+    ("I'm dressed as Evie.", "costume_eevee"),
+    ("Evie", "costume_eevee"),
+    ("Eevee", "costume_eevee"),
+    ("I'm dressed as a cactus", "costume"),
+    ("I am dressed as Batman", "costume"),
+    ("my costume is a pumpkin", "costume"),
+])
+def test_costume_gi_joe_evie_and_generic_matching(engine, query, expected_intent):
+    """Verify GI Joe, Evie/Eevee, and generic 'dressed as' phrases match expected intents."""
+    resp, intent = engine.classify_and_respond(query)
+    assert intent == expected_intent
+    assert isinstance(resp, str) and len(resp) > 5
