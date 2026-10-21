@@ -253,6 +253,14 @@ def test_match_voice_command_fallback_query(phrase):
     "switch on llm fallback",
     "hey grimjaw enable llm fallback",
     "grimjaw fallback on",
+    "set llm fallback to enabled",
+    "set fallback to enabled",
+    "set fallback enabled",
+    "set llm fallback enabled",
+    "set fallback on",
+    "turn fallback on",
+    "turn llm fallback on",
+    "switch fallback on",
 ])
 def test_match_voice_command_fallback_enable(phrase):
     """Verify fallback enable commands match accurately."""
@@ -272,6 +280,14 @@ def test_match_voice_command_fallback_enable(phrase):
     "switch off llm fallback",
     "hey grimjaw disable llm fallback",
     "grimjaw fallback off",
+    "set llm fallback to disabled",
+    "set fallback to disabled",
+    "set fallback disabled",
+    "set llm fallback disabled",
+    "set fallback off",
+    "turn fallback off",
+    "turn llm fallback off",
+    "switch fallback off",
 ])
 def test_match_voice_command_fallback_disable(phrase):
     """Verify fallback disable commands match accurately."""
@@ -325,8 +341,6 @@ def test_privileged_commands_succeed_with_valid_password(phrase, expected_cmd):
     "go online",
     "grimjaw go online",
     "automatic mode",
-    "enable llm fallback",
-    "disable fallback",
 ])
 def test_privileged_commands_rejected_without_password(phrase):
     """Privileged voice commands return COMMAND_ACCESS_DENIED without the verbal password."""
@@ -339,10 +353,14 @@ def test_privileged_commands_rejected_without_password(phrase):
     ("what is your voice model", COMMAND_VOICE_QUERY),
     ("what engine are you using", COMMAND_ENGINE_QUERY),
     ("is fallback enabled", COMMAND_FALLBACK_QUERY),
+    ("enable fallback", COMMAND_FALLBACK_ENABLE),
+    ("set llm fallback to enabled", COMMAND_FALLBACK_ENABLE),
+    ("disable fallback", COMMAND_FALLBACK_DISABLE),
+    ("set llm fallback to disabled", COMMAND_FALLBACK_DISABLE),
     ("alsageist what mode are you in", COMMAND_MODE_QUERY),
 ])
 def test_unprivileged_commands_succeed_without_password(phrase, expected_cmd):
-    """Query commands do not require a verbal password."""
+    """Query and fallback toggle commands do not require a verbal password."""
     assert match_voice_command(phrase, password="alsageist") == expected_cmd
 
 

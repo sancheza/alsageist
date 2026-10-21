@@ -29,8 +29,6 @@ PRIVILEGED_COMMANDS = {
     COMMAND_MODE_OFFLINE,
     COMMAND_MODE_ONLINE,
     COMMAND_MODE_AUTO,
-    COMMAND_FALLBACK_ENABLE,
-    COMMAND_FALLBACK_DISABLE,
 }
 
 # Common polite or wake-word prefixes to strip before command evaluation
@@ -91,17 +89,23 @@ _FALLBACK_QUERY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Fallback enable commands: "enable fallback", "turn on llm fallback", "fallback on", etc.
+# Fallback enable commands: "enable fallback", "turn on llm fallback", "set fallback to enabled", "fallback on", etc.
 _FALLBACK_ENABLE_PATTERN = re.compile(
-    r"^(?:enable|turn\s+on|activate|start|switch\s+on)\s+(?:l\s*l\s*m\s+)?fallback$"
-    r"|^(?:l\s*l\s*m\s+)?fallback\s+on$",
+    r"^(?:enable|turn\s+on|activate|start|switch\s+on)\s+(?:the\s+)?(?:l\s*l\s*m\s+)?fallback$"
+    r"|^turn\s+(?:the\s+)?(?:l\s*l\s*m\s+)?fallback\s+on$"
+    r"|^switch\s+(?:the\s+)?(?:l\s*l\s*m\s+)?fallback\s+on$"
+    r"|^set\s+(?:the\s+)?(?:l\s*l\s*m\s+)?fallback(?:\s+to)?\s+(?:on|enabled|enable|active|true)$"
+    r"|^(?:l\s*l\s*m\s+)?fallback\s+(?:on|enable|enabled)$",
     re.IGNORECASE,
 )
 
-# Fallback disable commands: "disable fallback", "turn off llm fallback", "fallback off", etc.
+# Fallback disable commands: "disable fallback", "turn off llm fallback", "set fallback to disabled", "fallback off", etc.
 _FALLBACK_DISABLE_PATTERN = re.compile(
-    r"^(?:disable|turn\s+off|deactivate|stop|switch\s+off)\s+(?:l\s*l\s*m\s+)?fallback$"
-    r"|^(?:l\s*l\s*m\s+)?fallback\s+off$",
+    r"^(?:disable|turn\s+off|deactivate|stop|switch\s+off)\s+(?:the\s+)?(?:l\s*l\s*m\s+)?fallback$"
+    r"|^turn\s+(?:the\s+)?(?:l\s*l\s*m\s+)?fallback\s+off$"
+    r"|^switch\s+(?:the\s+)?(?:l\s*l\s*m\s+)?fallback\s+off$"
+    r"|^set\s+(?:the\s+)?(?:l\s*l\s*m\s+)?fallback(?:\s+to)?\s+(?:off|disabled|disable|inactive|false)$"
+    r"|^(?:l\s*l\s*m\s+)?fallback\s+(?:off|disable|disabled)$",
     re.IGNORECASE,
 )
 
