@@ -21,27 +21,80 @@ Native bare-metal deployment executes AlsaGeist directly on the host operating s
 
 ## 2. Prerequisites
 
-* Raspberry Pi 3 Model B, 3B+, 4, or 5 running **Raspberry Pi OS Lite (64-bit)** (Debian 12 Bookworm).
+* Raspberry Pi 3 Model B, 3B+, 4, or 5 running **Raspberry Pi OS Lite (64-bit)** (Debian 12 Bookworm), image `2026-10-06-raspios-bookworm-arm64-lite.img` or newer.
 * Google AIY Voice HAT V1 or compatible USB speakerphone connected to the board.
 * Network access and active SSH session to the Raspberry Pi.
-* A power supply rated for the board (Raspberry Pi 3 Model B: 5 V, 2.5 A). An inadequate supply throttles the CPU and slows every step; see [Under-Voltage and CPU Throttling](usage_guide.md#55-under-voltage-and-cpu-throttling-raspberry-pi).
-* Operating system flashed and verified (see [AlsaGeist Project & Hardware Overview](overview.md)).
+* A power supply rated for the board (Raspberry Pi 3 Model B: 5 V, 2.5 A). An inadequate supply throttles the CPU and slows every step; see [Under-Voltage and CPU Throttling](usage_guide.md#56-under-voltage-and-cpu-throttling-raspberry-pi).
+* A microSD card and a workstation to write it from (see section 3). For background on the hardware, see the [AlsaGeist Project & Hardware Overview](overview.md).
 
 ---
 
-## 3. Audio Hardware & Driver Configuration
+## 3. Install the Operating System (on your workstation)
+
+### Objective: Write Raspberry Pi OS Lite (64-bit) to a microSD card.
+
+Do this on your Linux, macOS, or Windows computer:
+
+1. Insert the microSD card into your workstation and open [Raspberry Pi Imager](https://www.raspberrypi.com/software/) (version 2.0 or newer). The wizard has these steps:
+   * **Device:** select your Raspberry Pi model, then **Next**.
+   * **OS:** select **Raspberry Pi OS (other)** → **Raspberry Pi OS Lite (64-bit)** (`2026-10-06-raspios-bookworm-arm64-lite.img` or newer), then **Next**.
+   * **Storage:** select the microSD card (leave **Exclude system drives** enabled), then **Next**.
+   * **Customisation:** complete each sub-step below, selecting **Next** after each. The **Wi-Fi** and **Remote Access** sub-steps are optional and let the Pi boot headless (onto your network with SSH enabled, no keyboard or monitor needed). Skip them only if you will attach a keyboard and monitor.
+     * **Hostname:** e.g. `alsageist` (letters, numbers, and hyphens only).
+     * **Localisation:** choose your capital city. This sets the time zone, keyboard layout, and Wi-Fi regulatory domain (Wi-Fi stays disabled without a regulatory domain).
+     * **User:** choose a username (the examples in this guide use `pi`) and a password. There is no default account, so you must set one.
+     * **Wi-Fi (optional, for headless boot):** choose a secure network, then enter the **SSID** and **password**. Turn on **Hidden SSID** only if your network does not broadcast its name. A Pi connected by Ethernet does not need Wi-Fi settings.
+     * **Remote Access (optional, for headless boot):** turn on **Enable SSH**, then choose **Use password authentication**, or **Use public key authentication** and paste your public key.
+     * **Raspberry Pi Connect:** optional; leave it off.
+   * **Writing:** review the summary and write the card. Imager stores the customisation on the card's boot partition, and the Pi applies it on first boot.
+2. **(Optional, disable CPU throttling)** After Imager finishes writing, but before first boot, re-insert the card into your workstation if it was ejected. Open the `bootfs` partition (the same file appears as `/boot/firmware/config.txt` once the Pi is running) and add this line at the end of `config.txt`:
+
+   ```ini
+   avoid_warnings=2
+   ```
+
+   This hides the low-voltage warning overlay and stops the firmware from lowering the CPU frequency when it detects low voltage, so the Pi keeps running at full speed under heavy load. It can keep speech recognition and synthesis response times more consistent. You can also add the line later by editing `/boot/firmware/config.txt` on the Pi and rebooting.
+
+   > [!WARNING]
+   > Skip this step unless you specifically want to disable throttling. Throttling exists to protect the Pi when its power supply cannot keep up, so turning it off can cause instability, crashes, or SD card corruption. Use a good power supply and adequate cooling, and remove the line if you see unexpected reboots.
+
+   Eject the card safely when you are done.
+3. Insert the card into the Raspberry Pi and power it on. The first boot takes a few minutes while the Pi expands the filesystem and, if you configured Wi-Fi, joins your network.
+4. **(Optional, headless setup)** From your workstation (on the same network), connect over SSH. If you attached a keyboard and monitor instead, log in on the Pi directly.
+
+```bash
+ssh <username>@<hostname>.local
+```
+
+> [!TIP]
+> If `<hostname>.local` does not resolve (common on Windows without Bonjour, or on networks that block mDNS), find the Pi's IP address in your router's client list and use `ssh <username>@<ip-address>`. A Pi connected by Ethernet cable needs no Wi-Fi settings and works the same way.
+
+> [!NOTE]
+> The Pi must be on a 2.4 GHz-capable Wi-Fi network (the original Raspberry Pi 3 Model B does not support 5 GHz; the 3B+, 4, and 5 do). If it never appears on your network, write the card again with corrected Wi-Fi settings, or connect it by Ethernet.
+
+---
+
+## 4. Audio Hardware & Driver Configuration
 
 Hardware I2S audio devices (such as the Google AIY Voice HAT V1) require kernel device tree overlays and ALSA full-duplex PCM routing.
 
-### 3.1 Automated Driver Configuration (Recommended)
+### 4.1 Automated Driver Configuration (Recommended)
 
 #### Objective: Configure device tree overlays, ALSA routing, and hardware group permissions automatically.
 
-1. Install Git and the GitHub CLI:
+> [!IMPORTANT]
+> All steps from here on run **on the Raspberry Pi itself** (over SSH, or with a keyboard and monitor attached), not on your workstation.
+
+1. Bring the freshly installed operating system up to date and install Git and the GitHub CLI. The update pulls in current kernel, firmware, and package fixes before the script configures the audio drivers:
 
 ```bash
-sudo apt update && sudo apt install -y git gh
+sudo apt update
+sudo apt full-upgrade -y
+sudo apt install -y git gh
+sudo reboot
 ```
+
+Wait a minute for the Pi to restart, then reconnect with SSH.
 
 2. Clone the repository:
 
@@ -97,7 +150,7 @@ sudo reboot
 
 ---
 
-### 3.2 Manual Driver Configuration (Alternative)
+### 4.2 Manual Driver Configuration (Alternative)
 
 If configuring drivers manually without the automated script:
 
@@ -126,7 +179,7 @@ sudo reboot
 
 ---
 
-## 4. Verifying Audio Hardware in ALSA
+## 5. Verifying Audio Hardware in ALSA
 
 ### Objective: Confirm playback and capture devices are registered and operational.
 
@@ -176,7 +229,7 @@ arecord -D default -d 3 -f S16_LE -r 16000 -c 1 /tmp/test.wav && aplay -D defaul
 
 ---
 
-## 5. System Dependencies & Build Toolchain
+## 6. System Dependencies & Build Toolchain
 
 ### Objective: Install required operating system packages, build tools, and audio headers.
 
@@ -200,7 +253,7 @@ Processing triggers for libc-bin...
 
 ---
 
-## 6. Repository & Virtual Environment Setup
+## 7. Repository & Virtual Environment Setup
 
 ### Objective: Configure the Python virtual environment and install dependencies.
 
@@ -237,7 +290,7 @@ Dependencies verified successfully.
 
 ---
 
-## 7. Voice & Offline Speech Recognition Model Downloads
+## 8. Voice & Offline Speech Recognition Model Downloads
 
 ### Objective: Download local ONNX voice model weights and Vosk offline STT model.
 
@@ -274,7 +327,7 @@ models/vosk-model-small-en-us-0.15/
 
 ---
 
-## 8. Environment Configuration (.env)
+## 9. Environment Configuration (.env)
 
 ### Objective: Configure runtime settings and API credentials.
 
@@ -315,9 +368,18 @@ MIC_GAIN=1.5
 VAD_THRESHOLD=0.0035
 ```
 
+#### About the optional API keys
+
+**Both API keys are optional. Leave either one blank**, and AlsaGeist runs fully offline. You can add them at any time later.
+
+* **Groq API key** (`GROQ_API_KEY`): turns on cloud **STT** (speech-to-text, the step that converts what a visitor says into text). Groq runs Whisper Large v3, which is faster and more accurate than the offline Vosk model used when this is blank. A Groq key can also power the LLM fallback described below.
+* **Gemini API key** (`GEMINI_API_KEY`): can power the **LLM fallback** (large language model), where Gemini improvises a reply when Grimjaw's built-in responses don't cover what a visitor said. When no key is set, he uses canned fallback lines instead.
+
+Unlike the Docker setup script, nothing sets `LLM_FALLBACK` for you here. Set `LLM_FALLBACK=true` in `.env` yourself if you add a key and want the LLM fallback. After editing `.env` on a running service, restart it with `sudo systemctl restart alsageist.service`.
+
 ---
 
-## 9. Interactive Testing & Audio Tuning
+## 10. Interactive Testing & Audio Tuning
 
 ### Objective: Launch AlsaGeist in foreground mode to verify capture, synthesis, and LED behavior.
 
@@ -354,11 +416,11 @@ Expected output:
 
 ---
 
-## 10. Pre-Warming Dialogue Audio Cache
+## 11. Pre-Warming Dialogue Audio Cache
 
 ### Objective: Pre-render all character responses to disk for zero-latency (<200 ms) playback.
 
-On the Raspberry Pi 3, neural TTS generation takes 4–6 seconds per uncached phrase. Pre-warming renders all dialogue responses in advance and stores them in `models/cache/`:
+On the Raspberry Pi 3, neural TTS generation takes 4–6 seconds per uncached phrase. Pre-warming renders all dialogue responses in advance and stores them in `models/cache/`. It takes about 15 minutes on a Raspberry Pi 3. **This step is optional: you can skip it and run it later.** AlsaGeist works without it, but responses that aren't cached yet pause for 4–6 seconds while they are synthesized.
 
 ```bash
 ./scripts/prewarm_cache.py --all
@@ -377,7 +439,7 @@ Expected output:
 
 ---
 
-## 11. Autonomous Deployment via Systemd
+## 12. Autonomous Deployment via Systemd
 
 ### Objective: Configure AlsaGeist as a background service that launches automatically on power-on.
 
@@ -440,7 +502,7 @@ journalctl -u alsageist.service -f
 
 ---
 
-## 12. Updating an Existing Installation
+## 13. Updating an Existing Installation
 
 ### Objective: Upgrade AlsaGeist to the latest release, update virtual environment dependencies, refresh the audio cache, and restart the background service.
 
@@ -520,7 +582,7 @@ Expected output:
 
 ---
 
-## 13. Troubleshooting Runbook
+## 14. Troubleshooting Runbook
 
 ### Problem: `PortAudio / sounddevice: No default input/output device found`
 Ensure the user account belongs to the `audio` group and specify devices explicitly:

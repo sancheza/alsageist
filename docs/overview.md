@@ -35,7 +35,7 @@ AlsaGeist transforms a prop skull, skeleton, or animatronic figure into a real-t
 ### Board Performance Profiles
 
 * **Raspberry Pi 3 Model B / B+:** Runs local intent matching and playback of pre-warmed audio cache instantly (<200 ms). Uncached neural TTS synthesis takes 4–6 seconds of CPU time. Pre-warming dialogue responses via `scripts/prewarm_cache.py` is essential for responsive real-time banter.
-* **Throttled Raspberry Pi 3:** A board with an inadequate power supply runs its CPU at half clock speed (600 MHz instead of 1200 MHz) and is slower than the figures above. On a throttled Raspberry Pi 3 Model B a new sentence took 11 to 13 seconds to synthesize. See [Under-Voltage and CPU Throttling](usage_guide.md#55-under-voltage-and-cpu-throttling-raspberry-pi).
+* **Throttled Raspberry Pi 3:** A board with an inadequate power supply runs its CPU at half clock speed (600 MHz instead of 1200 MHz) and is slower than the figures above. On a throttled Raspberry Pi 3 Model B a new sentence took 11 to 13 seconds to synthesize. See [Under-Voltage and CPU Throttling](usage_guide.md#56-under-voltage-and-cpu-throttling-raspberry-pi).
 * **Raspberry Pi 4 Model B / Raspberry Pi 5:** Synthesizes uncached Piper neural TTS phrases on the fly in ~1.0–1.5 seconds, enabling dynamic LLM fallback banter with low latency.
 
 ---

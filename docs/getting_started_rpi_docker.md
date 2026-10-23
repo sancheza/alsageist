@@ -22,25 +22,85 @@ AlsaGeist runs as an isolated, containerized application with direct hardware ac
 
 ## 2. Prerequisites
 
-* Raspberry Pi 3 Model B, 3B+, 4, or 5 running **Raspberry Pi OS Lite (64-bit)** (Debian 12 Bookworm).
+* Raspberry Pi 3 Model B, 3B+, 4, or 5 running **Raspberry Pi OS Lite (64-bit)** (Debian 12 Bookworm), image `2026-10-06-raspios-bookworm-arm64-lite.img` or newer.
 * Google AIY Voice HAT V1 (or compatible USB soundcard/speakerphone).
 * Network connection for initial image pull and voice model download.
-* A power supply rated for the board (Raspberry Pi 3 Model B: 5 V, 2.5 A). An inadequate supply throttles the CPU and slows every step; see [Under-Voltage and CPU Throttling](usage_guide.md#55-under-voltage-and-cpu-throttling-raspberry-pi).
+* A power supply rated for the board (Raspberry Pi 3 Model B: 5 V, 2.5 A). An inadequate supply throttles the CPU and slows every step; see [Under-Voltage and CPU Throttling](usage_guide.md#56-under-voltage-and-cpu-throttling-raspberry-pi).
 
 ---
 
-## 3. Automated Onboarding (One-Step Setup)
+## 3. Install the Operating System (on your workstation)
+
+### Objective: Write Raspberry Pi OS Lite (64-bit) to a microSD card.
+
+Do this on your Linux, macOS, or Windows computer:
+
+1. Insert the microSD card into your workstation and open [Raspberry Pi Imager](https://www.raspberrypi.com/software/) (version 2.0 or newer). The wizard has these steps:
+   * **Device:** select your Raspberry Pi model, then **Next**.
+   * **OS:** select **Raspberry Pi OS (other)** → **Raspberry Pi OS Lite (64-bit)** (`2026-10-06-raspios-bookworm-arm64-lite.img` or newer), then **Next**.
+   * **Storage:** select the microSD card (leave **Exclude system drives** enabled), then **Next**.
+   * **Customisation:** complete each sub-step below, selecting **Next** after each. The **Wi-Fi** and **Remote Access** sub-steps are optional and let the Pi boot headless (onto your network with SSH enabled, no keyboard or monitor needed). Skip them only if you will attach a keyboard and monitor.
+     * **Hostname:** e.g. `alsageist` (letters, numbers, and hyphens only).
+     * **Localisation:** choose your capital city. This sets the time zone, keyboard layout, and Wi-Fi regulatory domain (Wi-Fi stays disabled without a regulatory domain).
+     * **User:** choose a username (the examples in this guide use `pi`) and a password. There is no default account, so you must set one.
+     * **Wi-Fi (optional, for headless boot):** choose a secure network, then enter the **SSID** and **password**. Turn on **Hidden SSID** only if your network does not broadcast its name. A Pi connected by Ethernet does not need Wi-Fi settings.
+     * **Remote Access (optional, for headless boot):** turn on **Enable SSH**, then choose **Use password authentication**, or **Use public key authentication** and paste your public key.
+     * **Raspberry Pi Connect:** optional; leave it off.
+   * **Writing:** review the summary and write the card. Imager stores the customisation on the card's boot partition, and the Pi applies it on first boot.
+2. **(Optional, disable CPU throttling)** After Imager finishes writing, but before first boot, re-insert the card into your workstation if it was ejected. Open the `bootfs` partition (the same file appears as `/boot/firmware/config.txt` once the Pi is running) and add this line at the end of `config.txt`:
+
+   ```ini
+   avoid_warnings=2
+   ```
+
+   This hides the low-voltage warning overlay and stops the firmware from lowering the CPU frequency when it detects low voltage, so the Pi keeps running at full speed under heavy load. It can keep speech recognition and synthesis response times more consistent.
+
+   > [!WARNING]
+   > Skip this step unless you specifically want to disable throttling. Throttling exists to protect the Pi when its power supply cannot keep up, so turning it off can cause instability, crashes, or SD card corruption. Use a good power supply and adequate cooling, and remove the line if you see unexpected reboots.
+
+   Eject the card safely when you are done.
+3. Insert the card into the Raspberry Pi and power it on. The first boot takes a few minutes while the Pi expands the filesystem and, if you configured Wi-Fi, joins your network.
+4. **(Optional, headless setup)** From your workstation (on the same network), connect over SSH. If you attached a keyboard and monitor instead, log in on the Pi directly.
+
+```bash
+ssh <username>@<hostname>.local
+```
+
+> [!TIP]
+> If `<hostname>.local` does not resolve (common on Windows without Bonjour, or on networks that block mDNS), find the Pi's IP address in your router's client list and use `ssh <username>@<ip-address>`. A Pi connected by Ethernet cable needs no Wi-Fi settings and works the same way.
+
+> [!NOTE]
+> The Pi must be on a 2.4 GHz-capable Wi-Fi network (the original Raspberry Pi 3 Model B does not support 5 GHz; the 3B+, 4, and 5 do). If it never appears on your network, write the card again with corrected Wi-Fi settings, or connect it by Ethernet.
+
+---
+
+## 4. Automated Onboarding (One-Step Setup)
 
 ### Objective: Configure host audio drivers, install Docker, provision external data directories, and autostart AlsaGeist.
 
-1. Clone the repository and navigate into the project directory:
+> [!IMPORTANT]
+> All steps from here on run **on the Raspberry Pi itself** (over SSH, or with a keyboard and monitor attached), not on your workstation. `setup_docker.sh` configures the Pi's operating system and does not run on Linux desktops, macOS, or Windows.
+
+1. On the Raspberry Pi, bring the freshly installed operating system up to date and make sure `git` is installed. The update pulls in current kernel, firmware, and package fixes before the setup script configures the audio drivers:
 
 ```bash
+sudo apt update
+sudo apt full-upgrade -y
+sudo apt install -y git
+sudo reboot
+```
+
+Wait a minute for the Pi to restart, then reconnect with SSH.
+
+2. Clone the repository into your home directory (`~`, which is `/home/<username>`, e.g. `/home/pi`) and navigate into the project directory:
+
+```bash
+cd ~
 git clone https://github.com/sancheza/alsageist.git
 cd alsageist
 ```
 
-2. Run the automated Docker deployment script:
+3. Run the automated Docker deployment script:
 
 ```bash
 ./scripts/setup_docker.sh
@@ -84,7 +144,39 @@ Expected output:
 ======================================================================
 ```
 
-3. If using the Google AIY Voice HAT, reboot the host to activate the kernel soundcard driver overlay:
+#### About the optional API keys
+
+During step 4 of the script, you are asked for two API keys. **Both are optional. Press Enter to leave either one blank**, and AlsaGeist runs fully offline. You can add them at any time later.
+
+* **Groq API key** (`GROQ_API_KEY`): turns on cloud **STT** (speech-to-text, the step that converts what a visitor says into text). Groq runs Whisper Large v3, which is faster and more accurate than the offline Vosk model used when this is blank. A Groq key can also power the LLM fallback described below.
+* **Gemini API key** (`GEMINI_API_KEY`): can power the **LLM fallback** (large language model), where Gemini improvises a reply when Grimjaw's built-in responses don't cover what a visitor said. When no key is set, he uses canned fallback lines instead.
+
+If you enter either key, the script also sets `LLM_FALLBACK=true` in `.env`.
+
+To add or change keys later, edit `.env` on the Pi, then recreate the container so it picks up the change:
+
+```bash
+cd ~/alsageist
+nano .env
+docker compose up -d
+```
+
+Set `GROQ_API_KEY=` and/or `GEMINI_API_KEY=` to your key, and set `LLM_FALLBACK=true` if you want the LLM fallback.
+
+#### About the optional audio cache pre-warm
+
+The script also asks whether to pre-warm the dialogue audio cache, which takes about 15 minutes on a Raspberry Pi 3. **It is safe to answer `n` (the default) and do it later.** Pre-warming removes the 4–6 second synthesis pause on a Raspberry Pi 3 for responses that aren't cached yet; AlsaGeist works without it.
+
+To pre-warm later, once AlsaGeist is running (after the reboot, or after `docker compose up -d`), run this on the Pi:
+
+```bash
+cd ~/alsageist
+docker compose exec alsageist python3 scripts/prewarm_cache.py --all
+```
+
+See [Pre-Warming Dialogue Audio Cache](#6-pre-warming-dialogue-audio-cache-0ms-latency) for details.
+
+4. If using the Google AIY Voice HAT, reboot the host to activate the kernel soundcard driver overlay:
 
 ```bash
 sudo reboot
@@ -92,11 +184,43 @@ sudo reboot
 
 AlsaGeist starts automatically on boot via systemd.
 
+> [!IMPORTANT]
+> **Setup is complete after this step.** Skip section 5 (Manual Deployment): it is an alternative to the automated script, for people who do not use `setup_docker.sh`. Continue to the checks below to confirm AlsaGeist is running.
+
+#### Confirm AlsaGeist is running
+
+**The first boot after setup can take a long time.** If the pre-built image cannot be pulled from the registry, Docker builds it on the Pi itself. On a Raspberry Pi 3 this takes well over 10 minutes, during which `docker ps` shows no containers. This is normal. Follow the progress from any SSH session on the Pi:
+
+```bash
+journalctl -u alsageist -f
+```
+
+Press `Ctrl+C` to stop following. When the build finishes, check the service and the container:
+
+```bash
+sudo systemctl status alsageist
+docker ps
+```
+
+You should see `Active: active (exited)` for the service (it starts the container and then exits, which is expected) and a container named `alsageist` with a status of `Up ...` in `docker ps`.
+
+Then confirm the application itself is responding:
+
+```bash
+docker exec alsageist python3 scripts/alsageist_ctl.py status
+docker logs alsageist --tail 30
+```
+
+The status command prints JSON that includes the active personality (`grimjaw`). The logs list your audio output and capture devices; with the AIY Voice HAT you should see `sndrpigooglevoi`. If you don't, see [Troubleshooting](#10-troubleshooting).
+
 ---
 
-## 4. Manual Deployment with Docker Compose
+## 5. Manual Deployment with Docker Compose
 
 ### Objective: Build or pull and run the container manually using Docker Compose.
+
+> [!NOTE]
+> Skip this section if you ran `./scripts/setup_docker.sh` in section 4. It already did everything below. This section is an alternative for people who do not use the setup script.
 
 1. Create required external host directories:
 
@@ -149,7 +273,7 @@ Expected output:
 
 ---
 
-## 5. Pre-Warming Dialogue Audio Cache (0ms Latency)
+## 6. Pre-Warming Dialogue Audio Cache (0ms Latency)
 
 ### Objective: Pre-render all character responses to disk for zero-latency (<1 ms) playback.
 
@@ -172,7 +296,7 @@ Expected output:
 
 ---
 
-## 6. Seamless Container Updates
+## 7. Seamless Container Updates
 
 ### Objective: Upgrade to the latest container image without losing character profiles, voice models, or interaction logs.
 
@@ -192,7 +316,7 @@ All character configurations in `data/`, cached speech in `models/cache/`, and t
 
 ---
 
-## 7. Real-Time Host CLI Control
+## 8. Real-Time Host CLI Control
 
 ### Objective: Inspect status or hot-swap personalities from the host command line.
 
@@ -221,7 +345,7 @@ docker exec alsageist python3 scripts/alsageist_ctl.py shutdown --yes
 
 ---
 
-## 8. Physical Controls & Host Shutdown
+## 9. Physical Controls & Host Shutdown
 
 The containerized service has direct access to the GPIO button pins. Host poweroff needs the host's system D-Bus socket and root privilege (to satisfy polkit authorization for systemd-logind PowerOff), which `docker-compose.shutdown.yml` configures:
 
@@ -247,7 +371,7 @@ COMPOSE_FILE=docker-compose.yml:docker-compose.shutdown.yml
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 ### Problem: Audio input or output fails to register in container.
 
@@ -285,7 +409,7 @@ frequency(48)=600000000
 throttled=0x50005
 ```
 
-A clock of `1200000000` and a value of `0x0` mean the supply is not the cause. Otherwise see [Under-Voltage and CPU Throttling](usage_guide.md#55-under-voltage-and-cpu-throttling-raspberry-pi).
+A clock of `1200000000` and a value of `0x0` mean the supply is not the cause. Otherwise see [Under-Voltage and CPU Throttling](usage_guide.md#56-under-voltage-and-cpu-throttling-raspberry-pi).
 
 ### Problem: Arcade button or LED does not respond.
 

@@ -29,7 +29,7 @@ AlsaGeist runs an autonomous conversational character driven by pluggable person
 * Raspberry Pi 3 Model B, 3B+, 4, or 5
 * Google AIY Voice Kit V1 (2017 Voice HAT with stereo microphone daughterboard, 3-inch speaker, and arcade button)
 * Raspberry Pi OS Lite (64-bit)
-* 5V 2.5A+ power supply (an inadequate supply throttles the CPU and slows every response; see [Under-Voltage and CPU Throttling](docs/usage_guide.md#55-under-voltage-and-cpu-throttling-raspberry-pi))
+* 5V 2.5A+ power supply (an inadequate supply throttles the CPU and slows every response; see [Under-Voltage and CPU Throttling](docs/usage_guide.md#56-under-voltage-and-cpu-throttling-raspberry-pi))
 
 ---
 
@@ -39,7 +39,21 @@ AlsaGeist runs an autonomous conversational character driven by pluggable person
 
 See the complete [Getting Started with Docker Guide](docs/getting_started_rpi_docker.md) for full instructions and hardware details.
 
+**Step 1: Install the OS (on your workstation).** Using [Raspberry Pi Imager](https://www.raspberrypi.com/software/) on Linux, macOS, or Windows, write `2026-10-06-raspios-bookworm-arm64-lite.img` (Raspberry Pi OS Lite, 64-bit) or newer to a microSD card. In the OS customization settings, set a hostname, a username (the examples use `pi`), and a password. To boot without a keyboard or monitor, also (optionally) set Wi-Fi and enable SSH. Insert the card into the Raspberry Pi and power it on. See [Operating System Preparation](docs/overview.md#5-operating-system-preparation).
+
+**Step 2: Run the setup (on the Raspberry Pi itself).** Everything below runs on the Raspberry Pi, not on your workstation. Connect with `ssh <username>@<hostname>.local` (or use a keyboard and monitor). First update the fresh OS, make sure `git` is installed, and reboot, then reconnect:
+
 ```bash
+sudo apt update
+sudo apt full-upgrade -y
+sudo apt install -y git
+sudo reboot
+```
+
+Then, from your home directory, clone the repository and run the setup:
+
+```bash
+cd ~
 git clone https://github.com/sancheza/alsageist.git
 cd alsageist
 ./scripts/setup_docker.sh
@@ -60,6 +74,7 @@ sudo reboot
 See the complete [Getting Started on Bare Metal Guide](docs/getting_started_rpi_bare_metal.md) for full driver setup and background service configuration.
 
 ```bash
+cd ~
 git clone https://github.com/sancheza/alsageist.git
 cd alsageist
 python3 -m venv venv

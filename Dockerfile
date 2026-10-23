@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     alsa-utils \
     libasound2 \
     libasound2-plugins \
+    libatomic1 \
     libportaudio2 \
     libgpiod2 \
     gpiod \

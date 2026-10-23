@@ -178,14 +178,7 @@ echo "[2/5] Verifying Docker and Docker Compose..."
 if command -v docker > /dev/null 2>&1; then
     echo "  Docker is installed: $(docker --version)"
 else
-    echo "  Docker not found. Installing Docker Engine with Docker's installation script (run as root)..."
-    if [[ "$DRY_RUN" != true && "$NON_INTERACTIVE" != true ]]; then
-        read -r -p "  Download https://get.docker.com and run it as root? (y/N): " DOCKER_CHOICE
-        if [[ ! "$DOCKER_CHOICE" =~ ^[Yy]$ ]]; then
-            echo "  Install Docker Engine manually, then run this script again." >&2
-            exit 1
-        fi
-    fi
+    echo "  Docker not found. Installing Docker Engine with Docker's installation script (https://get.docker.com, run as root)..."
     if [[ "$DRY_RUN" == true ]]; then
         echo "  [DRY RUN] Would download https://get.docker.com to a temporary file and run it with sh"
     else
@@ -350,13 +343,17 @@ fi
 if [[ "$DO_PREWARM" == true ]]; then
     echo "  Pre-warming dialogue audio cache..."
     if [[ "$DRY_RUN" == true ]]; then
-        echo "  [DRY RUN] Would run: python3 ${TARGET_DIR}/scripts/prewarm_cache.py --all"
+        echo "  [DRY RUN] Would run: docker compose run --rm alsageist python3 scripts/prewarm_cache.py --all (in ${TARGET_DIR})"
     else
         if command -v python3 > /dev/null 2>&1 && python3 -c "import piper" > /dev/null 2>&1; then
             python3 "${TARGET_DIR}/scripts/prewarm_cache.py" --all || true
         else
-            echo "  Host Python environment lacks piper-tts. Cache can be pre-warmed inside container after startup:"
-            echo "    docker compose exec alsageist python3 scripts/prewarm_cache.py --all"
+            # Docker deployments do not install piper-tts on the host, so synthesize inside the image
+            echo "  Running the pre-warm inside the AlsaGeist container (the first run pulls the image)..."
+            if ! (cd "$TARGET_DIR" && run_root docker compose run --rm alsageist python3 scripts/prewarm_cache.py --all); then
+                echo "  Pre-warm did not complete. After AlsaGeist is running, retry with:"
+                echo "    docker compose exec alsageist python3 scripts/prewarm_cache.py --all"
+            fi
         fi
     fi
 fi
