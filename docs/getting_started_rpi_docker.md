@@ -163,6 +163,10 @@ docker compose up -d
 
 Set `GROQ_API_KEY=` and/or `GEMINI_API_KEY=` to your key, and set `LLM_FALLBACK=true` if you want the LLM fallback.
 
+#### About the voice command password
+
+Privileged spoken commands (shutdown, mode switches, fallback toggles) require a verbal password so visitors can't shut the device down or change its mode. The default is `alsageist`. This default is public, so **change it if you wish**. Set `VOICE_COMMAND_PASSWORD=` in `.env` to a word of your choice (or to `none` to disable the check), then recreate the container with `docker compose up -d`.
+
 #### About the optional audio cache pre-warm
 
 The script also asks whether to pre-warm the dialogue audio cache, which takes about 15 minutes on a Raspberry Pi 3. **It is safe to answer `n` (the default) and do it later.** Pre-warming removes the 4–6 second synthesis pause on a Raspberry Pi 3 for responses that aren't cached yet; AlsaGeist works without it.

@@ -377,6 +377,10 @@ VAD_THRESHOLD=0.0035
 
 Unlike the Docker setup script, nothing sets `LLM_FALLBACK` for you here. Set `LLM_FALLBACK=true` in `.env` yourself if you add a key and want the LLM fallback. After editing `.env` on a running service, restart it with `sudo systemctl restart alsageist.service`.
 
+#### About the voice command password
+
+Privileged spoken commands (shutdown, mode switches, fallback toggles) require a verbal password so visitors can't shut the device down or change its mode. The default is `alsageist`. This default is public, so **change it if you wish**. Set `VOICE_COMMAND_PASSWORD=` in `.env` to a word of your choice (or to `none` to disable the check), then restart the service with `sudo systemctl restart alsageist.service`.
+
 ---
 
 ## 10. Interactive Testing & Audio Tuning
