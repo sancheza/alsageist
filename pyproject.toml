@@ -8,6 +8,7 @@ version = "1.0.0"
 description = "Autonomous Voice-Driven Conversational Display Engine"
 authors = [{ name = "sancheza" }]
 readme = "README.md"
+license = { text = "AGPL-3.0-only" }
 requires-python = ">=3.9"
 dependencies = [
     "sounddevice>=0.4.6",

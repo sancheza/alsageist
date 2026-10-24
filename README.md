@@ -370,4 +370,12 @@ sudo systemctl enable --now alsageist.service
 
 ## 13. License
 
-This project is licensed under the [MIT License](LICENSE).
+Copyright (c) 2026 sancheza. This project is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). You may use, modify, and share it freely, but if you distribute it or offer it as a network service, you must publish your complete source, including your changes, under the same license.
+
+### Commercial Licensing
+
+To use AlsaGeist in a closed-source or commercial product without the AGPL's requirements, request a separate commercial license from the author through [GitHub](https://github.com/sancheza).
+
+### Trademark
+
+"AlsaGeist" is the name of this project. The license covers the code, not the name. Please do not use the name for commercial products or modified versions without permission.
