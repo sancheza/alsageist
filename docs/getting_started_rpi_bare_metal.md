@@ -27,6 +27,9 @@ Native bare-metal deployment executes AlsaGeist directly on the host operating s
 * A power supply rated for the board (Raspberry Pi 3 Model B: 5 V, 2.5 A). An inadequate supply throttles the CPU and slows every step; see [Under-Voltage and CPU Throttling](usage_guide.md#56-under-voltage-and-cpu-throttling-raspberry-pi).
 * A microSD card and a workstation to write it from (see section 3). For background on the hardware, see the [AlsaGeist Project & Hardware Overview](overview.md).
 
+> [!IMPORTANT]
+> Check your AIY Voice Kit version. V1 (Raspberry Pi 3, Voice HAT) is supported. V2 (Raspberry Pi Zero, Voice Bonnet) is untested; see [Profile C](overview.md#profile-c-google-aiy-voice-kit-v2-raspberry-pi-zero-untested) for limitations and suggestions.
+
 ---
 
 ## 3. Install the Operating System (on your workstation)

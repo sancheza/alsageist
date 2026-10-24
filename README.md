@@ -32,6 +32,9 @@ AlsaGeist runs an autonomous conversational character driven by pluggable person
 * Python 3.9+ (Raspberry Pi OS Bookworm includes 3.11; the Docker image bundles its own, so the host needs none for Docker)
 * 5V 2.5A+ power supply (an inadequate supply throttles the CPU and slows every response; see [Under-Voltage and CPU Throttling](docs/usage_guide.md#56-under-voltage-and-cpu-throttling-raspberry-pi))
 
+> [!IMPORTANT]
+> Check your AIY Voice Kit version. V1 (Raspberry Pi 3, Voice HAT) is supported. V2 (Raspberry Pi Zero, Voice Bonnet) is untested; see [Profile C](docs/overview.md#profile-c-google-aiy-voice-kit-v2-raspberry-pi-zero-untested) for limitations and suggestions.
+
 ---
 
 ## 3. Quick Start (Docker on Raspberry Pi)

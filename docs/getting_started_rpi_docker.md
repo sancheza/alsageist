@@ -27,6 +27,9 @@ AlsaGeist runs as an isolated, containerized application with direct hardware ac
 * Network connection for initial image pull and voice model download.
 * A power supply rated for the board (Raspberry Pi 3 Model B: 5 V, 2.5 A). An inadequate supply throttles the CPU and slows every step; see [Under-Voltage and CPU Throttling](usage_guide.md#56-under-voltage-and-cpu-throttling-raspberry-pi).
 
+> [!IMPORTANT]
+> Check your AIY Voice Kit version. V1 (Raspberry Pi 3, Voice HAT) is supported. V2 (Raspberry Pi Zero, Voice Bonnet) is untested; see [Profile C](overview.md#profile-c-google-aiy-voice-kit-v2-raspberry-pi-zero-untested) for limitations and suggestions.
+
 ---
 
 ## 3. Install the Operating System (on your workstation)

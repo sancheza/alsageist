@@ -77,6 +77,42 @@ Raspberry Pi 4 / 5
   └── GPIO 23 (Pin 16)   ──> Momentary Push Button ──> GND (Pin 14)
 ```
 
+### Profile C: Google AIY Voice Kit V2 (Raspberry Pi Zero, Untested)
+
+> [!IMPORTANT]
+> **Check which AIY Voice Kit you have before following a guide.**
+>
+> | Kit | Board in the kit | Audio board | Status |
+> | :--- | :--- | :--- | :--- |
+> | **Voice Kit V1 (2017)** | Raspberry Pi 3 | Voice HAT | Supported (Profile A) |
+> | **Voice Kit V2 (2018)** | Raspberry Pi Zero | Voice Bonnet | Untested; see the limitations below |
+
+The sections below apply only to a Voice Kit V2 or any other Raspberry Pi Zero board. AlsaGeist has not been run on a Voice Kit V2.
+
+| Board | CPU / OS | RAM | Status |
+| :--- | :--- | :--- | :--- |
+| **Raspberry Pi Zero / Zero W / Zero WH** | ARMv6, 32-bit only | 512 MB | Does not install (bare metal or Docker) |
+| **Raspberry Pi Zero 2 W** | Cortex-A53, 64-bit capable | 512 MB | Untested; expected to install, memory is tight |
+
+**Limitations:**
+
+| Limitation | Detail |
+| :--- | :--- |
+| **No 32-bit packages** | `numpy`, `onnxruntime`, and `piper-tts` (pinned in `constraints.txt`) publish Linux wheels for `aarch64` and `x86_64` only. `pip install` fails on a 32-bit OS, including inside the Docker image. |
+| **Voice Bonnet audio** | `scripts/setup_rpi_os.sh` and `scripts/setup_docker.sh` configure only the Voice HAT V1 overlay (`googlevoicehat-soundcard`). The Voice Bonnet is not configured. |
+| **Memory** | The daemon uses 280–380 MB of resident memory on a Raspberry Pi 3 Model B. A 512 MB board leaves little for the operating system, and Docker adds its own overhead. |
+| **Speed** | The Zero 2 W clocks at 1.0 GHz against 1.2 GHz on the Raspberry Pi 3 Model B. Uncached Piper synthesis takes longer than the 4-6 seconds documented for the Pi 3. |
+
+**Suggestions:**
+
+* **Move to a supported board.** Use a Raspberry Pi 3 Model B, 3B+, 4, or 5 with a USB speakerphone (Profile B), or with a Voice HAT V1 if you have one.
+* **Keep the Zero board with USB audio.** Use a Zero 2 W with Raspberry Pi OS Lite (64-bit) and a USB speakerphone (Profile B wiring). This combination is untested.
+* **Reduce memory on a Zero 2 W:**
+  * Run bare metal rather than Docker.
+  * Set `GROQ_API_KEY` or `GEMINI_API_KEY` in `.env` so cloud speech-to-text replaces the local Vosk model.
+  * Add swap.
+  * Run `scripts/prewarm_cache.py` before deployment so common replies play from the cache.
+
 ---
 
 ## 4. Acoustic Decoupling & Prop Installation
