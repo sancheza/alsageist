@@ -11,7 +11,7 @@ Native bare-metal deployment executes AlsaGeist directly on the host operating s
 | Directory | Path | Purpose |
 | :--- | :--- | :--- |
 | **Source Root** | `~/alsageist` | Application daemon, utility scripts, and runtime configuration |
-| **Virtual Environment** | `~/alsageist/venv` | Isolated Python 3.11+ binaries and package dependencies |
+| **Virtual Environment** | `~/alsageist/venv` | Isolated Python binaries (3.9+; Bookworm ships 3.11) and package dependencies |
 | **Personalities** | `~/alsageist/data/personalities` | Character JSON profiles and dialogue regex patterns |
 | **Neural Voices** | `~/alsageist/models/piper` | Piper ONNX voice models and JSON voice configs |
 | **Audio Cache** | `~/alsageist/models/cache` | Pre-warmed NumPy audio arrays for zero-latency playback |
