@@ -2,7 +2,7 @@
 
 Autonomous, voice-driven conversational animatronic display engine powered by offline Piper Neural Text-to-Speech (TTS), real-time Voice Activity Detection (VAD), and modular personality profiles.
 
-Designed for cross-platform operation on macOS development workstations and Raspberry Pi hardware with the Google AIY Voice Kit V1.
+Designed for cross-platform operation on macOS and on Raspberry Pi hardware with the Google AIY Voice Kit V1.
 
 ---
 
@@ -20,12 +20,12 @@ AlsaGeist runs an autonomous conversational character driven by pluggable person
 
 ## 2. System Requirements
 
-### Development (macOS)
+### macOS
 * macOS 12+ (Apple Silicon or Intel)
 * Python 3.9+
 * Built-in or USB microphone and speaker
 
-### Production Hardware (Raspberry Pi)
+### Raspberry Pi
 * Raspberry Pi 3 Model B, 3B+, 4, or 5
 * Google AIY Voice Kit V1 (2017 Voice HAT with stereo microphone daughterboard, 3-inch speaker, and arcade button)
 * Raspberry Pi OS Lite (64-bit)
