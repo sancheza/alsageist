@@ -378,6 +378,12 @@ To keep the override after reboots, add this line to `.env`; `docker compose` an
 COMPOSE_FILE=docker-compose.yml:docker-compose.shutdown.yml
 ```
 
+To verify a finished deployment (container health, hardware access, and whether the container is authorized to power off the host), run this on the Pi from the repository root. It is read-only; add `--shutdown` to also do a live power-off test:
+
+```bash
+./scripts/verify_docker_deploy.sh
+```
+
 > [!WARNING]
 > The D-Bus mount and root user override give the container access to host system management. Without them, the long hold and the `shutdown` command announce power-off and then return to normal operation.
 

@@ -326,6 +326,13 @@ else
         append_line "$ENV_FILE" "GPIO_DEVICE=${GPIO_CHIP}"
         echo "  Recorded GPIO_DEVICE=${GPIO_CHIP} in ${ENV_FILE}."
     fi
+
+    # Host poweroff (voice command and 10 s button hold) needs the shutdown override:
+    # the host's D-Bus socket and root. Without it the container cannot power off the Pi.
+    if ! grep -q "^COMPOSE_FILE=" "$ENV_FILE" 2>/dev/null; then
+        append_line "$ENV_FILE" "COMPOSE_FILE=docker-compose.yml:docker-compose.shutdown.yml"
+        echo "  Enabled host shutdown support (docker-compose.shutdown.yml) in ${ENV_FILE}."
+    fi
 fi
 
 # Optional Dialogue Speech Cache Pre-Warming
