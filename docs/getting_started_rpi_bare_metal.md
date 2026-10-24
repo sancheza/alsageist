@@ -406,7 +406,16 @@ Expected output:
 🟢 [LED: IDLE (Breathing ~ ~ ~)]
 ```
 
-2. Speak into the microphone. Grimjaw detects speech, processes the intent, synthesizes the voice, and illuminates the LED.
+2. Speak into the microphone. Grimjaw detects speech, processes the intent, synthesizes the voice, and illuminates the LED. Speak a full sentence near the microphone and pause; he answers when he hears you stop. Here are a few things to try:
+
+   * **Get to know him:** *"What's your name?"*, *"Are you dead?"*, *"How old are you?"*, *"Where do you keep your brain?"*
+   * **Candy:** *"Can I have some candy?"*, *"What is your favorite candy?"*
+   * **Costumes:** *"I'm dressed up as Spider-Man."*, *"I'm dressed as Barbie."*, *"What is your favorite costume?"*
+   * **Silly questions:** *"Do you get cold without any skin on?"*, *"Can you tickle yourself?"*, *"Do you own a pet?"*
+   * **Pop culture:** *"Tell me a Seinfeld quote."*
+   * **Check on the system:** *"What mode are you in?"*, *"What voice model are you using?"*
+
+   See [Spoken Voice System Commands](usage_guide.md#43-spoken-voice-system-commands) for more spoken commands, including the ones that need the voice command password.
 
 3. **Audio Calibration (if needed):**
    * **If the speaker is too loud or quiet:** Adjust `--volume` (e.g., `--volume 0.4` or `--volume 0.8`).
@@ -424,7 +433,7 @@ Expected output:
 
 ### Objective: Pre-render all character responses to disk for zero-latency (<200 ms) playback.
 
-On the Raspberry Pi 3, neural TTS generation takes 4–6 seconds per uncached phrase. Pre-warming renders all dialogue responses in advance and stores them in `models/cache/`. It takes about 15 minutes on a Raspberry Pi 3. **This step is optional: you can skip it and run it later.** AlsaGeist works without it, but responses that aren't cached yet pause for 4–6 seconds while they are synthesized.
+On the Raspberry Pi 3, neural TTS generation takes 4–6 seconds per uncached phrase. Pre-warming renders all dialogue responses in advance and stores them in `models/cache/`. It takes about 50 minutes on a Raspberry Pi 3. **This step is optional: you can skip it and run it later.** AlsaGeist works without it, but responses that aren't cached yet pause for 4–6 seconds while they are synthesized.
 
 ```bash
 ./scripts/prewarm_cache.py --all

@@ -127,7 +127,7 @@ Expected output:
   Enter Gemini API Key [leave empty for offline fallback]: 
   Configured /home/pi/alsageist/.env (mode 600).
 
-  Pre-warm audio dialogue cache now (~25 responses, ~15 min on Pi 3)? (y/N): n
+  Pre-warm audio dialogue cache now (all responses, ~50 min on Pi 3)? (y/N): n
 
 [5/5] Configuring Systemd Autostart Service...
   Enabled alsageist.service autostart on system boot.
@@ -169,7 +169,7 @@ Privileged spoken commands (shutdown, mode switches, fallback toggles) require a
 
 #### About the optional audio cache pre-warm
 
-The script also asks whether to pre-warm the dialogue audio cache, which takes about 15 minutes on a Raspberry Pi 3. **It is safe to answer `n` (the default) and do it later.** Pre-warming removes the 4–6 second synthesis pause on a Raspberry Pi 3 for responses that aren't cached yet; AlsaGeist works without it.
+The script also asks whether to pre-warm the dialogue audio cache, which takes about 50 minutes on a Raspberry Pi 3. **It is safe to answer `n` (the default) and do it later.** Pre-warming removes the 4–6 second synthesis pause on a Raspberry Pi 3 for responses that aren't cached yet; AlsaGeist works without it.
 
 To pre-warm later, once AlsaGeist is running (after the reboot, or after `docker compose up -d`), run this on the Pi:
 
@@ -216,6 +216,19 @@ docker logs alsageist --tail 30
 ```
 
 The status command prints JSON that includes the active personality (`grimjaw`). The logs list your audio output and capture devices; with the AIY Voice HAT you should see `sndrpigooglevoi`. If you don't, see [Troubleshooting](#10-troubleshooting).
+
+#### Try talking to Grimjaw
+
+Once the service is running, speak a full sentence near the microphone and pause. Grimjaw answers when he hears you stop. Here are a few things to try:
+
+* **Get to know him:** *"What's your name?"*, *"Are you dead?"*, *"How old are you?"*, *"Where do you keep your brain?"*
+* **Candy:** *"Can I have some candy?"*, *"What is your favorite candy?"*
+* **Costumes:** *"I'm dressed up as Spider-Man."*, *"I'm dressed as Barbie."*, *"What is your favorite costume?"*
+* **Silly questions:** *"Do you get cold without any skin on?"*, *"Can you tickle yourself?"*, *"Do you own a pet?"*
+* **Pop culture:** *"Tell me a Seinfeld quote."*
+* **Check on the system:** *"What mode are you in?"*, *"What voice model are you using?"*
+
+See [Spoken Voice System Commands](usage_guide.md#43-spoken-voice-system-commands) for more spoken commands, including the ones that need the voice command password.
 
 ---
 
