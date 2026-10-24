@@ -531,7 +531,7 @@ Fast-forward
 3. Update dependencies in the virtual environment:
 
 ```bash
-./venv/bin/pip install -r requirements.txt
+./venv/bin/pip install -c constraints.txt -e ".[rpi]"
 ```
 
 Expected output:
