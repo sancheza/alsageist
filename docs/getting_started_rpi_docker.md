@@ -441,3 +441,22 @@ Ensure the target user is a member of the `gpio` group on the host:
 ```bash
 groups $USER | grep gpio
 ```
+
+### Problem: The `shutdown` voice command or the 10-second button hold announces power-off but the Pi stays on.
+
+The container is missing the shutdown override (root user and the host's D-Bus socket). The container log shows `Shutdown failed: no poweroff method succeeded`. Run the deployment checkout on the Pi, from the repository root. It is read-only and does not power anything off:
+
+```bash
+./scripts/verify_docker_deploy.sh
+```
+
+Failed checks in section `[4]` confirm the cause. To fix it, enable the override and recreate the container:
+
+```bash
+echo 'COMPOSE_FILE=docker-compose.yml:docker-compose.shutdown.yml' >> .env
+docker compose up -d
+```
+
+### Problem: Something is not working after a deployment and the cause is unclear.
+
+Run `./scripts/verify_docker_deploy.sh` first. It checks container health, the control socket, GPIO and audio access, host shutdown authorization, `.env` values, autostart and the voice models, and prints a suggested fix beside each failure. Use `./scripts/verify_docker_deploy.sh --shutdown` to also test a real power-off.
