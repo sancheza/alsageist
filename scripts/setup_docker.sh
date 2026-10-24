@@ -334,7 +334,7 @@ if [[ "$PREWARM" == true ]]; then
     DO_PREWARM=true
 elif [[ "$NON_INTERACTIVE" == false ]]; then
     echo ""
-    read -r -p "  Pre-warm audio dialogue cache now (~25 responses, ~15 min on Pi 3)? (y/N): " PREWARM_CHOICE
+    read -r -p "  Pre-warm audio dialogue cache now (all responses, ~50 min on Pi 3)? (y/N): " PREWARM_CHOICE
     if [[ "$PREWARM_CHOICE" =~ ^[Yy]$ ]]; then
         DO_PREWARM=true
     fi
