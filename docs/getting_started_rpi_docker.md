@@ -74,7 +74,7 @@ ssh <username>@<hostname>.local
 
 ---
 
-## 4. Automated Onboarding (One-Step Setup)
+## 4. Automated Setup
 
 ### Objective: Configure host audio drivers, install Docker, provision external data directories, and autostart AlsaGeist.
 
@@ -219,7 +219,7 @@ The status command prints JSON that includes the active personality (`grimjaw`).
 
 ---
 
-## 5. Manual Deployment with Docker Compose
+## 5. Manual Setup with Docker Compose
 
 ### Objective: Build or pull and run the container manually using Docker Compose.
 
