@@ -18,6 +18,17 @@ AlsaGeist transforms a prop skull, skeleton, or animatronic figure into a real-t
 * **Dynamic LED Signaling:** Pulse-width modulation (PWM) LED states indicating resting ambient idle, listening, speech capture acknowledgment, reasoning/synthesis, and spoken audio-reactive flicker.
 * **Zero Disk I/O Runtime:** Audio capture, token transmission, and playback buffering operate entirely in RAM buffers to protect MicroSD cards from wear.
 
+### Software Components
+
+1. The **Audio Manager** (`AudioIO`) and **Voice Detector** (`VoiceActivityDetector`) continuously listen through the microphone to detect when a visitor begins and ends speaking.
+2. The **Speech-to-Text Service** (`STTService`) transcribes that captured voice audio into text using either a local offline model (Vosk) or fast cloud speech services (Groq or Gemini).
+3. The **Dialogue Engine** (`PersonaIntentEngine`) evaluates the transcribed words against character rules to pick a matching pre-scripted joke, costume reaction, or witty remark.
+4. An optional **Cloud AI Service** (`ConversationalLLMService`) generates custom conversational answers on the fly whenever a visitor asks something outside the pre-written script.
+5. The **Speech Synthesizer** (`TTSService`) uses the local Piper text-to-speech engine to vocalize the chosen reply in the character's signature voice.
+6. An **Audio Cache** stores pre-generated sound clips in memory and on disk so frequent lines play back instantly with zero delay.
+7. The **Hardware Controller** (`LEDController`) animates status lighting to show when the prop is listening, thinking, or talking, while monitoring an arcade button for volume and power adjustments.
+8. Finally, the **Main Agent** (`Agent`) orchestrates this conversational loop from start to finish, supported by a background **Control Server** (`ControlServer`) that accepts remote commands without interrupting active banter.
+
 ---
 
 ## 2. System Specifications & Board Comparison
