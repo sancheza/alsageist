@@ -38,6 +38,10 @@ DEFAULT_ANNOUNCEMENTS = {
     "fallback_enabled": "L L M fallback is enabled.",
     "fallback_disabled": "L L M fallback is disabled.",
     "access_denied": "Access denied: verbal password required.",
+    "wifi_not_found": "WiFi network not found.",
+    "wifi_connecting_template": "Attempting to connect to WiFi network {ssid}.",
+    "wifi_connect_success_template": "Attempting to connect to WiFi network {ssid} succeeded.",
+    "wifi_connect_failed_template": "Attempting to connect to WiFi network {ssid} failed.",
 }
 DEFAULT_GREETING_TEMPLATE = "I am {name}. System online and ready."
 

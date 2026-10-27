@@ -13,7 +13,7 @@ import threading
 import time
 from typing import Optional, Tuple
 
-from core import system_utils, voice_commands, voice_config
+from core import system_utils, voice_commands, voice_config, wifi_manager
 from core.audio_io import AudioIO
 from core.control_server import ControlServer
 from core.dialogue_interface import DialogueEngine
@@ -333,6 +333,24 @@ class AlsaGeistAgent:
         """Return a system announcement for the active persona (profile text, else the shared default)."""
         profile = self.active_profile
         return profile.announcement(key) if profile else DEFAULT_ANNOUNCEMENTS[key]
+
+    def _handle_wifi_startup_fallback(self) -> bool:
+        """Attempt to connect to fallback Wi-Fi networks if offline at startup.
+
+        Returns:
+            True if connection to a fallback Wi-Fi network succeeded, False otherwise.
+        """
+        fallback_str = os.environ.get("WIFI_FALLBACK_NETWORKS", "")
+        connected = wifi_manager.manage_wifi_startup_fallback(
+            speak_fn=lambda text: self.speak(text, blocking=True, cooldown_sec=0.2),
+            announcement_fn=self._announcement,
+            fallback_env_str=fallback_str,
+            is_online_fn=self._check_internet,
+        )
+        if connected:
+            self.is_online = True
+            return True
+        return False
 
     def _announce_low_power(self, status) -> bool:
         """Say an in-character line about the weak power supply, if nobody is talking to the agent.
@@ -756,6 +774,8 @@ class AlsaGeistAgent:
         self.led.set_state(LEDState.IDLE)
         self.control_server.start()
         self.network.apply_first_result()
+        if not self.is_online:
+            self._handle_wifi_startup_fallback()
         if self.is_online:
             self.basic_info.prefetch_weather()
         self._note_activity()

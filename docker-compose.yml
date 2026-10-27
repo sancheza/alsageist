@@ -21,6 +21,7 @@ services:
       - /etc/asound.conf:/etc/asound.conf:ro
       - /etc/localtime:/etc/localtime:ro
       - /sys/firmware/devicetree/base:/sys/firmware/devicetree/base:ro
+      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
     devices:
       - /dev/snd:/dev/snd
       - "${GPIO_DEVICE:-/dev/gpiochip0}:/dev/gpiochip0"

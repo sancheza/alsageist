@@ -14,6 +14,7 @@ AlsaGeist runs an autonomous conversational character driven by pluggable person
 * **Zero Disk I/O:** Audio capture, VAD framing, and speech synthesis operate directly in memory as raw PCM numpy arrays.
 * **Offline Zero-Latency Dialogue:** Over 110 pre-programmed intents, pop-culture quotes, skeleton puns, and boundary rules respond in under 5 milliseconds.
 * **Local Neural Speech:** Synthesizes gravelly character speech locally via Piper ONNX without cloud TTS APIs or subscription limits.
+* **Startup Wi-Fi Failover:** Automatically scans airwaves and connects to fallback Wi-Fi networks via NetworkManager when the primary network is unavailable, announcing progress out loud.
 * **Cross-Platform:** Runs in terminal emulation mode on macOS or hardware GPIO/ALSA mode on Raspberry Pi.
 
 ---

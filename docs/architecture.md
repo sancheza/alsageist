@@ -73,9 +73,10 @@ AlsaGeist follows the dev ADR modular architecture standard (`core/`, `services/
 * **Environment Fallbacks:** Parameterizes audio thresholds, device names, personality profile selection, volume, and pin allocations from shell environment variables (e.g., `$PERSONALITY`, `$VOLUME`, `$VAD_THRESHOLD`, `$LED_PIN`).
 * **Testability:** Exposes `parse_args(args=None)` accepting custom parameter arrays to allow headless testing without polluting `sys.argv`.
 
-### 3.2 Host & Operating System Utilities (`core/system_utils.py`)
+### 3.2 Host & Operating System Utilities (`core/system_utils.py` & `core/wifi_manager.py`)
 * **Environment Loading (`load_env_file`):** Robust key-value `.env` parser that ignores comments, strips enclosing quotes, skips duplicate keys, and resolves paths without third-party dependencies.
 * **Network Connectivity Probing (`check_internet_connectivity`):** Low-overhead direct TCP socket connection check against `1.1.1.1` and `8.8.8.8` on port 443, then port 53, avoiding DNS lookups and ICMP ping permissions. Periodic checks run on a background thread.
+* **Wi-Fi Connection Management (`core/wifi_manager.py`):** Queries active connections, scans visible airwaves via `nmcli`, and orchestrates multi-SSID failover across NetworkManager connection profiles and `WIFI_FALLBACK_NETWORKS` definitions with real-time spoken feedback.
 * **Host Power Management (`trigger_host_shutdown`):** Safe system shutdown dispatch executing `sudo /sbin/shutdown -h now` on Linux platforms while safely simulating actions in dry-run mode on macOS development machines.
 
 ### 3.3 Audio Input/Output (`core/audio_io.py`)
@@ -166,7 +167,17 @@ stateDiagram-v2
     }
     
     StartupCheck --> OnlineMode: Internet Reachable
-    StartupCheck --> OfflineMode: Internet Unreachable
+    StartupCheck --> WiFiFallback: Internet Unreachable
+    
+    state WiFiFallback {
+        AnnounceMissing: Speak 'WiFi network not found'
+        ScanAirwaves: Scan visible SSIDs (nmcli)
+        FilterCandidates: Match saved profiles & WIFI_FALLBACK_NETWORKS
+        AttemptConnect: Speak 'Attempting to connect...' & run nmcli
+    }
+    
+    WiFiFallback --> OnlineMode: Any Visible Candidate Connects
+    WiFiFallback --> OfflineMode: All Candidates Fail or Out of Range
     
     state OnlineMode {
         OnlineSTT: Primary Groq Whisper / Gemini Flash STT
@@ -182,6 +193,7 @@ stateDiagram-v2
     OfflineMode --> OnlineMode: 15-Minute Probe Succeeds
 ```
 
+* **Startup Wi-Fi Failover:** When the initial network probe detects no internet connectivity at boot, `_handle_wifi_startup_fallback()` announces that Wi-Fi was not found, scans the airwaves for visible SSIDs, and tries connecting to each visible candidate defined in NetworkManager or `WIFI_FALLBACK_NETWORKS`. Statuses are vocalized out loud. If a candidate succeeds, the agent switches to online mode; otherwise, it begins offline operation.
 * **Immediate check:** when every cloud STT backend fails and Vosk answers, the next loop pass runs a connectivity probe on a background thread instead of waiting for the 15-minute interval. The probe decides the mode, so an outage of one cloud service with the network up does not switch to offline. Requests are limited to one per 30 seconds, and are ignored while the mode is forced or already offline.
 * **Forced mode:** `mode online` and `mode offline` (see `alsageist_ctl.py`) suspend all automatic switching until `mode auto`.
 
@@ -222,7 +234,8 @@ alsageist/
 │   ├── logger.py                  # Structured JSONL telemetry logger (rotation, optional text redaction)
 │   ├── system_utils.py            # Environment loader, TCP network probe & safe shutdown
 │   ├── vad.py                     # Energy VAD & silence boundary detector
-│   └── voice_config.py            # Piper model path, tempo & noise resolution
+│   ├── voice_config.py            # Piper model path, tempo & noise resolution
+│   └── wifi_manager.py            # NetworkManager scan, fallback connection & status orchestration
 ├── services/
 │   ├── agent.py                   # Agent orchestrator & control API
 │   ├── basic_info_service.py      # Real-time spoken time and weather status provider

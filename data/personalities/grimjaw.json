@@ -66,7 +66,11 @@
     "engine_intent": "The dialogue engine is intent.",
     "engine_llm": "The dialogue engine is neural L L M.",
     "voice_model_template": "My voice model is {model}.",
-    "access_denied": "Access denied, mortal! State the verbal password to command the crypt."
+    "access_denied": "Access denied, mortal! State the verbal password to command the crypt.",
+    "wifi_not_found": "WiFi network not found.",
+    "wifi_connecting_template": "Attempting to connect to WiFi network {ssid}.",
+    "wifi_connect_success_template": "Attempting to connect to WiFi network {ssid} succeeded.",
+    "wifi_connect_failed_template": "Attempting to connect to WiFi network {ssid} failed."
   },
   "low_power_lines": [
     "My power levels are low. I need to frighten more children to recharge.",

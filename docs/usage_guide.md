@@ -438,7 +438,87 @@ Enabling **Generative LLM Fallback** (`LLM_FALLBACK=true` or `./scripts/alsageis
 | **CLI Argument** | `python3 main.py --llm-fallback` | Applies to foreground execution. |
 | **Runtime Socket Control** | `python3 scripts/alsageist_ctl.py fallback on` | Toggles the running daemon immediately without restart. |
 
-### 5.4 Configuring Operational Parameters in `.env`
+### 5.4 Wi-Fi Failover on Startup (`WIFI_FALLBACK_NETWORKS`)
+
+On service startup, if the system cannot connect to its primary network or has no active internet connection:
+1. Grimjaw vocalizes: *"WiFi network not found."*
+2. NetworkManager scans the airwaves for visible SSIDs (`nmcli dev wifi list`).
+3. AlsaGeist compiles candidates from saved NetworkManager connection profiles and the `WIFI_FALLBACK_NETWORKS` environment variable.
+4. Candidates not physically visible in the scan are skipped to avoid connection timeouts.
+5. For each visible candidate:
+   - Grimjaw vocalizes: *"Attempting to connect to WiFi network {ssid}."*
+   - AlsaGeist attempts connection via `nmcli`.
+   - On success: Grimjaw vocalizes *"Attempting to connect to WiFi network {ssid} succeeded."*, updates the system to online mode, prefetches weather data, and resumes startup.
+   - On failure: Grimjaw vocalizes *"Attempting to connect to WiFi network {ssid} failed."* and advances to the next visible candidate.
+6. If all candidates fail or none are visible, AlsaGeist announces offline mode and starts the local offline dialogue engine.
+
+#### 5.4.1 Method A: Adding Networks via `.env`
+
+Add candidate networks to `WIFI_FALLBACK_NETWORKS` in `.env` as a semicolon-separated list:
+
+```ini
+# Semicolon-separated list of fallback Wi-Fi networks in SSID:PASSWORD format
+WIFI_FALLBACK_NETWORKS="HomeNet:SecretPass; CoffeeShop:LattePass"
+```
+
+* **Passphrases with Delimiters:** Enclose the SSID or password in quotes if it contains colons or semicolons (for example, `'OfficeNet':'pass:word;123'`).
+* **Open Networks:** Omit the password after the colon (for example, `GuestNet:`).
+
+#### 5.4.2 Method B: Adding Networks via NetworkManager
+
+Adding networks directly to NetworkManager stores credentials in `/etc/NetworkManager/system-connections/` (root-only mode `0600`) and makes them available to AlsaGeist automatically.
+
+##### Objective: Connect and save a new Wi-Fi profile using `nmcli`.
+
+Run the connection command on the Raspberry Pi:
+
+```bash
+sudo nmcli dev wifi connect "<SSID>" password "<PASSWORD>"
+```
+
+Expected output:
+
+```text
+Device 'wlan0' successfully activated with 'd4b8e89f-723a-4934-8c01-7fa38c928491'.
+```
+
+##### Objective: Assign connection priority to preferred networks.
+
+Configure higher numerical priorities to prioritize a home or primary network over mobile hotspots:
+
+```bash
+sudo nmcli connection modify "<SSID>" connection.autoconnect-priority 10
+```
+
+##### Objective: Add or edit networks interactively using a text interface.
+
+Launch the curses-based NetworkManager configuration tool:
+
+```bash
+sudo nmtui
+```
+
+Select **Activate a connection** to browse visible networks, or **Edit a connection** to manually enter hidden SSIDs and security keys.
+
+#### 5.4.3 Listing Saved Wi-Fi Networks
+
+##### Objective: Inspect all saved Wi-Fi profiles recognized by NetworkManager and AlsaGeist.
+
+List active and saved Wi-Fi connection profiles:
+
+```bash
+nmcli -t -f NAME,TYPE con show | grep -E ':(802-11-wireless|wifi)$' | cut -d: -f1
+```
+
+Expected output:
+
+```text
+HomeNet
+CoffeeShop
+preconfigured
+```
+
+### 5.5 Configuring Operational Parameters in `.env`
 
 Edit your `.env` file to select modes:
 
@@ -448,6 +528,9 @@ PERSONALITY=grimjaw
 
 # Enable or disable dynamic LLM fallback for unrecognized questions
 LLM_FALLBACK=true
+
+# Optional Wi-Fi Fallback Networks
+WIFI_FALLBACK_NETWORKS="HomeNet:SecretPass; CoffeeShop:LattePass"
 
 # Cloud API Keys (Leave blank for 100% offline mode)
 GROQ_API_KEY=gsk_your_groq_key_here
@@ -459,7 +542,7 @@ MIC_GAIN=1.5
 VAD_THRESHOLD=0.0035
 ```
 
-### 5.5 Interaction Logs & Privacy
+### 5.6 Interaction Logs & Privacy
 
 | Setting | Default | Effect |
 | :--- | :--- | :--- |
@@ -470,7 +553,7 @@ VAD_THRESHOLD=0.0035
 * Log files are readable only by the user running AlsaGeist (mode 0600).
 * In online mode each utterance is sent to the configured cloud service (Groq or Google) for transcription, and unrecognized questions go to the LLM. In offline mode audio stays on the device.
 
-### 5.6 Under-Voltage and CPU Throttling (Raspberry Pi)
+### 5.7 Under-Voltage and CPU Throttling (Raspberry Pi)
 
 #### Objective: Recognize a weak power supply, understand its effect on response speed, and find the cause.
 

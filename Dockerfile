@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgpiod2 \
     gpiod \
     dbus-bin \
+    network-manager \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 

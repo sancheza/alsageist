@@ -51,7 +51,7 @@ def test_setup_docker_prewarm_dry_run():
     )
     assert result.returncode == 0
     assert "Pre-warming dialogue audio cache..." in result.stdout
-    assert "Would run: python3" in result.stdout
+    assert "Would run: docker compose run --rm alsageist python3" in result.stdout
     assert "prewarm_cache.py --all" in result.stdout
 
 

@@ -353,6 +353,7 @@ nano .env
 | **Cloud STT** | `GROQ_API_KEY` | None | None | Groq Whisper Large v3 authentication token. |
 | **Cloud STT / LLM** | `GEMINI_API_KEY` | None | None | Google Gemini authentication token. |
 | **Dialogue Mode** | `LLM_FALLBACK` | `--llm-fallback` | `false` | Enable dynamic LLM fallback for indeterminate prompts. |
+| **Wi-Fi Fallbacks** | `WIFI_FALLBACK_NETWORKS` | None | None | Semicolon-separated list of fallback Wi-Fi networks (`SSID1:PASSWORD; SSID2:PASSWORD`). |
 
 Sample minimal `.env` configuration:
 
@@ -360,6 +361,9 @@ Sample minimal `.env` configuration:
 # Character Configuration
 PERSONALITY=grimjaw
 LLM_FALLBACK=false
+
+# Optional Wi-Fi Fallback Networks
+WIFI_FALLBACK_NETWORKS=
 
 # Cloud Speech-to-Text (Optional, leave blank for offline mode)
 GROQ_API_KEY=
