@@ -395,6 +395,14 @@ def test_disabled_verbal_password(pwd):
     "Password, Alphageist.",
     "the password is alsageist",
     "verbal password alsageist",
+    "alcigeist",
+    "Alcigeist.",
+    "alci geist",
+    "ausergeis",
+    "Ausergeis.",
+    "alsa guest",
+    "password alcigeist",
+    "the password is alcigeist",
 ])
 def test_is_verbal_password_phonetic_variations(utterance):
     """Verifies that speech recognizer transcriptions for alsageist are recognized."""
@@ -453,6 +461,11 @@ def test_match_voice_command_mute(phrase):
     ("mute yourself", COMMAND_ACCESS_DENIED),
     ("grimjaw mute", COMMAND_ACCESS_DENIED),
     ("set mode to mute", COMMAND_ACCESS_DENIED),
+    ("mute the mic", COMMAND_ACCESS_DENIED),
+    ("mute the mic, password alsageist", COMMAND_MUTE),
+    ("Mute the mic, password Alcigeist.", COMMAND_MUTE),
+    ("Mute the mic, password Ausergeis.", COMMAND_MUTE),
+    ("set mode to mute, password alcigeist", COMMAND_MUTE),
     ("alsageist mute", COMMAND_MUTE),
     ("alsageist set mode to mute", COMMAND_MUTE),
     ("grimjaw mute password alsageist", COMMAND_MUTE),

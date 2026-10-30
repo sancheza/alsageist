@@ -147,10 +147,17 @@ _MODE_AUTO_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_PASSWORD_PREFIX = (
+    r"(?:als[aei]|alc[ie]|alz[ae]|alph?a|als?o|els[ae]|elz[ae]|aus[ae]r?|ous[ae]r?|all\s+the|auf(?:\s+die)?)"
+)
+_PASSWORD_SUFFIX = r"(?:gei[sz]t?|gi?e[sz]t?|gu?e[sz]t?|gu[iy]se?|guys?|gh?o[sz]t?)"
+_PASSWORD_WORD = (
+    rf"(?:{_PASSWORD_PREFIX}\s*{_PASSWORD_SUFFIX}|poltergeist|altergeist|all\s+suggest|geist)"
+)
+
 _DEFAULT_PASSWORD_ALIASES_REGEX = (
     r"\b(?:(?:(?:the|my|verbal)\s+)?password(?:\s+is)?\s+)?"
-    r"(?:alsageist|alsa\s+geist|alphageist|alpha\s+geist|"
-    r"auf\s+die\s+geist|auf\s+geist|also\s+geist|elsa\s+geist|elsageist|geist)"
+    + _PASSWORD_WORD +
     r"(?:\s+(?:is\s+the\s+)?password)?\b"
 )
 
