@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alsageist"
-version = "1.0.0"
+version = "1.1.0"
 description = "Autonomous Voice-Driven Conversational Display Engine"
 authors = [{ name = "sancheza" }]
 readme = "README.md"

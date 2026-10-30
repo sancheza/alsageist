@@ -532,6 +532,9 @@ LLM_FALLBACK=true
 # Optional Wi-Fi Fallback Networks
 WIFI_FALLBACK_NETWORKS="HomeNet:SecretPass; CoffeeShop:LattePass"
 
+# Diagnostic boot announcement (product name, version, Wi-Fi SSID, IP, volume)
+VERBOSE_BOOT_ANNOUNCEMENT=true
+
 # Cloud API Keys (Leave blank for 100% offline mode)
 GROQ_API_KEY=gsk_your_groq_key_here
 GEMINI_API_KEY=your_gemini_key_here

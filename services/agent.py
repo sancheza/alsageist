@@ -15,6 +15,7 @@ from typing import Optional, Tuple
 
 from core import system_utils, voice_commands, voice_config, wifi_manager
 from core.audio_io import AudioIO
+from core.config import VERSION
 from core.control_server import ControlServer
 from core.dialogue_interface import DialogueEngine
 from core.env_utils import env_bool
@@ -26,7 +27,12 @@ from core.intent_builder import (
 )
 from core.led_controller import LEDState, create_led_controller
 from core.logger import InteractionLogger
-from core.power_monitor import PowerMonitor
+from core.power_monitor import (
+    UNDER_VOLTAGE_NOW,
+    PowerMonitor,
+    read_status as read_power_status,
+    read_undervoltage_alarm,
+)
 from core.utterance_filter import classify_utterance
 from core.vad import VoiceActivityDetector
 from services.basic_info_service import INTENT_TIME, INTENT_WEATHER, BasicInfoService, safe_format
@@ -800,7 +806,7 @@ class AlsaGeistAgent:
         # Spoken announcements upon startup
         if not getattr(self.args, "no_greeting", False):
             self._play_startup_greeting()
-            if not self.is_online:
+            if not self.is_online and not getattr(self.args, "verbose_boot", True):
                 self._announce_mode(online=False)
 
         # Start the power monitor last: its first check may speak, and that must come after the
@@ -1209,14 +1215,71 @@ class AlsaGeistAgent:
             print(f"Playback Error: {exc}")
             self._error_pause()
 
+    def _build_startup_announcement(self) -> str:
+        """Construct the spoken on-boot announcement string.
+
+        When verbose boot announcement is enabled (the default), compiles product name,
+        software version, active persona, Wi-Fi SSID (or offline mode status), local IP,
+        current output volume percentage, and any active hardware under-voltage warnings,
+        followed by the persona's startup greeting. When disabled, returns only the concise
+        persona greeting.
+
+        Returns:
+            Spoken greeting announcement text.
+        """
+        profile = self.active_profile
+        greeting = (
+            profile.startup_greeting
+            if profile and profile.startup_greeting
+            else (
+                DEFAULT_GREETING_TEMPLATE.format(name=self.persona_name)
+                if self.is_online
+                else f"I am {self.persona_name}. System ready."
+            )
+        )
+
+        if not getattr(self.args, "verbose_boot", True):
+            return greeting
+
+        parts = [
+            f"AlsaGeist version {VERSION}.",
+            f"{self.persona_name} persona active.",
+        ]
+
+        if self.is_online:
+            ssid = wifi_manager.get_current_wifi_ssid()
+            if ssid:
+                parts.append(f"Connected to Wi-Fi {ssid}.")
+            else:
+                parts.append("Connected to network.")
+            ip = system_utils.get_local_ip()
+            if ip:
+                parts.append(f"IP address {ip}.")
+        else:
+            parts.append("Operating in offline mode.")
+
+        vol_pct = int(round(self.audio.volume * 100))
+        parts.append(f"Volume {vol_pct} percent.")
+
+        try:
+            is_low_power = False
+            if read_undervoltage_alarm():
+                is_low_power = True
+            else:
+                status = read_power_status()
+                if status is not None and bool(status.raw & UNDER_VOLTAGE_NOW):
+                    is_low_power = True
+            if is_low_power:
+                parts.append("Warning: Power supply under-voltage detected.")
+        except Exception:
+            pass
+
+        parts.append(greeting)
+        return " ".join(parts)
+
     def _play_startup_greeting(self) -> None:
         """Play an initial greeting announcement when the agent first wakes up."""
-        profile = self.active_profile
-        if profile and profile.startup_greeting:
-            greeting_text = profile.startup_greeting
-        else:
-            greeting_text = DEFAULT_GREETING_TEMPLATE.format(name=self.persona_name)
-
+        greeting_text = self._build_startup_announcement()
         print(f"\n{self.persona_name} (startup): \"{greeting_text}\"")
         self.speak(greeting_text, blocking=True, cooldown_sec=0.0)
 

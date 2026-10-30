@@ -10,7 +10,7 @@ from typing import List, Optional
 
 from core.env_utils import env_bool, env_float, env_int
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -143,6 +143,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--no-greeting",
         action="store_true",
         help="Disable spoken greeting announcement upon startup.",
+    )
+    parser.add_argument(
+        "--verbose-boot",
+        action=argparse.BooleanOptionalAction,
+        default=env_bool("VERBOSE_BOOT_ANNOUNCEMENT", True),
+        help="Enable or disable detailed diagnostic startup announcement (default: true or $VERBOSE_BOOT_ANNOUNCEMENT).",
     )
     parser.add_argument(
         "--voice-command-password",

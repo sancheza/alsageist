@@ -14,7 +14,7 @@ import socket
 import subprocess
 import sys
 import time
-from typing import List
+from typing import List, Optional
 
 
 def is_running_in_docker() -> bool:
@@ -244,4 +244,36 @@ def check_internet_connectivity(timeout: float = 2.5) -> bool:
             if sock is not None:
                 sock.close()
     return False
+
+
+def get_local_ip() -> Optional[str]:
+    """Return the primary local IPv4 address of the host, or None if unavailable.
+
+    Connects a UDP socket to an external address to determine which outbound
+    interface IP is selected by the local kernel routing table, without
+    transmitting network packets over the wire.
+
+    Returns:
+        Dotted-quad IPv4 address string, or None if network is down or unreachable.
+    """
+    sock = None
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.connect(("1.1.1.1", 80))
+        ip = sock.getsockname()[0]
+        if ip and not ip.startswith("127."):
+            return str(ip)
+    except (OSError, socket.error):
+        pass
+    finally:
+        if sock is not None:
+            sock.close()
+
+    try:
+        ip = socket.gethostbyname(socket.gethostname())
+        if ip and not ip.startswith("127."):
+            return str(ip)
+    except (OSError, socket.error):
+        pass
+    return None
 

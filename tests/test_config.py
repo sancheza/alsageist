@@ -6,23 +6,47 @@ from core.config import VERSION, build_arg_parser, parse_args
 
 def test_config_version():
     """Verify config version string."""
-    assert VERSION == "1.0.0"
+    assert VERSION == "1.1.0"
 
 
 def test_config_defaults(monkeypatch):
     """Verify default CLI arguments when no flags are supplied."""
     monkeypatch.delenv("PERSONALITY", raising=False)
     monkeypatch.delenv("LLM_FALLBACK", raising=False)
+    monkeypatch.delenv("VERBOSE_BOOT_ANNOUNCEMENT", raising=False)
     args = parse_args([])
     assert args.engine == "intent"
     assert args.personality == "grimjaw"
     assert args.llm_fallback is False
+    assert args.verbose_boot is True
     assert args.volume == 0.5
     assert args.mic_gain == 1.5
     assert args.threshold == 0.0035
     assert args.led_pin == 25
     assert args.button_pin == 23
     assert args.voice_command_password == "alsageist"
+
+
+def test_config_verbose_boot_env_and_flags(monkeypatch):
+    """Verify VERBOSE_BOOT_ANNOUNCEMENT env var and --verbose-boot flags."""
+    monkeypatch.setenv("VERBOSE_BOOT_ANNOUNCEMENT", "false")
+    args = parse_args([])
+    assert args.verbose_boot is False
+
+    monkeypatch.setenv("VERBOSE_BOOT_ANNOUNCEMENT", "off")
+    args = parse_args([])
+    assert args.verbose_boot is False
+
+    monkeypatch.setenv("VERBOSE_BOOT_ANNOUNCEMENT", "true")
+    args = parse_args([])
+    assert args.verbose_boot is True
+
+    # CLI flag overrides env
+    args = parse_args(["--no-verbose-boot"])
+    assert args.verbose_boot is False
+
+    args = parse_args(["--verbose-boot"])
+    assert args.verbose_boot is True
 
 
 def test_config_voice_command_password_env(monkeypatch):

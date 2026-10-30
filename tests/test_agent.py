@@ -1103,3 +1103,152 @@ def test_agent_voice_command_combined_password_phrase():
     reply, intent = agent._resolve_dialogue_response("Shut down. Password, Alphageist.")
     assert intent == "system_shutdown"
     assert agent._pending_privileged_command is None
+
+
+def test_build_startup_announcement_verbose_online_with_ssid_and_ip():
+    """Verify verbose on-boot announcement includes product, version, SSID, IP, volume, and greeting."""
+    agent = make_bare_agent()
+    agent.profile = PersonalityProfile(
+        personality="grimjaw",
+        display_name="Grimjaw",
+        description="Gargoyle guardian",
+        voice="alan",
+        startup_greeting="Grimjaw is awake. What do you want?",
+    )
+    agent.args.verbose_boot = True
+    agent.is_online = True
+    agent.audio.volume = 0.8
+
+    with patch("core.wifi_manager.get_current_wifi_ssid", return_value="SpookyNet"), \
+         patch("core.system_utils.get_local_ip", return_value="192.168.1.150"), \
+         patch("services.agent.read_undervoltage_alarm", return_value=False), \
+         patch("services.agent.read_power_status", return_value=None):
+        text = agent._build_startup_announcement()
+
+    assert "AlsaGeist version 1.1.0." in text
+    assert f"{agent.persona_name} persona active." in text
+    assert "Connected to Wi-Fi SpookyNet." in text
+    assert "IP address 192.168.1.150." in text
+    assert "Volume 80 percent." in text
+    assert "Warning: Power supply under-voltage detected." not in text
+    assert "Grimjaw is awake. What do you want?" in text
+
+
+def test_build_startup_announcement_verbose_online_no_ssid():
+    """Verify verbose on-boot announcement handles online state without visible SSID (e.g. Ethernet)."""
+    agent = make_bare_agent()
+    agent.args.verbose_boot = True
+    agent.is_online = True
+    agent.audio.volume = 0.5
+
+    with patch("core.wifi_manager.get_current_wifi_ssid", return_value=None), \
+         patch("core.system_utils.get_local_ip", return_value="10.0.0.22"), \
+         patch("services.agent.read_undervoltage_alarm", return_value=False), \
+         patch("services.agent.read_power_status", return_value=None):
+        text = agent._build_startup_announcement()
+
+    assert "AlsaGeist version 1.1.0." in text
+    assert "Connected to network." in text
+    assert "IP address 10.0.0.22." in text
+    assert "Volume 50 percent." in text
+
+
+def test_build_startup_announcement_verbose_offline():
+    """Verify verbose on-boot announcement states offline mode when offline."""
+    agent = make_bare_agent()
+    agent.args.verbose_boot = True
+    agent.is_online = False
+    agent.audio.volume = 0.65
+
+    with patch("services.agent.read_undervoltage_alarm", return_value=False), \
+         patch("services.agent.read_power_status", return_value=None):
+        text = agent._build_startup_announcement()
+
+    assert "AlsaGeist version 1.1.0." in text
+    assert "Operating in offline mode." in text
+    assert "Connected to Wi-Fi" not in text
+    assert "IP address" not in text
+    assert "Volume 65 percent." in text
+
+
+def test_build_startup_announcement_verbose_undervoltage_warning():
+    """Verify power under-voltage warning is included if under-voltage is detected at boot."""
+    agent = make_bare_agent()
+    agent.args.verbose_boot = True
+    agent.is_online = True
+
+    with patch("core.wifi_manager.get_current_wifi_ssid", return_value="HomeNet"), \
+         patch("core.system_utils.get_local_ip", return_value="192.168.1.10"), \
+         patch("services.agent.read_undervoltage_alarm", return_value=True):
+        text = agent._build_startup_announcement()
+
+    assert "Warning: Power supply under-voltage detected." in text
+
+
+def test_build_startup_announcement_non_verbose():
+    """Verify non-verbose mode returns only the concise character greeting."""
+    agent = make_bare_agent()
+    agent.profile = PersonalityProfile(
+        personality="grimjaw",
+        display_name="Grimjaw",
+        description="Gargoyle guardian",
+        voice="alan",
+        startup_greeting="Grimjaw is awake. What do you want?",
+    )
+    agent.args.verbose_boot = False
+    agent.is_online = True
+
+    text = agent._build_startup_announcement()
+    assert "AlsaGeist version" not in text
+    assert "Connected to" not in text
+    assert "Volume" not in text
+    assert text == "Grimjaw is awake. What do you want?"
+
+
+def test_play_startup_greeting_speaks_built_announcement():
+    """Verify _play_startup_greeting passes announcement to speak()."""
+    agent = make_bare_agent()
+    agent._build_startup_announcement = MagicMock(return_value="Test startup message.")
+    agent.speak = MagicMock()
+
+    agent._play_startup_greeting()
+    agent.speak.assert_called_once_with("Test startup message.", blocking=True, cooldown_sec=0.0)
+
+
+def test_startup_offline_announcement_verbose_vs_non_verbose():
+    """Verify offline mode is announced in startup greeting when verbose, or via _announce_mode when non-verbose."""
+    agent = make_bare_agent()
+    agent.args = make_args(no_greeting=False)
+    agent.args.verbose_boot = True
+    agent.is_online = False
+    agent.network.is_online = False
+    agent.network.apply_first_result = MagicMock()
+    agent.network.poll = MagicMock(return_value=None)
+    agent.logger.jsonl_path = "unused"
+    agent._handle_wifi_startup_fallback = MagicMock()
+    agent._play_startup_greeting = MagicMock()
+    agent._announce_mode = MagicMock()
+    agent.audio.read_frame.return_value = None
+
+    def stop_agent():
+        time.sleep(0.05)
+        agent.running = False
+
+    threading.Thread(target=stop_agent, daemon=True).start()
+    agent.start()
+
+    agent._play_startup_greeting.assert_called_once()
+    agent._announce_mode.assert_not_called()
+
+    agent.running = False
+    agent.args.verbose_boot = False
+    agent._play_startup_greeting.reset_mock()
+    agent._announce_mode.reset_mock()
+
+    threading.Thread(target=stop_agent, daemon=True).start()
+    agent.start()
+
+    agent._play_startup_greeting.assert_called_once()
+    agent._announce_mode.assert_called_once_with(online=False)
+
+

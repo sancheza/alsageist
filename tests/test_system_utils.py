@@ -8,6 +8,7 @@ import pytest
 from core.voice_config import resolve_piper_model_path
 from core.system_utils import (
     check_internet_connectivity,
+    get_local_ip,
     is_running_in_docker,
     load_env_file,
     trigger_host_shutdown,
@@ -180,3 +181,41 @@ def test_load_env_file_populates_missing_keys_from_example(tmp_path, monkeypatch
     assert os.environ.get("USER_CUSTOM_VAR") == "custom_val"
     assert os.environ.get("FALLBACK_DEFAULT_VAR") == "user_override"
     assert os.environ.get("MISSING_IN_USER_ENV") == "from_example"
+
+
+def test_get_local_ip_socket_success():
+    """Verify get_local_ip returns IP address when socket probe succeeds."""
+    with patch("socket.socket") as mock_sock_cls:
+        mock_sock = MagicMock()
+        mock_sock.getsockname.return_value = ("192.168.1.100", 54321)
+        mock_sock_cls.return_value = mock_sock
+        ip = get_local_ip()
+        assert ip == "192.168.1.100"
+        mock_sock.close.assert_called_once()
+
+
+def test_get_local_ip_fallback_to_gethostbyname():
+    """Verify get_local_ip falls back to gethostbyname when UDP probe fails."""
+    with patch("socket.socket") as mock_sock_cls:
+        mock_sock = MagicMock()
+        mock_sock.connect.side_effect = OSError("network unreachable")
+        mock_sock_cls.return_value = mock_sock
+
+        with patch("socket.gethostbyname", return_value="10.0.0.50"):
+            ip = get_local_ip()
+            assert ip == "10.0.0.50"
+
+
+def test_get_local_ip_ignores_loopback_and_returns_none_on_failure():
+    """Verify get_local_ip returns None if only loopback is available or all fail."""
+    with patch("socket.socket") as mock_sock_cls:
+        mock_sock = MagicMock()
+        mock_sock.connect.side_effect = OSError("down")
+        mock_sock_cls.return_value = mock_sock
+
+        with patch("socket.gethostbyname", return_value="127.0.0.1"):
+            assert get_local_ip() is None
+
+        with patch("socket.gethostbyname", side_effect=OSError("no name")):
+            assert get_local_ip() is None
+
