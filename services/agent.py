@@ -1270,7 +1270,18 @@ class AlsaGeistAgent:
             f"{self.persona_name} persona active.",
         ]
 
+        engine_type = getattr(self.args, "engine", "intent").lower()
+        if engine_type == "llm":
+            parts.append(self._announcement("engine_llm"))
+        else:
+            parts.append(self._announcement("engine_intent"))
+            if getattr(self, "llm_fallback_enabled", False):
+                parts.append(self._announcement("fallback_enabled"))
+            else:
+                parts.append(self._announcement("fallback_disabled"))
+
         if self.is_online:
+            parts.append("Online mode active.")
             ssid = wifi_manager.get_current_wifi_ssid()
             if ssid:
                 parts.append(f"Connected to Wi-Fi {ssid}.")

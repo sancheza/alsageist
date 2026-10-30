@@ -1127,11 +1127,31 @@ def test_build_startup_announcement_verbose_online_with_ssid_and_ip():
 
     assert "AlsaGeist version 1.1.0." in text
     assert f"{agent.persona_name} persona active." in text
+    assert "The dialogue engine is intent." in text
+    assert "L L M fallback is disabled." in text
+    assert "Online mode active." in text
     assert "Connected to Wi-Fi SpookyNet." in text
     assert "IP address 192.168.1.150." in text
     assert "Volume 80 percent." in text
     assert "Warning: Power supply under-voltage detected." not in text
     assert "Grimjaw is awake. What do you want?" in text
+
+
+def test_build_startup_announcement_llm_and_fallback_enabled():
+    """Verify verbose boot announcement reports LLM engine or enabled fallback."""
+    agent = make_bare_agent()
+    agent.args.verbose_boot = True
+    agent.args.engine = "intent"
+    agent.llm_fallback_enabled = True
+    agent.is_online = True
+    text = agent._build_startup_announcement()
+    assert "The dialogue engine is intent." in text
+    assert "L L M fallback is enabled." in text
+    assert "Online mode active." in text
+
+    agent.args.engine = "llm"
+    text_llm = agent._build_startup_announcement()
+    assert "The dialogue engine is neural L L M." in text_llm
 
 
 def test_build_startup_announcement_verbose_online_no_ssid():
