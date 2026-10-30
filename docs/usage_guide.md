@@ -386,7 +386,7 @@ AlsaGeist recognizes spoken system commands for poweroff, mode switching, and op
 | Command Goal | Example Spoken Phrases | System Action | Response Spoken |
 | :--- | :--- | :--- | :--- |
 | **Shutdown Host** | *"shut down"*, *"power off"*, *"power down"*, *"grimjaw shut down"*, *"shut down the system"* | Initiates safe host poweroff (`trigger_host_shutdown`) | *"Powering off."* |
-| **Mute Microphone** | *"mute"*, *"mute yourself"*, *"grimjaw mute"*, *"mute the mic"*, *"mute microphone"* | Mutes microphone capture (`set_mic_muted(True)`) | *"Microphone muted."* |
+| **Mute Microphone** | *"mute"*, *"mute yourself"*, *"set mode to mute"*, *"grimjaw mute"*, *"mute the mic"*, *"mute microphone"* | Mutes microphone capture (`set_mic_muted(True)`) | *"Microphone muted."* |
 | **Switch to Offline Mode** | *"go offline"*, *"switch to offline mode"*, *"offline mode"*, *"set mode offline"*, *"disconnect"* | Forces offline mode (`set_online(False)`) | *"NOW IN OFFLINE MODE"* |
 | **Switch to Online Mode** | *"go online"*, *"switch to online mode"*, *"online mode"*, *"set mode online"*, *"reconnect"* | Forces online mode (`set_online(True)`) | *"NOW IN ONLINE MODE"* |
 | **Query Active Mode** | *"what mode are you in"*, *"what is your mode"*, *"are you online or offline"*, *"current mode"*, *"check mode"* | Queries current network operating mode | *"I am in online mode."* or *"I am in offline mode."* |

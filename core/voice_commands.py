@@ -49,11 +49,13 @@ _SHUTDOWN_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Mute commands: "mute", "mute yourself", "mute the microphone", "mute mic", etc.
+# Mute commands: "mute", "mute yourself", "mute the microphone", "mute mic", "set mode to mute", etc.
 _MUTE_PATTERN = re.compile(
-    r"^(?:mute|silence)"
-    r"(?:\s+(?:the\s+)?(?:microphone|mic|audio|input|device|system|yourself|display|unit))?$"
-    r"|^(?:turn\s*off|disable)\s+(?:the\s+)?(?:microphone|mic|audio\s+capture)$"
+    r"^(?:mute|silence)(?:\s+(?:the\s+)?(?:microphone|mic|audio|input|device|system|yourself|display|unit))?$"
+    r"|^(?:turn\s*off|disable)\s+(?:the\s+)?(?:microphone|mic|audio(?:\s+capture)?)$"
+    r"|^(?:turn\s*on|enable|activate|start)\s+(?:the\s+)?(?:mute|muted)(?:\s+mode)?$"
+    r"|^(?:switch\s+to\s+|change\s+to\s+|set\s+(?:mode\s+)?(?:to\s+)?|go\s+to\s+|enter\s+)?(?:mute|muted|silent|silence)\s+mode$"
+    r"|^(?:switch\s+to\s+|change\s+to\s+|set\s+(?:mode\s+)?(?:to\s+)?|go\s+to\s+|enter\s+)(?:mute|muted|silent|silence)$"
     r"|^(?:go\s+to\s+sleep|enter\s+sleep|standby|enter\s+standby)$",
     re.IGNORECASE,
 )

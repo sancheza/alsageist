@@ -431,6 +431,17 @@ def test_is_verbal_password_rejects_non_passwords(utterance):
     "enter sleep",
     "standby",
     "enter standby",
+    "set mode to mute",
+    "set mode mute",
+    "set mode to muted",
+    "set mode muted",
+    "set to mute",
+    "switch to mute",
+    "switch to mute mode",
+    "mute mode",
+    "turn on mute",
+    "turn on mute mode",
+    "enable mute",
 ])
 def test_match_voice_command_mute(phrase):
     """Verify mute voice commands match accurately."""
@@ -441,7 +452,9 @@ def test_match_voice_command_mute(phrase):
     ("mute", COMMAND_ACCESS_DENIED),
     ("mute yourself", COMMAND_ACCESS_DENIED),
     ("grimjaw mute", COMMAND_ACCESS_DENIED),
+    ("set mode to mute", COMMAND_ACCESS_DENIED),
     ("alsageist mute", COMMAND_MUTE),
+    ("alsageist set mode to mute", COMMAND_MUTE),
     ("grimjaw mute password alsageist", COMMAND_MUTE),
     ("mute yourself alsageist", COMMAND_MUTE),
     ("Auf die Geist mute", COMMAND_MUTE),
