@@ -452,3 +452,143 @@ def test_grimjaw_low_power_lines_are_speakable():
     for line in lines:
         assert 20 < len(line) <= 110, line
         assert "—" not in line and not any(ord(ch) > 0x2000 for ch in line), line
+
+
+def test_personality_apply_override_intents_replace_and_append():
+    """PersonalityProfile.apply_override updates responses for existing intents and appends new ones."""
+    profile = PersonalityProfile(
+        personality="skeleton",
+        display_name="Skeleton Guardian",
+        description="Guards the crypt",
+        startup_greeting="Halt!",
+        intents=[
+            CustomIntent(name="favorite_food", patterns=[r"\bfood\b"], responses=["Bone broth!"]),
+            CustomIntent(name="greeting", patterns=[r"\bhello\b"], responses=["Greetings, mortal!"]),
+        ],
+    )
+
+    override_data = {
+        "startup_greeting": "Welcome to my crypt!",
+        "intents": [
+            {
+                "name": "favorite_food",
+                "responses": ["Candy corn and roasted pumpkins!"],
+            },
+            {
+                "name": "secret_password",
+                "patterns": [r"\bopen sesame\b"],
+                "responses": ["Door unlocked!"],
+            },
+        ],
+    }
+
+    merged = profile.apply_override(override_data)
+    assert merged.startup_greeting == "Welcome to my crypt!"
+    assert len(merged.intents) == 3
+
+    intent_map = {i.name: i for i in merged.intents}
+    assert intent_map["favorite_food"].responses == ["Candy corn and roasted pumpkins!"]
+    assert intent_map["favorite_food"].patterns == [r"\bfood\b"]
+    assert intent_map["greeting"].responses == ["Greetings, mortal!"]
+    assert intent_map["secret_password"].responses == ["Door unlocked!"]
+
+
+def test_personality_apply_override_append_responses():
+    """PersonalityProfile.apply_override appends responses when append=True is set."""
+    profile = PersonalityProfile(
+        personality="skeleton",
+        display_name="Skeleton",
+        description="",
+        intents=[
+            CustomIntent(name="joke", patterns=[r"\bjoke\b"], responses=["Why did the skeleton cross the road?"]),
+        ],
+    )
+
+    override_data = {
+        "intents": [
+            {
+                "name": "joke",
+                "append": True,
+                "responses": ["To get to the body shop!"],
+            }
+        ]
+    }
+
+    merged = profile.apply_override(override_data)
+    assert len(merged.intents) == 1
+    assert merged.intents[0].responses == [
+        "Why did the skeleton cross the road?",
+        "To get to the body shop!",
+    ]
+
+
+def test_personality_apply_override_dictionaries_shallow_merge():
+    """PersonalityProfile.apply_override merges dictionary fields preserving unspecified keys."""
+    profile = PersonalityProfile(
+        personality="skeleton",
+        display_name="Skeleton",
+        description="",
+        system_announcements={
+            "offline_mode": "NOW OFFLINE",
+            "online_mode": "NOW ONLINE",
+        },
+        time_responses={
+            "bedtime": "Time to sleep!",
+            "standard": "The time is {time}.",
+        },
+    )
+
+    override_data = {
+        "system_announcements": {
+            "offline_mode": "DISCONNECTED FROM WORLD",
+            "muted": "AUDIO MUTED",
+        },
+        "time_responses": {
+            "bedtime": "Way past your curfew!",
+        },
+    }
+
+    merged = profile.apply_override(override_data)
+    assert merged.system_announcements["offline_mode"] == "DISCONNECTED FROM WORLD"
+    assert merged.system_announcements["online_mode"] == "NOW ONLINE"
+    assert merged.system_announcements["muted"] == "AUDIO MUTED"
+    assert merged.time_responses["bedtime"] == "Way past your curfew!"
+    assert merged.time_responses["standard"] == "The time is {time}."
+
+
+def test_load_personality_with_override_file(tmp_path):
+    """load_personality loads base profile and automatically merges <name>.override.json."""
+    from core.intent_builder import load_personality
+
+    base_file = tmp_path / "phantom.json"
+    override_file = tmp_path / "phantom.override.json"
+
+    base_data = {
+        "personality": "phantom",
+        "display_name": "The Phantom",
+        "description": "Haunts the theater",
+        "startup_greeting": "I am here.",
+        "intents": [
+            {"name": "favorite_food", "patterns": [r"\bfood\b"], "responses": ["Ectoplasm."]},
+        ],
+    }
+    base_file.write_text(json.dumps(base_data), encoding="utf-8")
+
+    override_data = {
+        "startup_greeting": "The music of the night begins!",
+        "intents": [
+            {"name": "favorite_food", "responses": ["Popcorn at the opera!"]},
+        ],
+    }
+    override_file.write_text(json.dumps(override_data), encoding="utf-8")
+
+    # With overrides enabled (default)
+    loaded = load_personality(str(base_file))
+    assert loaded.startup_greeting == "The music of the night begins!"
+    assert loaded.intents[0].responses == ["Popcorn at the opera!"]
+
+    # With overrides disabled explicitly
+    loaded_raw = load_personality(str(base_file), apply_overrides=False)
+    assert loaded_raw.startup_greeting == "I am here."
+    assert loaded_raw.intents[0].responses == ["Ectoplasm."]
+

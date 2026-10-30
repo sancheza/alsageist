@@ -22,11 +22,8 @@ for dir in "${DATA_DIR}/personalities" "${PIPER_DIR}" "${CACHE_DIR}" "${LOGS_DIR
     fi
 done
 
-# 2. Seed default personality profile if external mount is empty
-if [[ ! -f "${DATA_DIR}/personalities/grimjaw.json" && -f "/app/data.defaults/personalities/grimjaw.json" ]]; then
-    echo "[AlsaGeist Bootstrap] Seeding default grimjaw personality to external data volume..."
-    cp "/app/data.defaults/personalities/grimjaw.json" "${DATA_DIR}/personalities/grimjaw.json"
-fi
+# 2. Ensure personalities directory exists for user-defined profiles and overrides
+mkdir -p "${DATA_DIR}/personalities"
 
 # 3. Ensure Grimjaw voice model is available
 GRIMJAW_MODEL="${PIPER_DIR}/en_GB-alan-medium.onnx"

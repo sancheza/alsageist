@@ -1280,4 +1280,29 @@ def test_agent_voice_command_mute_two_step_challenge():
     assert agent.mic_muted is True
 
 
+def test_build_startup_announcement_cache_status_reporting():
+    """Verify startup announcement announces pre-warmed audio cache status when engine and tts exist."""
+    agent = make_bare_agent()
+    agent.args.verbose_boot = True
+    agent.is_online = False
+    agent.audio.volume = 0.5
+
+    # Case 1: Audio cache fully pre-warmed (0 missing out of 100)
+    with patch.object(agent, "_check_audio_cache_status", return_value=(0, 100)), \
+         patch("services.agent.read_undervoltage_alarm", return_value=False), \
+         patch("services.agent.read_power_status", return_value=None):
+        text = agent._build_startup_announcement()
+        assert "Audio cache fully pre-warmed." in text
+        assert "not pre-warmed" not in text
+
+    # Case 2: Audio cache has unwarmed responses (5 missing out of 100)
+    with patch.object(agent, "_check_audio_cache_status", return_value=(5, 100)), \
+         patch("services.agent.read_undervoltage_alarm", return_value=False), \
+         patch("services.agent.read_power_status", return_value=None):
+        text = agent._build_startup_announcement()
+        assert "Warning: 5 responses not pre-warmed." in text
+        assert "fully pre-warmed" not in text
+
+
+
 

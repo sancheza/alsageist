@@ -758,7 +758,58 @@ Personalities live in `data/personalities/<name>.json`. A profile defines charac
 
 ---
 
-### 7.2 Checking Existing Intents
+### 7.2 Layered Personality Overrides (`<name>.override.json`)
+
+#### Objective: Customize dialogue lines, greetings, or intents for a built-in personality without modifying the upstream profile.
+
+To customize responses without maintaining a copy of the full 2,200-line personality profile (such as `data/personalities/grimjaw.json`), create a sparse override file named `data/personalities/<name>.override.json`.
+
+When AlsaGeist loads a personality, it automatically discovers and layers `<name>.override.json` on top of the base profile:
+* **Custom Intent Responses:** Overrides specified intents by `name`, replacing the default responses.
+* **New Intents:** Appends any newly defined intents to the existing intent rules.
+* **Top-Level Attributes:** Overrides scalar attributes (`startup_greeting`, `voice`, `description`) and merges dictionaries (`system_announcements`, `time_responses`).
+* **Preserves Upstream Updates:** Updating the software or pulling newer Docker images updates all base profile intents, scary stories, and fallbacks while preserving your local overrides.
+
+#### Example: Overriding Grimjaw's Favorite Restaurant & Adding a Porch Greeting
+
+Create `data/personalities/grimjaw.override.json`:
+
+```json
+{
+  "startup_greeting": "Welcome, foolish mortals, to the crypt! Step forward for your treat!",
+  "intents": [
+    {
+      "name": "favorite_restaurant",
+      "responses": [
+        "Spooky Slice Pizza! Their garlic knots are so pungent they could raise an army of the dead!"
+      ]
+    },
+    {
+      "name": "secret_porch_password",
+      "patterns": [
+        "\\bhocus pocus\\b"
+      ],
+      "responses": [
+        "You spoke the magic words! Take a full-size chocolate bar, mortal!"
+      ]
+    }
+  ]
+}
+```
+
+After saving `data/personalities/grimjaw.override.json`, pre-warm the audio cache so the new responses play with zero latency:
+
+```bash
+# Bare metal
+./scripts/prewarm_cache.py --all
+
+# Docker
+docker compose exec alsageist python3 scripts/prewarm_cache.py --all
+```
+
+---
+
+### 7.3 Checking Existing Intents
 
 #### Objective: Test whether a question is already matched by an existing intent rule.
 
@@ -774,7 +825,7 @@ Response: "Just one piece, mortal! Greedy hands get turned to bone!"
 
 ---
 
-### 7.3 Adding New Custom Dialogue (`add_intent.py`)
+### 7.4 Adding New Custom Dialogue (`add_intent.py`)
 
 #### Objective: Add a new spoken question, intent regex, and character response.
 
@@ -804,7 +855,7 @@ Profile 'data/personalities/grimjaw.json' updated successfully.
 
 ---
 
-### 7.4 Pre-Warming Dialogue Audio Cache (`prewarm_cache.py`)
+### 7.5 Pre-Warming Dialogue Audio Cache (`prewarm_cache.py`)
 
 #### Objective: Pre-render neural voice audio arrays for zero-latency response on Raspberry Pi.
 

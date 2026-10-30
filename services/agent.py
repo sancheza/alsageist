@@ -1219,6 +1219,26 @@ class AlsaGeistAgent:
             print(f"Playback Error: {exc}")
             self._error_pause()
 
+    def _check_audio_cache_status(self) -> Tuple[int, int]:
+        """Check how many phrases in the active dialogue profile are pre-warmed in disk cache.
+
+        Returns:
+            Tuple of (unwarmed_count, total_count).
+        """
+        try:
+            engine = getattr(self, "engine", None)
+            tts = getattr(self, "tts", None)
+            if engine is None or tts is None or not hasattr(tts, "cache_path"):
+                return 0, 0
+            from scripts.prewarm_cache import collect_phrases_to_prewarm
+            phrases = collect_phrases_to_prewarm(engine, warm_all=True, limit=0)
+            if not phrases:
+                return 0, 0
+            missing = sum(1 for p in phrases if not os.path.isfile(tts.cache_path(p)))
+            return missing, len(phrases)
+        except Exception:
+            return 0, 0
+
     def _build_startup_announcement(self) -> str:
         """Construct the spoken on-boot announcement string.
 
@@ -1264,6 +1284,13 @@ class AlsaGeistAgent:
 
         vol_pct = int(round(self.audio.volume * 100))
         parts.append(f"Volume {vol_pct} percent.")
+
+        missing, total = self._check_audio_cache_status()
+        if total > 0:
+            if missing > 0:
+                parts.append(f"Warning: {missing} responses not pre-warmed.")
+            else:
+                parts.append("Audio cache fully pre-warmed.")
 
         try:
             is_low_power = False

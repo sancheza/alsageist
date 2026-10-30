@@ -197,6 +197,79 @@ class PersonalityProfile:
             data["weather_responses"] = self.weather_responses
         return data
 
+    def apply_override(self, override_data: Dict[str, Any]) -> "PersonalityProfile":
+        """Apply a sparse override dictionary onto this personality profile.
+
+        Intents in the override dictionary are matched by name. Existing intents have
+        their responses and/or patterns updated; unknown intents are appended.
+        Dictionaries (announcements, voice settings, time responses) are shallow-merged.
+        Scalars and list attributes are overwritten when present in the override.
+
+        Args:
+            override_data: Dictionary containing profile overrides.
+
+        Returns:
+            A new PersonalityProfile instance with overrides applied.
+        """
+        data = self.to_dict()
+
+        # 1. Scalar fields
+        for key in ("display_name", "description", "voice", "startup_greeting"):
+            if key in override_data and override_data[key] is not None:
+                data[key] = override_data[key]
+
+        # 2. Dictionary fields (shallow-merge so unspecified defaults are retained)
+        for key in ("system_announcements", "voice_settings", "time_responses", "weather_responses"):
+            if key in override_data and isinstance(override_data[key], dict):
+                current_dict = dict(data.get(key, {}))
+                current_dict.update(override_data[key])
+                data[key] = current_dict
+
+        # 3. List of strings fields
+        for key in ("costume_prompts", "fallbacks", "escalation_lines", "low_power_lines", "priority_intents"):
+            if key in override_data and isinstance(override_data[key], list):
+                if override_data.get(f"append_{key}", False):
+                    data[key] = list(data.get(key, [])) + list(override_data[key])
+                else:
+                    data[key] = list(override_data[key])
+
+        # 4. Intents list (matched by name)
+        if "intents" in override_data and isinstance(override_data["intents"], list):
+            base_intents = [dict(i) if isinstance(i, dict) else asdict(i) for i in data.get("intents", [])]
+            name_to_idx = {i.get("name"): idx for idx, i in enumerate(base_intents) if i.get("name")}
+
+            for raw_intent in override_data["intents"]:
+                intent_override = dict(raw_intent) if isinstance(raw_intent, dict) else asdict(raw_intent)
+                name = intent_override.get("name")
+                if not name:
+                    continue
+
+                if name in name_to_idx:
+                    idx = name_to_idx[name]
+                    target = dict(base_intents[idx])
+                    if "responses" in intent_override:
+                        if intent_override.get("append", False) or intent_override.get("append_responses", False):
+                            target["responses"] = list(target.get("responses", [])) + list(intent_override["responses"])
+                        else:
+                            target["responses"] = list(intent_override["responses"])
+                    if "patterns" in intent_override:
+                        if intent_override.get("append_patterns", False):
+                            target["patterns"] = list(target.get("patterns", [])) + list(intent_override["patterns"])
+                        else:
+                            target["patterns"] = list(intent_override["patterns"])
+                    if "metadata" in intent_override:
+                        meta = dict(target.get("metadata", {}))
+                        meta.update(intent_override["metadata"])
+                        target["metadata"] = meta
+                    base_intents[idx] = target
+                else:
+                    base_intents.append(intent_override)
+                    name_to_idx[name] = len(base_intents) - 1
+
+            data["intents"] = base_intents
+
+        return PersonalityProfile.from_dict(data)
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PersonalityProfile":
         """Construct personality profile from dictionary."""
@@ -391,6 +464,7 @@ def find_personality_file(
         return os.path.abspath(personality_name_or_path)
 
     dirs = search_dirs or [
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data.defaults", "personalities"),
         os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "personalities"),
         os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "personalities"),
         os.path.join(os.getcwd(), "data", "personalities"),
@@ -408,14 +482,70 @@ def find_personality_file(
     return os.path.abspath(os.path.join(primary_dir, base_name))
 
 
-def load_personality(name_or_path: str) -> PersonalityProfile:
-    """Find and load a personality profile by name or path.
+def find_personality_override_file(
+    personality_name_or_path: str = "grimjaw",
+    base_path: Optional[str] = None,
+    search_dirs: Optional[List[str]] = None,
+) -> Optional[str]:
+    """Resolve personality override JSON file path if one exists.
+
+    Checks for `<name>.override.json` in the base profile directory, as well as
+    standard personality search directories (including mounted external volumes).
+
+    Args:
+        personality_name_or_path: Name (e.g. 'grimjaw') or file path.
+        base_path: Optional path to the loaded base profile file.
+        search_dirs: Optional directories to search within.
+
+    Returns:
+        Absolute path to the override JSON file, or None if not found.
+    """
+    if personality_name_or_path.endswith(".override.json") and os.path.isfile(personality_name_or_path):
+        return os.path.abspath(personality_name_or_path)
+
+    base_name = os.path.basename(personality_name_or_path)
+    if base_name.endswith(".json"):
+        base_name = base_name[:-5]
+    if base_name.endswith(".override"):
+        base_name = base_name[:-9]
+
+    override_filename = f"{base_name}.override.json"
+
+    candidate_dirs: List[str] = []
+    if base_path:
+        candidate_dirs.append(os.path.dirname(os.path.abspath(base_path)))
+
+    candidate_dirs.extend(search_dirs or [
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "personalities"),
+        os.path.join(os.getcwd(), "data", "personalities"),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "personalities"),
+    ])
+
+    if os.path.isdir("/app/data/personalities"):
+        candidate_dirs.append("/app/data/personalities")
+
+    seen = set()
+    for d in candidate_dirs:
+        norm = os.path.abspath(d)
+        if norm in seen:
+            continue
+        seen.add(norm)
+        candidate = os.path.join(norm, override_filename)
+        if os.path.isfile(candidate):
+            return candidate
+
+    return None
+
+
+def load_personality(name_or_path: str, apply_overrides: bool = True) -> PersonalityProfile:
+    """Find and load a personality profile by name or path, applying overrides if present.
 
     Args:
         name_or_path: Personality name (for example 'grimjaw') or JSON file path.
+        apply_overrides: If True, search for and apply `<name>.override.json` if found.
 
     Returns:
-        The loaded profile.
+        The loaded (and potentially merged) profile.
 
     Raises:
         FileNotFoundError: If no profile file exists for the name or path.
@@ -425,4 +555,17 @@ def load_personality(name_or_path: str) -> PersonalityProfile:
         raise FileNotFoundError(
             f"Personality profile not found: '{name_or_path}' (searched at: {profile_path})"
         )
-    return PersonalityProfile.load_from_file(profile_path)
+    profile = PersonalityProfile.load_from_file(profile_path)
+
+    if apply_overrides:
+        override_path = find_personality_override_file(name_or_path, base_path=profile_path)
+        if override_path and os.path.isfile(override_path):
+            try:
+                with open(override_path, "r", encoding="utf-8") as f:
+                    override_data = json.load(f)
+                if isinstance(override_data, dict):
+                    profile = profile.apply_override(override_data)
+            except Exception as exc:
+                print(f"Warning: Failed to load personality override file '{override_path}': {exc}")
+
+    return profile
