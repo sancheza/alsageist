@@ -30,6 +30,11 @@ env/
 .env.*
 !.env.example
 
+# Local personality overrides
+data/personalities/*.override.json
+data/personalities/*.overrides.json
+*.override.json
+
 # Logs & Runtime telemetry
 logs/*.log
 logs/*.jsonl
