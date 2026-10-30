@@ -1252,3 +1252,32 @@ def test_startup_offline_announcement_verbose_vs_non_verbose():
     agent._announce_mode.assert_called_once_with(online=False)
 
 
+def test_agent_voice_command_mute_execution():
+    """Verify executing COMMAND_MUTE mutes microphone capture and sets user_muted state."""
+    agent = make_bare_agent(voice_command_password="alsageist")
+    reply, intent = agent._resolve_dialogue_response("alsageist mute yourself")
+    assert intent == "system_mute"
+    assert reply == "Microphone muted."
+    assert agent.user_muted is True
+    assert agent.mic_muted is True
+
+
+def test_agent_voice_command_mute_two_step_challenge():
+    """Speaking 'mute' triggers challenge, following up with password mutes the microphone."""
+    agent = make_bare_agent(voice_command_password="alsageist")
+    # Step 1: User says "grimjaw mute" without password
+    reply1, intent1 = agent._resolve_dialogue_response("grimjaw mute")
+    assert intent1 == "system_access_denied"
+    assert "access denied" in reply1.lower()
+    assert agent._pending_privileged_command == ("system_mute", agent._pending_privileged_command[1])
+    assert agent.user_muted is False
+
+    # Step 2: User responds with password
+    reply2, intent2 = agent._resolve_dialogue_response("alsageist")
+    assert intent2 == "system_mute"
+    assert reply2 == "Microphone muted."
+    assert agent.user_muted is True
+    assert agent.mic_muted is True
+
+
+

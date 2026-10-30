@@ -16,6 +16,7 @@ from core.voice_commands import (
     COMMAND_MODE_OFFLINE,
     COMMAND_MODE_ONLINE,
     COMMAND_MODE_QUERY,
+    COMMAND_MUTE,
     COMMAND_SHUTDOWN,
     COMMAND_VOICE_QUERY,
     PRIVILEGED_COMMANDS,
@@ -410,3 +411,41 @@ def test_is_verbal_password_phonetic_variations(utterance):
 def test_is_verbal_password_rejects_non_passwords(utterance):
     """Non-password utterances return False."""
     assert is_verbal_password(utterance, password="alsageist") is False
+
+
+@pytest.mark.parametrize("phrase", [
+    "mute",
+    "mute yourself",
+    "grimjaw mute",
+    "grimjaw mute yourself",
+    "hey grimjaw mute",
+    "please mute",
+    "mute the microphone",
+    "mute microphone",
+    "mute the mic",
+    "mute mic",
+    "silence yourself",
+    "turn off the mic",
+    "turn off microphone",
+    "go to sleep",
+    "enter sleep",
+    "standby",
+    "enter standby",
+])
+def test_match_voice_command_mute(phrase):
+    """Verify mute voice commands match accurately."""
+    assert match_voice_command(phrase) == COMMAND_MUTE
+
+
+@pytest.mark.parametrize("phrase, expected_cmd", [
+    ("mute", COMMAND_ACCESS_DENIED),
+    ("mute yourself", COMMAND_ACCESS_DENIED),
+    ("grimjaw mute", COMMAND_ACCESS_DENIED),
+    ("alsageist mute", COMMAND_MUTE),
+    ("grimjaw mute password alsageist", COMMAND_MUTE),
+    ("mute yourself alsageist", COMMAND_MUTE),
+    ("Auf die Geist mute", COMMAND_MUTE),
+])
+def test_match_voice_command_mute_privileged(phrase, expected_cmd):
+    """Verify mute is treated as a privileged command requiring verbal password."""
+    assert match_voice_command(phrase, password="alsageist") == expected_cmd

@@ -22,6 +22,7 @@ COMMAND_ENGINE_QUERY = "system_engine_query"
 COMMAND_FALLBACK_QUERY = "system_fallback_query"
 COMMAND_FALLBACK_ENABLE = "system_fallback_enable"
 COMMAND_FALLBACK_DISABLE = "system_fallback_disable"
+COMMAND_MUTE = "system_mute"
 COMMAND_ACCESS_DENIED = "system_access_denied"
 
 PRIVILEGED_COMMANDS = {
@@ -29,6 +30,7 @@ PRIVILEGED_COMMANDS = {
     COMMAND_MODE_OFFLINE,
     COMMAND_MODE_ONLINE,
     COMMAND_MODE_AUTO,
+    COMMAND_MUTE,
 }
 
 # Common polite or wake-word prefixes to strip before command evaluation
@@ -44,6 +46,15 @@ _SHUTDOWN_PATTERN = re.compile(
     r"^(?:shut\s*down|shutdown|power\s*off|power\s*down)"
     r"(?:\s+(?:the\s+)?(?:system|host|pi|display|alsageist|device|yourself|unit))?$"
     r"|^turn\s*off(?:\s+(?:the\s+)?(?:system|host|pi|display|alsageist|device|yourself|unit))$",
+    re.IGNORECASE,
+)
+
+# Mute commands: "mute", "mute yourself", "mute the microphone", "mute mic", etc.
+_MUTE_PATTERN = re.compile(
+    r"^(?:mute|silence)"
+    r"(?:\s+(?:the\s+)?(?:microphone|mic|audio|input|device|system|yourself|display|unit))?$"
+    r"|^(?:turn\s*off|disable)\s+(?:the\s+)?(?:microphone|mic|audio\s+capture)$"
+    r"|^(?:go\s+to\s+sleep|enter\s+sleep|standby|enter\s+standby)$",
     re.IGNORECASE,
 )
 
@@ -218,7 +229,10 @@ def match_voice_command_detailed(
     # 1. Shutdown command
     if _SHUTDOWN_PATTERN.match(stripped):
         matched_cmd = COMMAND_SHUTDOWN
-    # 2. Mode query command (evaluated before mode-setting to prevent 'are you offline' matching 'offline')
+    # 2. Mute command
+    elif _MUTE_PATTERN.match(stripped):
+        matched_cmd = COMMAND_MUTE
+    # 3. Mode query command (evaluated before mode-setting to prevent 'are you offline' matching 'offline')
     elif _MODE_QUERY_PATTERN.match(stripped):
         matched_cmd = COMMAND_MODE_QUERY
     # 3. Voice model query command

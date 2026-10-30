@@ -168,3 +168,23 @@ def test_costume_gi_joe_evie_and_generic_matching(engine, query, expected_intent
     resp, intent = engine.classify_and_respond(query)
     assert intent == expected_intent
     assert isinstance(resp, str) and len(resp) > 5
+
+
+@pytest.mark.parametrize("query", [
+    "tell me a scary story",
+    "tell a spooky story",
+    "tell me a horror story",
+    "tell me a ghost story",
+    "can you tell me a scary story",
+    "do you know any scary stories",
+    "tell us a creepy tale",
+    "scary story",
+    "spooky stories",
+    "tell me something scary",
+])
+def test_scary_story_intent_matching(engine, query):
+    """Verify scary and spooky story requests match the scary_story intent and return abridged stories."""
+    resp, intent = engine.classify_and_respond(query)
+    assert intent == "scary_story"
+    assert isinstance(resp, str) and len(resp) > 30
+

@@ -937,6 +937,10 @@ class AlsaGeistAgent:
         if command == voice_commands.COMMAND_SHUTDOWN:
             return self._announcement("powering_off"), command
 
+        if command == voice_commands.COMMAND_MUTE:
+            self.set_mic_muted(True)
+            return self._announcement("muted"), command
+
         if command == voice_commands.COMMAND_MODE_OFFLINE:
             self.set_online(False)
             return self._announcement("offline_mode"), command

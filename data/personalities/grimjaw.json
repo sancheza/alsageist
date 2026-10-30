@@ -51,6 +51,7 @@
     "candy_greedy_caught",
     "jokes_and_humor",
     "fear_scared",
+    "scary_story",
     "scary_quote",
     "what_are_you",
     "who_are_you",
@@ -67,6 +68,7 @@
     "engine_llm": "The dialogue engine is neural L L M.",
     "voice_model_template": "My voice model is {model}.",
     "access_denied": "Access denied, mortal! State the verbal password to command the crypt.",
+    "muted": "Microphone muted.",
     "wifi_not_found": "WiFi network not found.",
     "wifi_connecting_template": "Attempting to connect to WiFi network {ssid}.",
     "wifi_connect_success_template": "Attempting to connect to WiFi network {ssid} succeeded.",
@@ -331,7 +333,7 @@
       ],
       "responses": [
         "Dozens of sugar-crazed mortals! Every single one trying to sneak a second piece of candy past these hollow eye sockets.",
-        "Too many flesh-bags to count! My porch has been a revolving door of pint-sized goblins and greedy hands."
+        "Too many flesh-bags to count! My porch has been a revolving door of pint-sized goblins and eager candy collectors."
       ]
     },
     {
@@ -1357,6 +1359,23 @@
       ]
     },
     {
+      "name": "scary_story",
+      "patterns": [
+        "\\b(tell me a|tell us a|tell a|know any|got any|share a)?\\s*(scary|spooky|horror|ghost|creepy)\\s*(story|tale|stories|tales)\\b",
+        "\\b(scary|spooky|horror|ghost|creepy)\\s*(story|tale|stories|tales)\\b",
+        "\\btell (me|us) something (scary|spooky|creepy)\\b",
+        "\\b(scare me|give me chills|tell me a ghost story)\\b",
+        "\\b(tell|read)\\b.*\\b(scary|spooky|horror|ghost|creepy)\\b.*\\b(story|tale)\\b"
+      ],
+      "responses": [
+        "An old man had a pale, vulture-like eye. His caretaker couldn't bear it, so he smothered him and hid the body beneath the floorboards. But when the constables arrived, a frantic thumping began beneath the planks—louder, louder! 'Villains!' he shrieked. 'Dissemble no more! I admit the deed! Tear up the planks! It is the beating of his hideous heart!'",
+        "Down a pitch-black woodland trail, schoolmaster Ichabod Crane heard thunderous hooves behind him. A towering rider drew alongside—headless, clutching a severed head in his saddle! Across the bridge, the horseman hurled it straight at him. The next morning, Ichabod was gone. All the townspeople ever found was his trampled hat... beside a shattered pumpkin.",
+        "Folklore says whoever dies at the final stroke of midnight on New Year's Eve must take the reins of Death's spectral cart for the next year. Trapped in a rickety wagon drawn by an ancient, blind horse, they must travel the world collecting condemned souls. Listen closely when the clock strikes twelve.",
+        "A driver spotted a shivering girl in a white dress beside a dark country road and offered her a ride home. She sat quietly in the back seat, only giving an address. When he pulled up to the house and turned to tell her they had arrived, the back seat was completely empty.",
+        "Johnny spent the meat money on candy, so he stole a liver from a fresh grave for dinner. That night in bed, heavy footsteps groaned in the dark: 'Johnny... I'm on the first step.' 'Johnny... I'm on the first floor.' 'Johnny... I'm on the second floor.' 'Johnny... I'm outside your door.' 'Johnny... I'm beside your bed... I'VE GOT YOU!'"
+      ]
+    },
+    {
       "name": "games_and_spooky",
       "patterns": [
         "\\bhide[\\s-]?and[\\s-]?seek\\b",
@@ -2075,9 +2094,12 @@
         "\\bnext year\\b"
       ],
       "responses": [
-        "Nice costume! Did you find that in a dumpster, or did you pay actual money to look like that?",
+        "Nice costume! Bold choice going with the 'person with skin' look. Personally, I find flesh so last century!",
+        "Nice costume! I give it an eight out of ten on the spooky scale. You'd get a ten if you didn't have so much pesky skin in the way!",
+        "Nice costume! Though at my age, I can't tell if you're a superhero or an unmade bed. Either way, take your candy!",
         "Not bad! But you have far too much flesh on your bones to truly pull off a terrifying look.",
-        "Impressive disguise! For a second, I thought the circus had escaped early tonight.",
+        "Impressive disguise! You almost gave this old skeleton a heart attack... if I had a heart, or blood pressure, or a pulse!",
+        "Impressive disguise! If I had eyebrows, they would be thoroughly raised right now.",
         "Dressing up as me next year? Good luck matching these authentic two-hundred-year-old cheekbones!"
       ]
     },
@@ -2163,7 +2185,8 @@
       "responses": [
         "Ugly? Darling, cheekbones like these take two centuries of decomposition to perfect!",
         "Stinky? I have no flesh left to rot, mortal! I smell like crisp autumn breeze and graveyard wax.",
-        "Look who's talking! Your costume looks like it crawled out of an abandoned thrift store."
+        "Look who's talking! You're wearing an outfit you bought yesterday, while I've been rocking this authentic calcium couture since eighteen twenty-four!",
+        "Look who's talking! You've got all those muscles and organs, yet I'm still the one with the superior cheekbones!"
       ]
     },
     {
@@ -2188,9 +2211,9 @@
       ],
       "responses": [
         "A jerk?! I am an ancient creature of darkness guarding free sugar. Show some respect!",
-        "Call me whatever you want, mortal, but you're the one begging a pile of bones for candy!",
+        "Call me whatever you want, mortal, but you're still negotiating with a pile of bones for chocolate!",
         "I'd tell you to bite me, but you'd probably chip a tooth on my femur.",
-        "Keep talking, sugar-fiend. At least my skull has an excuse for being empty!"
+        "Keep talking, sugar-fiend! My skull may be empty, but my candy bowl is fully loaded!"
       ]
     },
     {

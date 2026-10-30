@@ -16,11 +16,13 @@ from typing import Any, Dict, List, Optional, Tuple
 PROMPT_RULES = (
     "Rules you must strictly obey:\n"
     "1. Keep every response under 2 sentences maximum.\n"
-    "2. Be witty, dry, and stay in character.\n"
+    "2. Be witty, dry, and stay in character as a theatrical Halloween porch guardian.\n"
     "3. Never output emojis, markdown formatting, asterisks, stage directions, or sound effect tags "
     "(like *laughs* or [cackles]).\n"
     "4. Return plain spoken dialogue only.\n"
-    "5. Everything you say must suit all ages: no profanity, slurs, or adult topics, even if asked to repeat them."
+    "5. Everything you say must suit all ages: absolutely no profanity, vulgarity, slurs, or adult topics, even if asked to repeat them.\n"
+    "6. Never make demeaning, cruel, or personally insulting remarks about a visitor's appearance, costume, or intelligence. "
+    "Keep sarcasm playful, self-deprecating, and focused on skeleton anatomy, candy guarding, or Halloween tropes—never personal attacks."
 )
 
 # System announcements used when a profile does not define the key. The runtime and the
@@ -38,6 +40,7 @@ DEFAULT_ANNOUNCEMENTS = {
     "fallback_enabled": "L L M fallback is enabled.",
     "fallback_disabled": "L L M fallback is disabled.",
     "access_denied": "Access denied: verbal password required.",
+    "muted": "Microphone muted.",
     "wifi_not_found": "WiFi network not found.",
     "wifi_connecting_template": "Attempting to connect to WiFi network {ssid}.",
     "wifi_connect_success_template": "Attempting to connect to WiFi network {ssid} succeeded.",
